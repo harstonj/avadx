@@ -1,12 +1,29 @@
 ## AVA,Dx workflow
 
+---
+Input: VCF file, class labels, split schemes, (external gene set to use as features)
+Output: selected genes, model performance
 
 
-**Edit a file, create a new file, and clone from Bitbucket in under 2 minutes**
+---
+## VCF file clean-up
+
+1. Extract individuals of interest (diseased and healthy individuals, ideally from the same cohort, meaning sequenced and called in the same batch).
+2. Remove variant sites which did not pass the VQSR standard.
+3. Split SNV and InDel calls to separated files because they use different QC thresholds.
+4. Remove variant sites by site-wise quality. Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150. The thresholds are arbitrarily and empirically determined.
+5. Check individual call quality. Good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4. The thresholds are arbitrarily and empirically determined. The bad individual GTs should be converted into missing (./.).\
+6. Remove variant sites with a low call rate. Low call rate is a call rate < 80% or missing rate >= 20%.
+
+
+---
+
+
+**Edit**
 
 When you're done, you can delete the content in this README and update the file with details for others getting started with your repository.
 
-*We recommend that you open this README in another tab as you perform the tasks below. You can [watch our video](https://youtu.be/0ocf7u76WSo) for a full demo of all the steps in this tutorial. Open the video in a new tab to avoid leaving Bitbucket.*
+*We*
 
 ---
 

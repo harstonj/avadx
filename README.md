@@ -1,9 +1,9 @@
-## AVA,Dx workflow
+# AVA,Dx workflow
 
 ---
-Input: VCF file, class labels, split schemes, (external gene set to use as features)
+* Input: VCF file, class labels, split schemes, (external gene set to use as features)
 
-Output: selected genes, model performance
+* Output: selected genes, model performance
 
 ---
 ## Step One: VCF file clean-up

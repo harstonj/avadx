@@ -2,17 +2,39 @@
 
 ---
 Input: VCF file, class labels, split schemes, (external gene set to use as features)
-Output: selected genes, model performance
 
+Output: selected genes, model performance
 
 ---
 ## VCF file clean-up
 
 1. Extract individuals of interest (diseased and healthy individuals, ideally from the same cohort, meaning sequenced and called in the same batch).
+```
+bcftools view -S sampleID.txt source.vcf.gz -Oz -o source_s-selected.vcf.gz
+```
+
 2. Remove variant sites which did not pass the VQSR standard.
+```
+bcftools filter -i 'FILTER="PASS"' source_s-selected.vcf.gz -Oz -o source_s-selected_v-PASS.vcf.gz
+```
+
 3. Split SNV and InDel calls to separated files because they use different QC thresholds.
+```
+bcftools view --types snps source_s-selected_v-PASS.vcf.gz -Oz -o source_s-selected_v-PASS_snps.vcf.gz
+
+bcftools view --types indels source_s-selected_v-PASS.vcf.gz -Oz -o source_s-selected_v-PASS_indels.vcf.gz
+```
+
 4. Remove variant sites by site-wise quality. Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150. The thresholds are arbitrarily and empirically determined.
-5. Check individual call quality. Good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4. The thresholds are arbitrarily and empirically determined. The bad individual GTs should be converted into missing (./.).\
+```
+bcftools view -i 'QUAL>30 & AVG(FMT/DP)<=150 & AVG(FMT/DP)>=6' source_s-selected_v-PASS_snps.vcf.gz -Oz -o source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz
+```
+
+5. Check individual call quality. Good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4. The thresholds are arbitrarily and empirically determined. The bad individual GTs should be converted into missing (./.).
+```
+python filterVCF_by_ABAD.py source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
+```
+
 6. Remove variant sites with a low call rate. Low call rate is a call rate < 80% or missing rate >= 20%.
 
 

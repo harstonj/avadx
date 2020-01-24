@@ -49,6 +49,7 @@ bcftools stats stats -v -s - source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-
 Rscript source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt output.pdf
 ```
 
+
 Check ethnicity with AIM (ancestry informative markers).
 Method 1: AIPS from [Byun *et al*](https://morgan1.dartmouth.edu/~f000q4v/html/aips.html).
 

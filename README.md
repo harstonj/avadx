@@ -32,7 +32,9 @@ bcftools view -i 'QUAL>30 & AVG(FMT/DP)<=150 & AVG(FMT/DP)>=6' source_s-selected
 
 Check individual call quality. Good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4. The thresholds are arbitrarily and empirically determined. The bad individual GTs should be converted into missing (./.). Remove variant sites with a low call rate. Low call rate is arbitrarily determined as a call rate < 80% or missing rate >= 20%.
 ```
-python filterVCF_by_ABAD.py source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
+python filterVCF_by_ABAD.py \
+  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz \
+  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
 ```
 
 

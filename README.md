@@ -52,7 +52,36 @@ Rscript source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-
 
 Check ethnicity with AIM (ancestry informative markers).
 Method 1: AIPS from [Byun *et al*](https://morgan1.dartmouth.edu/~f000q4v/html/aips.html).
+```
+# Convert VCF file into plink format.
 
+# Merge user file and the reference file.
+plink --bfile euro952samples --bmerge input.bed input.bim input.fam --recodeA --out outputA
+
+# Run AIPS-PCA.R and AIPS-AI.R.
+```
+
+Method 2: SNPRelate package in R.
+```
+Rscript ethnicity_SNPRelate.R \
+  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
+```
+
+Method 3: Calculate probabilities individuals being a known ethnicity by forensic marker frequency production.
+```
+# Extract only the 55 markers from KiddLab.
+bcftools view -R 55markers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_Kidd-markers.vcf.gz
+
+# Calculate the probability using a production method.
+Rscript forensic_method.R source_Kidd-markers.vcf.gz
+```
+
+Note that:
+  * Method 1 uses AIMs to infer ethnicity using reference labels (952 ancestry known samples).
+  * Method 2 takes all SNPs and do PCA on LD-pruned SNPs to infer ethnicity using reference labels (user defined). 
+  * Method 3 uses AIMs to infer ethnicities (known ethnicities).
+  
+  * Technically, results should be very consistant across all method.
 
 ---
 

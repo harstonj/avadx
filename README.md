@@ -123,6 +123,33 @@ Rscript generate_SNAP_input.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6
 ```
 The above step generates one mutation file `geneA.mut` and one fasta file `geneA.fasta` for *geneA* to the output folder. There will be approximately 20,000 to 45,000 files generated depending on the genes covered by the original data.
 
+SNAP is available on amarel server and can be run using code below (submit.sh SBATCH submission shell script):
+```
+#!/bin/bash
+
+#SBATCH --partition=bromberg_1,main
+#SBATCH --time=72:00:00
+#SBATCH --mem=100000
+#SBATCH --array=0-999
+#SBATCH --requeue
+
+module load singularity/.2.4-PR1106
+inArray=(geneA geneB geneC)
+
+#sbatch --partition=${4} --array=${1}-${2} submit_partial_test.sh $3 IL9R_HUMAN_1,IL9R_HUMAN_2
+singularity exec /home/yw410/bromberglab_predictprotein_yanran-2017-12-06-fa6f97ee098c.img snapfun -i /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input_part1/$input.fasta -m /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input_part1/$input.mutation -o /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_output_part1/$input.out --print-collection --tolerate-sift-failure --tolerate-psic-failure
+
+```
+
+SNAP outputs text files of predicted variant scores. It needs to be converted to tab-separated format using below code:
+```
+python snap_output2tab.py snapOutput snapOutput.tab
+```
+
+After all SNAP output has been converted to tab-separated format, merge them into one mutation score table:
+```
+cat *.tab > mutScore.txt
+```
 
 ---
 ## Step Four: Gene score calculation

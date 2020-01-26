@@ -2,7 +2,7 @@
 
 ---
 * **Input**: VCF file, class labels, (cross-validation) data split schemes, *external gene set to use as features*.
-
+* **Manual Processes Needed**: determination of all arbitrary thresholds; outlier identification (e.g. ethnicity check); SNAP score calculation (parallelization on amarel); gene score calculation (parallelization on amarel); parameter tuning and FS in model training
 * **Output**: selected genes, model performance.
 
 ---
@@ -123,7 +123,7 @@ Rscript generate_SNAP_input.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6
 ```
 The above step generates one mutation file `geneA.mut` and one fasta file `geneA.fasta` for *geneA* to the output folder. There will be approximately 20,000 to 45,000 files generated depending on the genes covered by the original data.
 
-SNAP is available on amarel server and can be run using code below (submit.sh SBATCH submission shell script):
+SNAP is available on [amarel server](https://oarc.rutgers.edu/amarel/) and can be run using code below (submit.sh SBATCH submission shell script):
 ```
 #!/bin/bash
 

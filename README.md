@@ -107,14 +107,22 @@ bcftools -S ^outliers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-max
 
 ---
 ## Step Three: Variant annotation and SNAP score calculation
+Before calculating *gene score*, AVA,Dx needs to first calculate SNAP scores for all variants in the dataset. To generate SNAP input files, use below code:
 ```
+# Convert VCF file into ANNOVAR input format:
 convert2annovar.pl -format vcf4old source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz > source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput
 
+# Annotate using hg19 human reference:
 annotate_variation.pl -buildver hg19 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput humandb/
 ```
-The output file from `annotate_variation.pl` includes `source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function`, which is used as input for the next step.
+The output file from includes `source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function`, which is used as input for the next step.
 
 SNAP needs two input files: **amino acid mutation list** and the **protein fasta file** for each protein. Code below extracts all mutations from `.exonic_variant_function` file and write them into SNAP input files.
+```
+Rscript generate_SNAP_input.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/output/folder
+```
+The above step generates one mutation file `geneA.mut` and one fasta file `geneA.fasta` for *geneA* to the output folder. There will be approximately 20,000 to 45,000 files generated depending on the genes covered by the original data.
+
 
 ---
 ## Step Four: Gene score calculation

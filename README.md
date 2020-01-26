@@ -2,7 +2,7 @@
 
 ---
 * **Input**: VCF file, class labels, (cross-validation) data split schemes, *external gene set to use as features*.
-* **Manual Processes Needed**: determination of all arbitrary thresholds; outlier identification (e.g. ethnicity check); SNAP score calculation (parallelization on amarel); gene score calculation (parallelization on amarel); parameter tuning and FS in model training
+* **Manual Processes Needed**: determination of all arbitrary thresholds along all steps; outlier identification (e.g. ethnicity check); SNAP score calculation (parallelization on amarel); gene score calculation (parallelization on amarel); feature selection and model selection in model training
 * **Output**: selected genes, model performance.
 
 ---
@@ -71,7 +71,22 @@ Rscript ethnicity_SNPRelate.R \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
 ```
 
-* *Method 3*: Calculate probabilities of individuals being a [known ethnicity](https://frog.med.yale.edu/FrogKB/FrogServlet) by forensic marker [frequency production](https://frog.med.yale.edu/FrogKB/formula.jsp).
+* *Method 3*: [EthSEQ](https://cran.r-project.org/web/packages/EthSEQ/index.html) R package.
+```
+# If the number of individuals exceeds 500, "memory exhausted" error may occur. Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
+bcftools query -l source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > sample_list.txt
+csplit sample_list.txt 500  # outputs from xx00 to xx0n
+
+# Clean VCF format for EthSEQ input:
+bcftools view -S xx00 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz | bcftools annotate --remove 'ID,INFO,FORMAT' | bcftools view --no-header -Oz -o source_xx00_EthSEQinput.vcf.gz
+# Do the same thing for other parts
+
+# Run EthSEQ:
+Rscript EthSEQ.R \
+  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
+```
+
+* *Method 4*: Calculate probabilities of individuals being a [known ethnicity](https://frog.med.yale.edu/FrogKB/FrogServlet) by forensic marker [frequency production](https://frog.med.yale.edu/FrogKB/formula.jsp).
 ```
 # Extract only the 55 markers from KiddLab.
 bcftools view -R 55markers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_Kidd-markers.vcf.gz
@@ -84,7 +99,8 @@ Rscript forensic_method.R source_Kidd-markers.vcf.gz
 
   * *Method 1* uses AIMs to infer ethnicity using reference labels (952 ancestry known samples).
   * *Method 2* takes all SNPs and do PCA on LD-pruned SNPs to infer ethnicity using reference labels (user defined).
-  * *Method 3* uses AIMs to infer ethnicities (known ethnicities).
+  * *Method 3* uses pre-calculated reference SS2 model and gives prediction of five 1000Genomes population code.
+  * *Method 4* uses AIMs to infer ethnicities (known ethnicities).
 
   * Technically, results should be very **consistent across all method**. But results need manual interpretation.
 

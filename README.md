@@ -6,7 +6,7 @@
 * **Output**: selected genes, model performance.
 
 ---
-## Step One: VCF file clean-up
+## Step One: VCF file variant QC
 
 Extract individuals of interest (diseased and healthy individuals, ideally from the same cohort, meaning sequenced and called in the same batch).
 ```
@@ -62,13 +62,13 @@ plink --bfile euro952samples --bmerge input.bed input.bim input.fam --recodeA --
 # Run AIPS-PCA.R and AIPS-AI.R.
 ```
 
-* Method 2: SNPRelate package in R.
+* Method 2: PCA with SNPRelate package in R.
 ```
 Rscript ethnicity_SNPRelate.R \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
 ```
 
-* Method 3: Calculate probabilities individuals being a known ethnicity by forensic marker frequency production.
+* Method 3: Calculate probabilities of individuals being a known ethnicity by forensic marker frequency production.
 ```
 # Extract only the 55 markers from KiddLab.
 bcftools view -R 55markers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_Kidd-markers.vcf.gz
@@ -83,7 +83,33 @@ Rscript forensic_method.R source_Kidd-markers.vcf.gz
   * Method 2 takes all SNPs and do PCA on LD-pruned SNPs to infer ethnicity using reference labels (user defined). 
   * Method 3 uses AIMs to infer ethnicities (known ethnicities).
   
-  * Technically, results should be very consistant across all method.
+  * Technically, results should be very consistant across all method. But results need manual interpretation by human at current stage.
+
+
+Check relatedness within datasets.
+```
+Rscript relatedness_SNPRelate.R \
+  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
+```
+
+
+Lastly, remove individual outliers from dataset.
+```
+bcftools -S ^outliers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz
+```
+---
+## Step Three: Variant annotation and SNAP score calculation
+```
+convert2annovar.pl -format vcf4old 
+```
 
 ---
+## Step Four: Gene score calculation
+
+
+---
+## Step Five: Feature selection and training (cross-validation)
+
+
+
 

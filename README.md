@@ -65,13 +65,13 @@ plink --bfile euro952samples --bmerge input.bed input.bim input.fam --recodeA --
 # Run AIPS-PCA.R and AIPS-AI.R.
 ```
 
-* *Method 2*: PCA with SNPRelate package in R.
+* *Method 2*: PCA with [SNPRelate package](http://corearray.sourceforge.net/tutorials/SNPRelate/) in R.
 ```
 Rscript ethnicity_SNPRelate.R \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
 ```
 
-* *Method 3*: Calculate probabilities of individuals being a known ethnicity by forensic marker frequency production.
+* *Method 3*: Calculate probabilities of individuals being a [known ethnicity](https://frog.med.yale.edu/FrogKB/FrogServlet) by forensic marker [frequency production](https://frog.med.yale.edu/FrogKB/formula.jsp).
 ```
 # Extract only the 55 markers from KiddLab.
 bcftools view -R 55markers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_Kidd-markers.vcf.gz

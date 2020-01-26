@@ -8,7 +8,7 @@ args <- commandArgs(trailingOnly=TRUE)
 ethseq.Analysis(
   target.vcf = args[1],
   out.dir = args[2],
-  model.available = "SS2.Major",
+  model.available = "Exonic.All",
   verbose = TRUE,
   composite.model.call.rate = 1,
   space = "3D"

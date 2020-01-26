@@ -73,18 +73,19 @@ Rscript ethnicity_SNPRelate.R \
 
 * *Method 3*: [EthSEQ](https://cran.r-project.org/web/packages/EthSEQ/index.html) R package.
 ```
-# If the number of individuals exceeds 500, "memory exhausted" error may occur. Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
+# If the number of individuals exceeds certain number, "memory exhausted" error may occur. Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
 bcftools query -l source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > sample_list.txt
 csplit sample_list.txt 500  # outputs from xx00 to xx0n
 
-# Clean VCF format for EthSEQ input:
+# Clean VCF format for EthSEQ input (do the same thing for every chunk):
 bcftools view -S xx00 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz | bcftools annotate --remove 'ID,INFO,FORMAT' | bcftools view --no-header -Oz -o source_xx00_EthSEQinput.vcf.gz
-# Do the same thing for other parts
+# If no separation of individuals:
+bcftools annotate --remove 'ID,INFO,FORMAT' source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz | bcftools view --no-header -Oz -o source_EthSEQinput.vcf.gz
 
 # Run EthSEQ:
-Rscript EthSEQ.R \
-  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
+Rscript ethnicity_EthSEQ.R source_EthSEQinput.vcf.gz /path/to/output/folder
 ```
+Results of ethnicity predictions are in `/path/to/output/folder/Report.txt` and the sample IDs are in `sample_list.txt`.
 
 * *Method 4*: Calculate probabilities of individuals being a [known ethnicity](https://frog.med.yale.edu/FrogKB/FrogServlet) by forensic marker [frequency production](https://frog.med.yale.edu/FrogKB/formula.jsp).
 ```

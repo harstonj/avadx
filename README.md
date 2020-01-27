@@ -2,8 +2,16 @@
 
 ---
 * **Input**: VCF file, class labels, (cross-validation) data split schemes, *external gene set to use as features*.
-* **Manual Processes Needed**: determination of all arbitrary thresholds along all steps; outlier identification (e.g. ethnicity check); SNAP score calculation (parallelization on amarel); gene score calculation (parallelization on amarel); feature selection and model selection in model training
+* **Manual Processes Needed**: determination of all arbitrary thresholds along all steps; outlier identification (e.g. ethnicity check); SNAP score calculation (including missing SNAPs, parallelization on amarel); gene score calculation (including parallelization on amarel); feature selection and model selection in model training
 * **Output**: selected genes, model performance.
+
+---
+## Prerequisite
+* R and packages (data.table, tydiverse, EthSEQ, SNPRelate)
+* python
+* [bcftools](https://samtools.github.io/bcftools/)
+* [ANNOVAR](http://annovar.openbioinformatics.org)
+* [plink](https://www.cog-genomics.org/plink2/)
 
 ---
 ## Step One: VCF file variant QC
@@ -148,7 +156,17 @@ For a new dataset, we check if the pre-calculated SNAP score files already have 
 ```
 Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
 ```
-The above command first check if the SNAP score file `Mutations.mutOut` contains all the variants in the dataset. If not, the script prints out the number of "missing SNAP" mutations and starts to generate SNAP input for those variants. To do this, first step is to check if the `prot_seqs.txt` file contains all protein sequences of the missing SNAP mutations. If not, the script outputs a file with mRNA accession numbers (`TranscriptAccess_missing_prot_seq.txt`) in the output folder. User needs to manually retrieve the corresponding protein sequences at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez). Upload the `TranscriptAccess_missing_prot_seq.txt` file with "Choose File" and *Retrieve* in the *Nucleotide database*. Then click *Send to* at the resulting page, choose *Coding Sequences* and *FASTA Protein* to get the protein sequence. Click *Create File* to download. 
+The above command first check if the SNAP score file `Mutations.mutOut` contains all the variants in the dataset. If not, the script prints out the number of "missing SNAP" mutations and starts to generate SNAP input for those variants. To do this, the script checks if the `prot_seqs.txt` file contains all protein sequences of the missing SNAP mutations. If not, the script outputs a file with mRNA accession numbers (`TranscriptAccess_missing_prot_seq.txt`) in the output folder. User needs to manually retrieve the corresponding protein sequences at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez). Upload the `TranscriptAccess_missing_prot_seq.txt` file with "Choose File" and *Retrieve* in the *Nucleotide database*. Then click *Send to* at the resulting page, choose *Coding Sequences* and *FASTA Protein* to get the protein sequence. Click *Create File* to download. Then, append the protein sequences to the original `prot_seqs.txt` file by:
+```
+cat prot_seqs.txt sequence.txt > prot_seqs_new.txt
+rm prot_seqs.txt
+mv prot_seqs_new.txt prot_seqs.txt
+```
+Then run the `check_missing_SNAP.R` script again by:
+```
+Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
+```
+Note that this process might take more than 10 minutes if there are many missing SNAPs.
 
 SNAP needs two input files: **amino acid mutation list** and the **protein fasta file** for each protein. Code below extracts all mutations from `.exonic_variant_function` file and write them into SNAP input files.
 ```

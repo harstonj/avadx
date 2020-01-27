@@ -49,6 +49,7 @@ gene_mRNA <- gene_mRNA[gene_mRNA$Exist==F,]
 
 # Read in fasta files:
 library(seqinr)
+setwd(dbfolder)
 fas <- read.fasta("prot_seqs.txt", as.string=T, seqtype="AA", set.attributes=F)
 fas_names <- names(fas)
 fas_mRNA <- strsplit(fas_names, "\\.|\\|")
@@ -57,12 +58,28 @@ fas_mRNA <- unlist(lapply(fas_mRNA, function(x) x[2]))
 # 1. check if the prot_seq.txt contains the protein sequence:
 missing_prot_seq <- setdiff(unique(as.character(gene_mRNA$Transcript)), fas_mRNA)
 
-setwd(outputfolder)
-write.table(missing_prot_seq, "TranscriptAccess_missing_prot_seq.txt", quote=F, col.names=F, row.names=F)
-
 if(length(missing_prot_seq)>0){
+  setwd(outputfolder)
+  write.table(missing_prot_seq, "TranscriptAccess_missing_prot_seq.txt", quote=F, col.names=F, row.names=F)
   stop(paste0(length(missing_prot_seq), " transcripts do not have protein sequences in the db folder. Please append the protein sequence into the prot_seqs.txt file! mRNA transcript accession numbers were output to the output folder and is named: TranscriptAccess_missing_prot_seq.txt. Please use NCBI batch entrez query to obtain protein sequences (https://www.ncbi.nlm.nih.gov/sites/batchentrez)."))
 }
 
-
+# 2. make SNAP input:
+setwd(outputfolder)
+for(i in 1:nrow(gene_mRNA)){
+  aaMutation <- as.character(gene_mRNA$aaMut)[i]
+  pos <- as.numeric(substr(aaMutation, 2, nchar(aaMutation)-1))
+  ref <- substr(aaMutation, 1, 1)
+  alt <- substr(aaMutation, nchar(aaMutation), nchar(aaMutation))
+  trans <- as.character(gene_mRNA$Transcript)[i]
+  
+  aaSeq <- fas[[match(trans, fas_mRNA)]]
+  # check if REF is in line with aaSeq: otherwise ignore this mutation
+  if(ref==substr(aaSeq, pos, pos) & alt!="X"){
+    write.table(aaMutation, paste0(trans, ".mutation"), quote=F, row.names=F, col.names=F, append=T)
+  }
+  if(!file.exists(paste0(trans, ".fasta"))){
+    write.fasta(aaSeq, fas_names[match(trans, fas_mRNA)], file.out=paste0(trans, ".fasta"))
+  }
+}
 

@@ -85,7 +85,12 @@ bcftools annotate --remove 'ID,INFO,FORMAT' source_s-selected_v-PASS_snps_site-v
 # Run EthSEQ:
 Rscript ethnicity_EthSEQ.R source_EthSEQinput.vcf.gz /path/to/output/folder
 ```
-Results of ethnicity predictions are in `/path/to/output/folder/Report.txt` and the sample IDs are in `sample_list.txt`.
+Results of ethnicity predictions are in `/path/to/output/folder/Report.txt` and the corresponding sample IDs are in `sample_list.txt`.
+
+```
+Rscript ethnicity_EthSEQ_summary.R /path/to/output/folder/Report.txt sample_list.txt /path/to/output/folder
+```
+Above returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. Customized script should be used for special requirements. For example, in tourette yale-1 dataset, we keep only trios when all people in the family are EUR.
 
 * *Method 4*: Calculate probabilities of individuals being a [known ethnicity](https://frog.med.yale.edu/FrogKB/FrogServlet) by forensic marker [frequency production](https://frog.med.yale.edu/FrogKB/formula.jsp).
 ```

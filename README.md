@@ -129,10 +129,12 @@ bcftools -S ^outliers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-max
 
 ---
 ## Step Three: Variant annotation and SNAP score calculation
+AVA,Dx has pre-calculated SNAP scores in the *db* folder. `mRNA_identifiers.txt` records the transcript identifiers (currently 46,327 mRNA transcripts). 
+
 Before calculating *gene score*, AVA,Dx needs to first calculate SNAP scores for all variants in the dataset. To generate SNAP input files, use below code:
 ```
 # Convert VCF file into ANNOVAR input format:
-convert2annovar.pl -format vcf4old source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz > source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput
+convert2annovar.pl -format vcf4old source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz -outfile source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput
 
 # Annotate using hg19 human reference:
 annotate_variation.pl -buildver hg19 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput humandb/

@@ -1,0 +1,68 @@
+#!/usr/bin/env Rscript
+
+args <- commandArgs(trailingOnly=TRUE)
+
+exonic.file <- args[1]
+dbfolder <- args[2]
+outputfolder <- args[3]
+
+setwd(dbfolder)
+df_len <- read.csv("Transcript-ProtLength.csv", stringsAsFactors=F, header=T)
+mutOut <- read.table("Mutations.mutOut", stringsAsFactors=F, header=F, sep="\t")
+
+exonic <- data.table::fread(exonic.file, header=F, data.table=F)
+exonic <- exonic[exonic$V3!="UNKNOWN",]
+
+variants <- strsplit(exonic$V3, ",")
+variants <- lapply(variants, function(x) strsplit(x, ":"))
+
+variant_lengths <- lapply(variants, function(x) unlist(lapply(x, length)))
+if(unique(unlist(variant_lengths))!=5){
+  stop(".exonic_variant_function file has rows with weird rows, please check and run this script again.")
+}
+
+variants_mRNA <- lapply(variants, function(x) lapply(x, function(y) y[2]))
+variants_aaMut <- lapply(variants, function(x) lapply(x, function(y) y[5]))
+variants_gene <- lapply(variants, function(x) lapply(x, function(y) y[1]))
+
+gene_mRNA_list <- list()
+for(i in 1:length(variants)){
+  g <- unlist(variants_gene[[i]])
+  trans <- unlist(variants_mRNA[[i]])
+  aaMut <- unlist(variants_aaMut[[i]])
+  dfi <- data.frame("Gene"=g, "Transcript"=trans, "aaMut"=gsub("p.", "", aaMut))
+  gene_mRNA_list[[i]] <- dfi
+  rm(g, trans, dfi)
+}
+
+gene_mRNA <- data.table::rbindlist(gene_mRNA_list, use.names=T)
+gene_mRNA$prot_length <- df_len$Prot_length[match(gene_mRNA$Transcript, df_len$Transcript)]
+
+# check if Mutations.mutOut already contains the variants:
+gene_mRNA$Exist <- ifelse(paste0(gene_mRNA$Transcript, "-", gene_mRNA$aaMut) %in% paste0(mutOut$V1, "-", mutOut$V2), T, F)
+
+print(paste0(sum(gene_mRNA$Exist), " mutations (", round(sum(gene_mRNA$Exist)/nrow(gene_mRNA)*100),"%) already have SNAP scores in Mutations.mutOut. Another ", sum(!gene_mRNA$Exist), " new mutations need to run with SNAP."))
+print("Generating SNAP input files...")
+
+# make SNAP input for those Mutations.mutOut doesn't have:
+gene_mRNA <- gene_mRNA[gene_mRNA$Exist==F,]
+
+# Read in fasta files:
+library(seqinr)
+fas <- read.fasta("prot_seqs.txt", as.string=T, seqtype="AA", set.attributes=F)
+fas_names <- names(fas)
+fas_mRNA <- strsplit(fas_names, "\\.|\\|")
+fas_mRNA <- unlist(lapply(fas_mRNA, function(x) x[2]))
+
+# 1. check if the prot_seq.txt contains the protein sequence:
+missing_prot_seq <- setdiff(unique(as.character(gene_mRNA$Transcript)), fas_mRNA)
+
+setwd(outputfolder)
+write.table(missing_prot_seq, "TranscriptAccess_missing_prot_seq.txt", quote=F, col.names=F, row.names=F)
+
+if(length(missing_prot_seq)>0){
+  stop(paste0(length(missing_prot_seq), " transcripts do not have protein sequences in the db folder. Please append the protein sequence into the prot_seqs.txt file! mRNA transcript accession numbers were output to the output folder and is named: TranscriptAccess_missing_prot_seq.txt. Please use NCBI batch entrez query to obtain protein sequences (https://www.ncbi.nlm.nih.gov/sites/batchentrez)."))
+}
+
+
+

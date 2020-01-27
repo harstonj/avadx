@@ -129,9 +129,7 @@ bcftools -S ^outliers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-max
 
 ---
 ## Step Three: Variant annotation and SNAP score calculation
-AVA,Dx has pre-calculated SNAP scores in the *db* folder. `mRNA_identifiers.txt` records the transcript identifiers (currently 46,327 mRNA transcripts). 
-
-Before calculating *gene score*, AVA,Dx needs to first calculate SNAP scores for all variants in the dataset. To generate SNAP input files, use below code:
+ANNOVAR is used to do variant annotation:
 ```
 # Convert VCF file into ANNOVAR input format:
 convert2annovar.pl -format vcf4old source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz -outfile source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput
@@ -139,7 +137,18 @@ convert2annovar.pl -format vcf4old source_s-selected_v-PASS_snps_site-v-Q30-mina
 # Annotate using hg19 human reference:
 annotate_variation.pl -buildver hg19 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput humandb/
 ```
-The output file from includes `source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function`, which is used as input for the next step.
+In the above commands, `vcf4old` argument is used to ensure that all records in the VCF file is output to one resulting file, which contains every possible variant in this dataset. The output file should include `source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function`, which is used as input for the next steps.
+
+
+AVA,Dx has pre-calculated SNAP scores in the *db* folder (`Mutations.mutOut`). Additionally, `mRNA_identifiers.txt` stores the transcript identifiers (currently 46,327 mRNA transcripts), and `prot_seqs.txt` stores the protein sequences with "NM_XX_prot_NP_YY" in the header lines for mapping uses.
+
+`Mutations.mutOut` has three columns: mRNA accession, amino acid mutation, pre-calculated SNAP score.
+
+For a new dataset, we check if the pre-calculated SNAP score files already have recorded all the variants. If not, we generate a "missing SNAP" list and make SNAP input files for those variants:
+```
+Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
+```
+The above command first check if the SNAP score file `Mutations.mutOut` contains all the variants in the dataset. If not, the script prints out the number of "missing SNAP" mutations and starts to generate SNAP input for those variants. To do this, first step is to check if the `prot_seqs.txt` file contains all protein sequences of the missing SNAP mutations. If not, the script outputs a file with mRNA accession numbers (`TranscriptAccess_missing_prot_seq.txt`) in the output folder. User needs to manually retrieve the corresponding protein sequences at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez). Upload the `TranscriptAccess_missing_prot_seq.txt` file with "Choose File" and *Retrieve* in the *Nucleotide database*. Then click *Send to* at the resulting page, choose *Coding Sequences* and *FASTA Protein* to get the protein sequence. Click *Create File* to download. 
 
 SNAP needs two input files: **amino acid mutation list** and the **protein fasta file** for each protein. Code below extracts all mutations from `.exonic_variant_function` file and write them into SNAP input files.
 ```

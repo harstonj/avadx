@@ -7,7 +7,7 @@
 
 ---
 ## Prerequisite
-* R and packages (data.table, tydiverse, EthSEQ, SNPRelate)
+* R and packages (data.table, tydiverse, seqinr, stringr, EthSEQ, SNPRelate)
 * python
 * [bcftools](https://samtools.github.io/bcftools/)
 * [ANNOVAR](http://annovar.openbioinformatics.org)
@@ -162,19 +162,21 @@ cat prot_seqs.txt sequence.txt > prot_seqs_new.txt
 rm prot_seqs.txt
 mv prot_seqs_new.txt prot_seqs.txt
 ```
+Then update the `Transcript-ProtLength.csv` file in *db* folder:
+```
+Rscript update_Transcript-ProtLength.R /path/to/db/folder
+# Check if the output Transcript-ProtLength_update.csv is correct
+rm Transcript-ProtLength.csv
+mv Transcript-ProtLength_update.csv Transcript-ProtLength.csv
+```
 Then run the `check_missing_SNAP.R` script again by:
 ```
 Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
 ```
-Note that this process might take more than 10 minutes if there are many missing SNAPs.
+Note that this process might take some time if there are many missing SNAPs.
 
-SNAP needs two input files: **amino acid mutation list** and the **protein fasta file** for each protein. Code below extracts all mutations from `.exonic_variant_function` file and write them into SNAP input files.
-```
-Rscript generate_SNAP_input.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/output/folder
-```
-The above step generates one mutation file `geneA.mut` and one fasta file `geneA.fasta` for *geneA* to the output folder. There will be approximately 20,000 to 45,000 files generated depending on the genes covered by the original data.
 
-SNAP is available on [amarel server](https://oarc.rutgers.edu/amarel/) and can be run using code below (submit.sh SBATCH submission shell script):
+After all SNAP input files (*amino acid mutation list* `geneA.mut` and the *protein fasta file* `geneA.fasta`) are ready, SNAP is available on [amarel server](https://oarc.rutgers.edu/amarel/) and can be run using code below (submit.sh SBATCH submission shell script):
 ```
 #!/bin/bash
 
@@ -185,7 +187,7 @@ SNAP is available on [amarel server](https://oarc.rutgers.edu/amarel/) and can b
 #SBATCH --requeue
 
 module load singularity/.2.4-PR1106
-inArray=(geneA geneB geneC)
+inArray=(geneA geneB geneC ...)
 
 #sbatch --partition=${4} --array=${1}-${2} submit_partial_test.sh $3 IL9R_HUMAN_1,IL9R_HUMAN_2
 singularity exec /home/yw410/bromberglab_predictprotein_yanran-2017-12-06-fa6f97ee098c.img snapfun -i /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input_part1/$input.fasta -m /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input_part1/$input.mutation -o /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_output_part1/$input.out --print-collection --tolerate-sift-failure --tolerate-psic-failure

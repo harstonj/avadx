@@ -1,4 +1,6 @@
 #!/usr/bin/env Rscript
+library(dplyr)
+library(seqinr)
 
 args <- commandArgs(trailingOnly=TRUE)
 
@@ -28,27 +30,32 @@ variants_gene <- lapply(variants, function(x) lapply(x, function(y) y[1]))
 gene_mRNA_list <- list()
 for(i in 1:length(variants)){
   g <- unlist(variants_gene[[i]])
+  line <- exonic$V1[i]
   trans <- unlist(variants_mRNA[[i]])
   aaMut <- unlist(variants_aaMut[[i]])
-  dfi <- data.frame("Gene"=g, "Transcript"=trans, "aaMut"=gsub("p.", "", aaMut))
+  dfi <- data.frame("Gene"=g, "Transcript"=trans, "aaMut"=gsub("p.", "", aaMut), "line"=line)
   gene_mRNA_list[[i]] <- dfi
   rm(g, trans, dfi)
 }
 
 gene_mRNA <- data.table::rbindlist(gene_mRNA_list, use.names=T)
 gene_mRNA$prot_length <- df_len$Prot_length[match(gene_mRNA$Transcript, df_len$Transcript)]
+if(any(is.na(gene_mRNA$prot_length))){
+  stop("Transcript-ProtLength.csv lacks protein length info. Please check and run this script again.")
+}
 
 # check if Mutations.mutOut already contains the variants:
 gene_mRNA$Exist <- ifelse(paste0(gene_mRNA$Transcript, "-", gene_mRNA$aaMut) %in% paste0(mutOut$V1, "-", mutOut$V2), T, F)
-
 print(paste0(sum(gene_mRNA$Exist), " mutations (", round(sum(gene_mRNA$Exist)/nrow(gene_mRNA)*100),"%) already have SNAP scores in Mutations.mutOut. Another ", sum(!gene_mRNA$Exist), " new mutations need to run with SNAP."))
 print("Generating SNAP input files...")
 
-# make SNAP input for those Mutations.mutOut doesn't have:
-gene_mRNA <- gene_mRNA[gene_mRNA$Exist==F,]
+# For the same line, keep only the mutation in the longest protein:
+gene_mRNA <- gene_mRNA[gene_mRNA$Exist==F, ]
+gene_mRNA_nodup <- gene_mRNA %>%
+  group_by(line) %>%
+  filter(prot_length == max(prot_length))
 
 # Read in fasta files:
-library(seqinr)
 setwd(dbfolder)
 fas <- read.fasta("prot_seqs.txt", as.string=T, seqtype="AA", set.attributes=F)
 fas_names <- names(fas)
@@ -66,12 +73,12 @@ if(length(missing_prot_seq)>0){
 
 # 2. make SNAP input:
 setwd(outputfolder)
-for(i in 1:nrow(gene_mRNA)){
-  aaMutation <- as.character(gene_mRNA$aaMut)[i]
+for(i in 1:nrow(gene_mRNA_nodup)){
+  aaMutation <- as.character(gene_mRNA_nodup$aaMut)[i]
   pos <- as.numeric(substr(aaMutation, 2, nchar(aaMutation)-1))
   ref <- substr(aaMutation, 1, 1)
   alt <- substr(aaMutation, nchar(aaMutation), nchar(aaMutation))
-  trans <- as.character(gene_mRNA$Transcript)[i]
+  trans <- as.character(gene_mRNA_nodup$Transcript)[i]
   
   aaSeq <- fas[[match(trans, fas_mRNA)]]
   # check if REF is in line with aaSeq: otherwise ignore this mutation

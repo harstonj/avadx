@@ -1,9 +1,24 @@
 # AVA,Dx workflow
 
 ---
-* **Input**: VCF file, class labels, (cross-validation) data split schemes, *external gene set to use as features*.
-* **Manual Processes Needed**: determination of all arbitrary thresholds along all steps; outlier identification (e.g. ethnicity check); SNAP score calculation (including missing SNAPs, parallelization on amarel); gene score calculation (including parallelization on amarel); feature selection and model selection in model training
-* **Output**: selected genes, model performance.
+## Inputs and ouputs
+
+* **Input**:
+ * VCF file
+ * class labels
+ * individual list (sample IDs of interest)
+ * (cross-validation) data split schemes (optional)
+ * external gene set to use as features (optional)
+* **Manual Processes Needed**:
+ * determination of all arbitrary thresholds along all steps
+ * outlier identification (e.g. ethnicity check)
+ * SNAP score calculation (including missing SNAPs, parallelization on amarel)
+ * gene score calculation (including parallelization on amarel)
+ * feature selection (FS) and model selection in model training, including FS method choosing, model choosing, model tuning, etc.
+* **Output**:
+ * a *gene score* table
+ * selected genes (with default FS method)
+ * model performance (with default settings)
 
 ---
 ## Prerequisite
@@ -16,29 +31,28 @@
 ---
 ## Step One: VCF file variant QC
 
-1.Extract individuals of interest (diseased and healthy individuals, ideally from the same cohort, meaning sequenced and called in the same batch).
+* Extract individuals of interest (diseased and healthy individuals, ideally from the same cohort, meaning sequenced and called in the same batch).
 ```
 bcftools view -S sampleID.txt source.vcf.gz -Oz -o source_s-selected.vcf.gz
 ```
 
-2.Remove variant sites which did not pass the VQSR standard.
+* Remove variant sites which did not pass the VQSR standard.
 ```
 bcftools filter -i 'FILTER="PASS"' source_s-selected.vcf.gz -Oz -o source_s-selected_v-PASS.vcf.gz
 ```
 
-3.Split SNV and InDel calls to separated files because they use different QC thresholds. Current AVA,Dx workflow works mainly with SNPs.
+* Split SNV and InDel calls to separated files because they use different QC thresholds. Current AVA,Dx workflow works mainly with SNPs.
 ```
 bcftools view --types snps source_s-selected_v-PASS.vcf.gz -Oz -o source_s-selected_v-PASS_snps.vcf.gz
-
 bcftools view --types indels source_s-selected_v-PASS.vcf.gz -Oz -o source_s-selected_v-PASS_indels.vcf.gz
 ```
 
-4.Remove variant sites by site-wise quality. Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150. These thresholds are arbitrarily and empirically determined.
+* Remove variant sites by site-wise quality. Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150. These thresholds are arbitrarily and empirically determined.
 ```
 bcftools view -i 'QUAL>30 & AVG(FMT/DP)<=150 & AVG(FMT/DP)>=6' source_s-selected_v-PASS_snps.vcf.gz -Oz -o source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz
 ```
 
-5.Check individual call quality. Good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4. These thresholds are arbitrarily and empirically determined. Bad individual GTs are converted into missing "./.". Remove variant sites with a low call rate. Low call rate is arbitrarily determined as a call rate < 80%, *i.e.* missing rate >= 20%.
+* Check individual call quality. Good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4. These thresholds are arbitrarily and empirically determined. Bad individual GTs are converted into missing "./.". Remove variant sites with a low call rate. Low call rate is arbitrarily determined as a call rate < 80%, *i.e.* missing rate >= 20%.
 ```
 python filterVCF_by_ABAD.py \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz \
@@ -50,20 +64,20 @@ python filterVCF_by_ABAD.py \
 
 Identify outliers in terms of **quality** and **ethnicity**.
 
-1.Check quality outliers by examine nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing.
+* Check quality outliers by examine nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing.
 ```
 bcftools stats -v -s - source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt
-
 Rscript source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt output.pdf
 ```
-The above result needs manual interpretation and selection of outliers. Alternatively, one can use below code to automatically select outliers using a distance-based statistical method.
+
+* The above result needs manual interpretation and selection of outliers. Alternatively, one can use below code to automatically select outliers using a distance-based statistical method.
 ```
 Rscript
 ```
 
-2.Check ethnicity with AIM (ancestry informative markers) or LD-pruned SNPs.
+* Check ethnicity with AIM (ancestry informative markers) or LD-pruned SNPs.
 
-* *Method 1*: AIPS from [Byun *et al*](https://morgan1.dartmouth.edu/~f000q4v/html/aips.html).
+ * *Method 1*: AIPS from [Byun *et al*](https://morgan1.dartmouth.edu/~f000q4v/html/aips.html).
 ```
 # Convert VCF file into plink format.
 plink xx
@@ -72,13 +86,13 @@ plink --bfile euro952samples --bmerge input.bed input.bim input.fam --recodeA --
 # Run AIPS-PCA.R and AIPS-AI.R.
 ```
 
-* *Method 2*: PCA with [SNPRelate package](http://corearray.sourceforge.net/tutorials/SNPRelate/) in R.
+ * *Method 2*: PCA with [SNPRelate package](http://corearray.sourceforge.net/tutorials/SNPRelate/) in R.
 ```
 Rscript ethnicity_SNPRelate.R \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
 ```
 
-* *Method 3*: [EthSEQ](https://cran.r-project.org/web/packages/EthSEQ/index.html) R package.
+ * *Method 3*: [EthSEQ](https://cran.r-project.org/web/packages/EthSEQ/index.html) R package.
 ```
 # If the number of individuals exceeds certain number, "memory exhausted" error may occur. Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
 bcftools query -l source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > sample_list.txt
@@ -91,16 +105,13 @@ bcftools annotate --remove 'ID,INFO,FORMAT' source_s-selected_v-PASS_snps_site-v
 Rscript ethnicity_EthSEQ.R source_EthSEQinput.vcf.gz /path/to/output/folder
 ```
 
-Results of ethnicity predictions are in `/path/to/output/folder/Report.txt` and the corresponding sample IDs are in `sample_list.txt`.
-
+ * Results of ethnicity predictions are in `/path/to/output/folder/Report.txt` and the corresponding sample IDs are in `sample_list.txt`.
 ```
 Rscript ethnicity_EthSEQ_summary.R /path/to/output/folder/Report.txt sample_list.txt /path/to/output/folder
 ```
+ * Above returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. Customized script should be used for special requirements.
 
-Above returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. Customized script should be used for special requirements.
-
-* *Method 4*: Calculate probabilities of individuals being a [known ethnicity](https://frog.med.yale.edu/FrogKB/FrogServlet) by forensic marker [frequency production](https://frog.med.yale.edu/FrogKB/formula.jsp).
-
+  * *Method 4*: Calculate probabilities of individuals being a [known ethnicity](https://frog.med.yale.edu/FrogKB/FrogServlet) by forensic marker [frequency production](https://frog.med.yale.edu/FrogKB/formula.jsp).
 ```
 # Extract only the 55 markers from KiddLab.
 bcftools view -R 55markers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_Kidd-markers.vcf.gz
@@ -108,28 +119,26 @@ bcftools view -R 55markers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP
 Rscript forensic_method.R source_Kidd-markers.vcf.gz
 ```
 
-**Note that:**
-
-  * *Method 1* uses AIMs to infer ethnicity using reference labels (952 ancestry known samples).
-  * *Method 2* takes all SNPs and do PCA on LD-pruned SNPs to infer ethnicity using reference labels (user defined).
-  * *Method 3* uses pre-calculated reference SS2 model and gives prediction of five 1000Genomes population code.
-  * *Method 4* uses AIMs to infer ethnicities (known ethnicities).
-
-  * Technically, results should be very **consistent across all method**. But human interpretation may be needed for specific cases.
+* **Note that:**
+   * *Method 1* uses AIMs to infer ethnicity using reference labels (952 ancestry known samples).
+   * *Method 2* takes all SNPs and do PCA on LD-pruned SNPs to infer ethnicity using reference labels (user defined).
+   * *Method 3* uses pre-calculated reference SS2 model and gives prediction of five 1000Genomes population code.
+   * *Method 4* uses AIMs to infer ethnicities (known ethnicities).
+   * Technically, results should be very **consistent across all method**. But human interpretation may be needed for specific cases.
 
 
-3.Check relatedness within datasets. A BID > 0.05 is considered to be related.
+* Then, check relatedness within datasets. A BID > 0.05 is considered to be related.
 ```
 Rscript relatedness_SNPRelate.R \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
 ```
 
-Additionally, check HW equilibrium within diseased / healthy cohort. Also, check sex if sex labels are provided.
+* Additionally, check HW equilibrium within diseased / healthy cohort. Also, check sex if sex labels are provided.
 ```
 Rscript
 ```
 
-4.Lastly, remove individual outliers from dataset.
+* Lastly, remove individual outliers from dataset.
 ```
 bcftools -S ^outliers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz
 ```

@@ -97,7 +97,7 @@ Results of ethnicity predictions are in `/path/to/output/folder/Report.txt` and 
 Rscript ethnicity_EthSEQ_summary.R /path/to/output/folder/Report.txt sample_list.txt /path/to/output/folder
 ```
 
-Above returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. Customized script should be used for special requirements. For example, in tourette yale-1 dataset, we keep only trios when all people in the family are EUR.
+Above returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. Customized script should be used for special requirements.
 
 * *Method 4*: Calculate probabilities of individuals being a [known ethnicity](https://frog.med.yale.edu/FrogKB/FrogServlet) by forensic marker [frequency production](https://frog.med.yale.edu/FrogKB/formula.jsp).
 
@@ -109,12 +109,13 @@ Rscript forensic_method.R source_Kidd-markers.vcf.gz
 ```
 
 **Note that:**
+
   * *Method 1* uses AIMs to infer ethnicity using reference labels (952 ancestry known samples).
   * *Method 2* takes all SNPs and do PCA on LD-pruned SNPs to infer ethnicity using reference labels (user defined).
   * *Method 3* uses pre-calculated reference SS2 model and gives prediction of five 1000Genomes population code.
   * *Method 4* uses AIMs to infer ethnicities (known ethnicities).
 
-  * Technically, results should be very **consistent across all method**. But results need manual interpretation.
+  * Technically, results should be very **consistent across all method**. But human interpretation may be needed for specific cases.
 
 
 3.Check relatedness within datasets. A BID > 0.05 is considered to be related.
@@ -123,7 +124,7 @@ Rscript relatedness_SNPRelate.R \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
 ```
 
-  Additionally, check HW equilibrium within diseased / healthy cohort. Check sex (if sex labels are provided).
+Additionally, check HW equilibrium within diseased / healthy cohort. Also, check sex if sex labels are provided.
 ```
 Rscript
 ```
@@ -148,7 +149,7 @@ AVA,Dx has pre-calculated SNAP scores stored in the *db* folder (`Mutations.mutO
 
 `Mutations.mutOut` has three columns: mRNA accession, amino acid mutation, pre-calculated SNAP score.
 
-For a new dataset, we first check if the pre-calculated SNAP score files already have recorded all the variants. If not, we generate a "missing SNAP" list and make SNAP input files for those variants:
+For a new dataset, we first check if the pre-calculated SNAP score file already has recorded all the variants. If not, we generate a "missing SNAP" list and make SNAP input files for those variants:
 ```
 Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
 ```
@@ -160,6 +161,7 @@ cat prot_seqs.txt sequence.txt > prot_seqs_new.txt
 rm prot_seqs.txt
 mv prot_seqs_new.txt prot_seqs.txt
 ```
+
 Then update the `Transcript-ProtLength.csv` file in *db* folder:
 ```
 Rscript update_Transcript-ProtLength.R /path/to/db/folder
@@ -172,7 +174,7 @@ After the protein sequences are updated by above steps, run the `check_missing_S
 ```
 Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
 ```
-All SNAP input files (*amino acid mutation list* `geneA.mut` and the *protein fasta file* `geneA.fasta`) will be output to `/path/to/output/folder`, This process might take some time if there are many missing SNAPs.
+All SNAP input files (*amino acid mutation list* `geneA.mutation` and the *protein fasta file* `geneA.fasta`) will be output to `/path/to/output/folder`, This process might take some time if there are many missing SNAPs.
 
 
 After all SNAP input files are ready, SNAP is available on [amarel server](https://oarc.rutgers.edu/amarel/) and can be run using code below (submit.sh SBATCH submission shell script):
@@ -186,10 +188,10 @@ After all SNAP input files are ready, SNAP is available on [amarel server](https
 #SBATCH --requeue
 
 module load singularity/.2.4-PR1106
-inArray=(geneA geneB geneC ...)
+input=(geneA geneB geneC ...)
 
 #sbatch --partition=${4} --array=${1}-${2} submit_partial_test.sh $3 IL9R_HUMAN_1,IL9R_HUMAN_2
-singularity exec /home/yw410/bromberglab_predictprotein_yanran-2017-12-06-fa6f97ee098c.img snapfun -i /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input_part1/$input.fasta -m /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input_part1/$input.mutation -o /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_output_part1/$input.out --print-collection --tolerate-sift-failure --tolerate-psic-failure
+singularity exec /home/yw410/bromberglab_predictprotein_yanran-2017-12-06-fa6f97ee098c.img snapfun -i /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input/$input.fasta -m /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input/$input.mutation -o /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_output/$input.out --print-collection --tolerate-sift-failure --tolerate-psic-failure
 
 ```
 
@@ -211,9 +213,21 @@ mv Mutations_new.mutOut Mutations.mutOut
 ---
 ## Step Four: Gene score calculation
 
-Gene score is defined as a sum or production of the all variant scores within the gene coding region.
+*gene score* is defined as a **sum** or **production** of the all variant scores within the gene coding region.
 
-$$\int_\Omega \nabla u \cdot \nabla v~dx = \int_\Omega fv~dx$$
+equations...
+
+All gene score calculation functions are stored at `gene_score_schemes.R` script. There are some arguments required for the gene score calculation: `-scheme` asks user to choose either to sum or multiply variant scores into *gene score*; `-heti` asks for the coefficient used for the heterozygous genotypes and `HIPred` means using the happloinsufficienty predictions from [HIPred](https://www.ncbi.nlm.nih.gov/pubmed/28137713); `-input` asks for the ".exonic_variant_function" file of that individual; `-snap_score` asks for the path to the tab-separated file that stores all SNAP score predictions; `-db` asks for the path to the *db* folder; lastly, `-output` asks user to specify the outputting path.
+```
+# Run this for every person:
+Rscript gene_score_schemes.R -scheme sum -heti 0.25 -input sample1.exonic_variant_function -snap_score Mutations.mutOut -db /path/to/db/folder -output /path/to/output
+# Or:
+Rscript gene_score_schemes.R -scheme prod -heti HIPred -input sample1.exonic_variant_function -snap_score Mutations.mutOut -db /path/to/db/folder -output /path/to/output
+```
+Assuming there are N individuals in the dataset, N resulting files will be generated with calculated *gene_scores* for all available genes. Below script will read-in all files and merge them into a file table where a row is an individual and a column is a gene (protein). To avoid *redundancy*, we are currently only considering the "canonical" protein of each gene, *i.e.* the longest protein sequence.
+```
+Rscript merge_individual_scores.R /path/to/individual/score/folder /path/to/output
+```
 
 ---
 ## Step Five: Feature selection and training (cross-validation)

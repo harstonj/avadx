@@ -9,24 +9,25 @@
  * individual list (sample IDs of interest)
  * (cross-validation) data split schemes (optional)
  * external gene set to use as features (optional)
-* **Manual Processes Needed**:
- * determination of all arbitrary thresholds along all steps
- * outlier identification (e.g. ethnicity check)
- * SNAP score calculation (including missing SNAPs, parallelization on amarel)
- * gene score calculation (including parallelization on amarel)
- * feature selection (FS) and model selection in model training, including FS method choosing, model choosing, model tuning, etc.
 * **Output**:
  * a *gene score* table
- * selected genes (with default FS method)
- * model performance (with default settings)
-
+ * selected genes (with default FS method: Kolmogorov–Smirnov test or DKM method from CORElearn R package)
+ * model performance (with default settings: SVM from e1071 R package)
+* **Check before running all steps**:
+ * The current workflow works with hg19.
+ * This pipeline is currently for regular VCF file input. If gVCF is provided, some of the scripts need to be re-written.
+ * All thresholds along all steps are arbitrarily and empirically determined (details below).
+ * Outlier identification (e.g. ethnicity check) may need human interpretation.
+ * For a new input VCF, pre-calculated SNAP scores may not contain all mutations and SNAP needs to be re-run for the "missing SNAP" mutations.
+ * Four different *gene score* calculation methods are available currently (details below).
+ * Feature selection (FS) and model selection in model training, including FS method choosing, model choosing, model tuning, etc. need human interpretation.
 ---
 ## Prerequisite
-* R and packages (data.table, tydiverse, seqinr, stringr, EthSEQ, SNPRelate)
+* R and packages (data.table, tydiverse, seqinr, stringr, EthSEQ, SNPRelate, e1071)
 * python
 * [bcftools](https://samtools.github.io/bcftools/)
 * [ANNOVAR](http://annovar.openbioinformatics.org)
-* [plink](https://www.cog-genomics.org/plink2/)
+* [PLINK](https://www.cog-genomics.org/plink2/)
 
 ---
 ## Step One: VCF file variant QC
@@ -189,42 +190,63 @@ All SNAP input files (*amino acid mutation list* `geneA.mutation` and the *prote
 After all SNAP input files are ready, SNAP is available on [amarel server](https://oarc.rutgers.edu/amarel/) and can be run using code below (submit.sh SBATCH submission shell script):
 ```
 #!/bin/bash
-
 #SBATCH --partition=bromberg_1,main
 #SBATCH --time=72:00:00
 #SBATCH --mem=100000
 #SBATCH --array=0-999
 #SBATCH --requeue
-
 module load singularity/.2.4-PR1106
 input=(geneA geneB geneC ...)
-
-#sbatch --partition=${4} --array=${1}-${2} submit_partial_test.sh $3 IL9R_HUMAN_1,IL9R_HUMAN_2
 singularity exec /home/yw410/bromberglab_predictprotein_yanran-2017-12-06-fa6f97ee098c.img snapfun -i /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input/$input.fasta -m /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input/$input.mutation -o /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_output/$input.out --print-collection --tolerate-sift-failure --tolerate-psic-failure
-
 ```
 
-SNAP outputs plain text files of predicted variant scores. It needs to be converted to tab-separated format using below code:
+SNAP outputs plain text files `geneA.out` of predicted variant scores. It needs to be converted to tab-separated format using below code for SNAP output of all genes:
 ```
-# Run this for every protein:
-python snap_output2tab.py snapOutput_geneA snapOutput_geneA.tab
+#!/bin/bash
+for f in /path/to/snap/output/*.out
+do
+	python snap-scores-mutOut.py $f
+done
+# Outputs Mutations.mutOut file
 ```
 
-`snapOutput_geneA.tab` has three columns: gene ID (transcript accession), amino acid mutation, SNAP score. After all SNAP output has been converted to tab-separated format, merge them into one mutation score table:
+`Mutations.mutOut` has three columns: gene ID (transcript accession), amino acid mutation, SNAP score. After all new SNAP output has been converted to tab-separated format, merge them with the original SNAP scores stored in the *db* folder:
 ```
-cat *.tab > mutScore.txt
-cat /path/to/db/folder/Mutations.mutOut mutScore.txt > /path/to/db/folder/Mutations_new.mutOut
+cat /path/to/db/folder/Mutations.mutOut Mutations.mutOut > /path/to/db/folder/Mutations_new.mutOut
 cd /path/to/db/folder/
 rm Mutations.mutOut
 mv Mutations_new.mutOut Mutations.mutOut
 ```
+Now the *db* folder should have
+ * updated SNAP score file `Mutations.mutOut`
+ * updated transcript - protein - protein length file `Transcript-ProtLength.csv`
 
 ---
 ## Step Four: Gene score calculation
 
+Before *gene score* calculation, cleaned VCF file should be converted to individual ANNOVAR annotations by:
+```
+ulimit -n 2048  # set number of open files limit to max
+convert2annovar.pl -format vcf4 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz -outfile /path/to/output/folder/sample -allsample
+```
+The `vcf4` and `-allsample` arguments specify that one `sample*.avinput` output file will be generated for every individual in the VCF. Note that `convert2annovar.pl` script opens new files simultaneously for all samples, and when the sample number exceeds the maximum number (2048 set by `ulimit -n 2048`), the script returns error because it cannot open a larger number of files. User needs to split the VCF file into chunks of samples and run `convert2annovar.pl` separately for each chunk.
+
+Next, do annotation with hg19 assembly to all `sample*.avinput` files (preferably on amarel using job arrays):
+```
+#!/bin/bash
+#SBATCH --partition=bromberg_1,main
+#SBATCH --time=24:00:00
+#SBATCH --mem=12288
+#SBATCH --array=0-371
+#SBATCH --requeue
+inArray=(sample1.avinput sample2.avinput sample3.avinput ...)
+input=${inArray[$SLURM_ARRAY_TASK_ID]}
+annotate_variation.pl -build hg19 $input /humandb
+```
+
 *gene score* is defined as a **sum** or **production** of the all variant scores within the gene coding region.
 
-equations...
+*EQUATIONS*
 
 All gene score calculation functions are stored at `gene_score_schemes.R` script. There are some arguments required for the gene score calculation: `-scheme` asks user to choose either to sum or multiply variant scores into *gene score*; `-heti` asks for the coefficient used for the heterozygous genotypes and `HIPred` means using the happloinsufficienty predictions from [HIPred](https://www.ncbi.nlm.nih.gov/pubmed/28137713); `-input` asks for the ".exonic_variant_function" file of that individual; `-snap_score` asks for the path to the tab-separated file that stores all SNAP score predictions; `-db` asks for the path to the *db* folder; lastly, `-output` asks user to specify the outputting path.
 ```
@@ -239,4 +261,10 @@ Rscript merge_individual_scores.R /path/to/individual/score/folder /path/to/outp
 ```
 
 ---
-## Step Five: Feature selection and training (cross-validation)
+## Step Five: Feature selection (FS) and training (cross-validation)
+
+There are three types of FS types: filter, wrapper, and embedded.
+
+Current AVA,Dx does not use the wrapper method because wrapper method usually takes long time to search feature subset and there are always multiple optimal feature sets, which are hard to interpret from a biological perspective.
+
+Current AVA,Dx uses both filter and embedded methods. Filter method includes, 

@@ -4,16 +4,21 @@
 ## Inputs and ouputs
 
 * **Input**:
+
  * VCF file
  * class labels
  * individual list (sample IDs of interest)
  * (cross-validation) data split schemes (optional)
  * external gene set to use as features (optional)
+
 * **Output**:
+
  * a *gene score* table
  * selected genes (with default FS method: Kolmogorov–Smirnov test or DKM method from CORElearn R package)
  * model performance (with default settings: SVM from e1071 R package)
+ 
 * **Check before running all steps**:
+
  * The current workflow works with hg19.
  * This pipeline is currently for regular VCF file input. If gVCF is provided, some of the scripts need to be re-written.
  * All thresholds along all steps are arbitrarily and empirically determined (details below).
@@ -217,7 +222,8 @@ cd /path/to/db/folder/
 rm Mutations.mutOut
 mv Mutations_new.mutOut Mutations.mutOut
 ```
-Now the *db* folder should have
+Now the *db* folder should have:
+
  * updated SNAP score file `Mutations.mutOut`
  * updated transcript - protein - protein length file `Transcript-ProtLength.csv`
 
@@ -267,4 +273,4 @@ There are three types of FS types: filter, wrapper, and embedded.
 
 Current AVA,Dx does not use the wrapper method because wrapper method usually takes long time to search feature subset and there are always multiple optimal feature sets, which are hard to interpret from a biological perspective.
 
-Current AVA,Dx uses both filter and embedded methods. Filter method includes, 
+Current AVA,Dx uses both filter and embedded methods. Filter method includes,

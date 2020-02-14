@@ -4,32 +4,32 @@
 ## Inputs and ouputs
 
 * **Input**:
-
  * VCF file
- * class labels
- * individual list (sample IDs of interest)
+ * class label file
+ * individual list (sample IDs of interest, optional)
  * (cross-validation) data split schemes (optional)
  * external gene set to use as features (optional)
 
+
 * **Output**:
-
  * a *gene score* table
- * selected genes (with default FS method: Kolmogorov–Smirnov test or DKM method from CORElearn R package)
+ * selected genes (with default FS method: *Kolmogorov–Smirnov test* or *DKM method* from CORElearn R package)
  * model performance (with default settings: SVM from e1071 R package)
- 
-* **Check before running all steps**:
 
- * The current workflow works with hg19.
+
+* **Check before running all steps**:
+ * The current workflow works with hg19 only.
  * This pipeline is currently for regular VCF file input. If gVCF is provided, some of the scripts need to be re-written.
  * All thresholds along all steps are arbitrarily and empirically determined (details below).
- * Outlier identification (e.g. ethnicity check) may need human interpretation.
+ * Outlier identification (e.g. ethnicity check, quality check after QC) may need human interpretation.
  * For a new input VCF, pre-calculated SNAP scores may not contain all mutations and SNAP needs to be re-run for the "missing SNAP" mutations.
  * Four different *gene score* calculation methods are available currently (details below).
  * Feature selection (FS) and model selection in model training, including FS method choosing, model choosing, model tuning, etc. need human interpretation.
 ---
 ## Prerequisite
-* R and packages (data.table, tydiverse, seqinr, stringr, EthSEQ, SNPRelate, e1071)
+* R and packages (data.table, tydiverse, seqinr, stringr, EthSEQ, SNPRelate, e1071, caret)
 * python
+* tabix
 * [bcftools](https://samtools.github.io/bcftools/)
 * [ANNOVAR](http://annovar.openbioinformatics.org)
 * [PLINK](https://www.cog-genomics.org/plink2/)
@@ -63,6 +63,12 @@ bcftools view -i 'QUAL>30 & AVG(FMT/DP)<=150 & AVG(FMT/DP)>=6' source_s-selected
 python filterVCF_by_ABAD.py \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
+```
+
+* Lastly, gnomAD filter: filtering out variants that were not recorded in the gnomAD database. The reference used here is the ANNOVAR gnomAD file `hg19_gnomad_exome.txt` and `hg19_gnomad_genome.txt`.
+```
+python filterVCF_by_gnomAD.py \
+  
 ```
 
 ---
@@ -115,7 +121,7 @@ Rscript ethnicity_EthSEQ.R source_EthSEQinput.vcf.gz /path/to/output/folder
 ```
 Rscript ethnicity_EthSEQ_summary.R /path/to/output/folder/Report.txt sample_list.txt /path/to/output/folder
 ```
- * Above returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. Customized script should be used for special requirements.
+ * Above returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. **`sampleID_inside_EUR.txt` contains the sample ID for all EUR individuals in the dataset, which generally should be used for further analysis**. Customized script should be used for special requirements.
 
   * *Method 4*: Calculate probabilities of individuals being a [known ethnicity](https://frog.med.yale.edu/FrogKB/FrogServlet) by forensic marker [frequency production](https://frog.med.yale.edu/FrogKB/formula.jsp).
 ```
@@ -184,6 +190,11 @@ Rscript update_Transcript-ProtLength.R /path/to/db/folder
 rm Transcript-ProtLength.csv
 mv Transcript-ProtLength_update.csv Transcript-ProtLength.csv
 ```
+Every time if there are new records added o the `Transcript-ProtLength.csv`, user needs to run `clean_Transcript-ProtLength.R` to make sure that the transcripts with the longest protein lengths were kept by:
+```
+Rscript clean_Transcript-ProtLength.R /path/to/db/Transcript-ProtLength.csv /path/to/db/Transcript-ProtLength_cleaned.csv
+```
+Note that by doing this (above), only one transcript of a gene will be kept. Therefore, if a variant is annotated to a shorter transcript by ANNOVAR, the current pipeline below will just ignore that variant. For example, if a sample has variants chr1:7913029-A-G and chr1:7913445-C-T, the former maps to UTS2:NM_006786:exon1:c.T35C:p.I12T and the latter maps to UTS2:NM_021995:exon1:c.G47A:p.R16Q. We currently only considers the latter for the *gene score* of UTS2 and we ignore the former, because NM_021995 encodes a longer protein than NM_006786 in RefSeq database.
 
 After the protein sequences are updated by above steps, run the `check_missing_SNAP.R` again to generate mutation files for SNAP input:
 ```
@@ -249,21 +260,41 @@ inArray=(sample1.avinput sample2.avinput sample3.avinput ...)
 input=${inArray[$SLURM_ARRAY_TASK_ID]}
 annotate_variation.pl -build hg19 $input /humandb
 ```
+* *OPTIONAL: From above, individual `.exonic_variant_function` file will be generated and will be used later to calculate gene score. Before that, if we double-check if there're missing SNAP for the individual `.exonic_variant_function` file by:*
+```
+Rscript cal_genescore_make_missingSNAP.R -f /path/to/sample.1.avinput.exonic_variant_function \
+  -s /path/to/db/Mutations.mutOut \
+  -l /path/to/db/Transcript-ProtLength_cleaned.csv \
+  -o /path/to/output/folder
+```
+* *We'll still get a some missing SNAP mutations in the `-o /path/to/output/folder` folder. These are the mutations that we excluded when we generated the SNAP input in previous steps, because their REF nucleotide base disagrees with the RefSeq fasta sequence. Those mutations will be ignored by `cal_genescore_make_genescore.R`*
+
+* The above *italic* part is an optional step, and it is only for a sanity check.
+
+After `.exonic_variant_function` files are generated, calculate gene score by:
+```
+# Run this for every person using .sh script on amarel:
+Rscript cal_genescore_make_genescore.R \
+  -f /Users/WangYanran/Documents/BrombergLab/AVA_Method_paper_TS/Filtered_Data/exonic_variant_function/sample.25000.fa.avinput.exonic_variant_function \
+  -s /Users/WangYanran/Documents/Bitbucket/repos/avadx-meta/db/Mutations.mutOut \
+  -l /Users/WangYanran/Documents/Bitbucket/repos/avadx-meta/db/Transcript-ProtLength_cleaned.csv \
+  -m sum \ # or production
+  -n both \
+  -o /Users/WangYanran/Desktop/tmp
+```
+All gene score calculation functions and pre-processing steps are stored at `cal_genescore_make_genescore.R` script. There are some arguments required for the gene score calculation: `-m` asks user to choose either to sum or multiply variant scores into *gene score*; `-n` asks if normalize by protein length; `-heti` asks for the coefficient used for the heterozygous genotypes and `HIPred` means using the happloinsufficienty predictions from [HIPred](https://www.ncbi.nlm.nih.gov/pubmed/28137713); `-o` asks user to specify the output= path.
 
 *gene score* is defined as a **sum** or **production** of the all variant scores within the gene coding region.
 
 *EQUATIONS*
 
-All gene score calculation functions are stored at `gene_score_schemes.R` script. There are some arguments required for the gene score calculation: `-scheme` asks user to choose either to sum or multiply variant scores into *gene score*; `-heti` asks for the coefficient used for the heterozygous genotypes and `HIPred` means using the happloinsufficienty predictions from [HIPred](https://www.ncbi.nlm.nih.gov/pubmed/28137713); `-input` asks for the ".exonic_variant_function" file of that individual; `-snap_score` asks for the path to the tab-separated file that stores all SNAP score predictions; `-db` asks for the path to the *db* folder; lastly, `-output` asks user to specify the outputting path.
+* Note that, a small part of genes will have different gene names between the ANNOVAR annotation (in the .exonic_variant_function file) and the Transcript-ProtLength.csv file. For example, NM_138383 maps to NP_612392 and gene "*MTSS2*" in the RefSeq database and maps to "*MTSS1L*" in the ANNOVAR annotation. This happens likely because the version of ANNOVAR annotation and RefSeq database aren't exactly the same version, or it could be because the gene names are not a constant ID. Therefore, our script (`cal_genescore_make_genescore.R`) uses transcript NM_ numbers as identifiers, not gene names. The output *gene score* file contains gene names from the ANNOVAR annotation version, i.e. NM_138383 will have a gene name "*MTSS1L*" in the resulting *gene score* file.
+
+Assuming there are N individuals in the dataset, N resulting files will be generated. Below script will read-in all files and merge them into a file table where a row is an individual and a column is a gene (protein).
 ```
-# Run this for every person:
-Rscript gene_score_schemes.R -scheme sum -heti 0.25 -input sample1.exonic_variant_function -snap_score Mutations.mutOut -db /path/to/db/folder -output /path/to/output
-# Or:
-Rscript gene_score_schemes.R -scheme prod -heti HIPred -input sample1.exonic_variant_function -snap_score Mutations.mutOut -db /path/to/db/folder -output /path/to/output
-```
-Assuming there are N individuals in the dataset, N resulting files will be generated with calculated *gene_scores* for all available genes. Below script will read-in all files and merge them into a file table where a row is an individual and a column is a gene (protein). To avoid *redundancy*, we are currently only considering the "canonical" protein of each gene, *i.e.* the longest protein sequence.
-```
-Rscript merge_individual_scores.R /path/to/individual/score/folder /path/to/output
+Rscript merge_genescore.R \
+  -f /path/to/individual/score/folder \
+  -o /path/to/output
 ```
 
 ---
@@ -271,6 +302,31 @@ Rscript merge_individual_scores.R /path/to/individual/score/folder /path/to/outp
 
 There are three types of FS types: filter, wrapper, and embedded.
 
-Current AVA,Dx does not use the wrapper method because wrapper method usually takes long time to search feature subset and there are always multiple optimal feature sets, which are hard to interpret from a biological perspective.
+Current AVA,Dx does not use the wrapper method because wrapper method usually takes long time to search feature subset and there are always multiple optimal feature sets, and it is hard to interpret from a biological perspective.
 
-Current AVA,Dx uses both filter and embedded methods. Filter method includes,
+Current AVA,Dx uses both filter and embedded methods. Filter method includes K-S test and others. Embedded methods are primarily from R package CORElearn.
+
+To perform FS in cross-validated fashion, user needs to provide a cross-validation scheme file. For example, we split Tourette dataset (yale-1) into three folds and each contains unrelated probands, their parents are used as healthy controls and the probands' own parents should be in other folds, so that the probands are compared with unrelated healthy parents.
+* User needs to provide a file with three columns:  sample_ID (character), fold_num (fold #, integer), status (character - categorical), for example:
+```
+sample_ID fold_num  status
+sample1 1 sick
+sample2 1 healthy
+sample3 2 sick
+sample4 2 healthy
+...
+```
+
+Then, do feature selection by:
+```
+Rscript FS.R \
+  /path/to/GeneScoreTable.txt \
+  /path/to/cv_scheme.txt \
+  /path/to/result/folder
+# Example:
+Rscript FS.R /Users/WangYanran/Desktop/tmp/GeneScoreTable_normed.txt /Users/WangYanran/Documents/BrombergLab/AVA_Method_paper_TS/Phenotype/cv scheme.txt /Users/WangYanran/Desktop/tmp/FS_result
+```
+This generates feature selection results in the output folder.
+
+* The **CORElearn package** only deals with FS in a relatively small dataset. For a larger data frame, it runs into "Error: protect(): protection stack overflow" and setting `--max-ppsize=5000000` does not help, either.
+* The **Boruta package** has `Boruta()` function, which uses the [Boruta algorithm](https://cran.r-project.org/web/packages/Boruta/vignettes/inahurry.pdf) for feature selection. Briefly, Boruta is based on random forest from the **ranger package**. Boruta gets scores from the random forest ranking of features, and uses shadow features (copies of original features but with randomly mixed values) to keep the feature's original distribution but wipes out its importance. If the original feature has a much higher score compared with its own shadow features, it'll be a *hit*. As a result, Boruta **will** return redundant features.

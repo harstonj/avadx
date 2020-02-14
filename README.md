@@ -25,6 +25,7 @@
  * For a new input VCF, pre-calculated SNAP scores may not contain all mutations and SNAP needs to be re-run for the "missing SNAP" mutations.
  * Four different *gene score* calculation methods are available currently (details below).
  * Feature selection (FS) and model selection in model training, including FS method choosing, model choosing, model tuning, etc. need human interpretation.
+ 
 ---
 ## Prerequisite
 * R and packages (data.table, tydiverse, seqinr, stringr, EthSEQ, SNPRelate, e1071, caret)
@@ -67,9 +68,9 @@ python filterVCF_by_ABAD.py \
 
 * Lastly, gnomAD filter: filtering out variants that were not recorded in the gnomAD database. The reference used here is the ANNOVAR gnomAD file `hg19_gnomad_exome.txt` and `hg19_gnomad_genome.txt`.
 ```
-python filterVCF_by_gnomAD.py \
-  
+python filterVCF_by_gnomAD.py input.vcf.gz output.vcf.gz
 ```
+Note that, gnomAD also contains low quality calls. For example, variant [1-30548-T-G](https://gnomad.broadinstitute.org/variant/1-30548-T-G?dataset=gnomad_r2_1) is covered in fewer than 50% of individuals in exomes and genomes (gnomAD v2.1.1) and the allele balance are skewed in some individuals. Specifically, this variant has a "." in the exome reference file (hg19_gnomad_exome.txt). But it will be kept since the genome reference (hg19_gnomad_genome.txt) has a record of this variant.
 
 ---
 ## Step Two: Individual checks

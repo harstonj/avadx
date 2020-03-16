@@ -25,7 +25,7 @@
  * For a new input VCF, pre-calculated SNAP scores may not contain all mutations and SNAP needs to be re-run for the "missing SNAP" mutations.
  * Four different *gene score* calculation methods are available currently (details below).
  * Feature selection (FS) and model selection in model training, including FS method choosing, model choosing, model tuning, etc. need human interpretation.
- 
+
 ---
 ## Prerequisite
 * R and packages (data.table, tydiverse, seqinr, stringr, EthSEQ, SNPRelate, e1071, caret)
@@ -66,9 +66,12 @@ python filterVCF_by_ABAD.py \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
 ```
 
-* Lastly, gnomAD filter: filtering out variants that were not recorded in the gnomAD database. The reference used here is the ANNOVAR gnomAD file `hg19_gnomad_exome.txt` and `hg19_gnomad_genome.txt`.
+* Lastly, gnomAD filter: filtering out variants that were not recorded in the gnomAD database. The reference used here is the ANNOVAR gnomAD file `hg19_gnomad_exome.txt` and `hg19_gnomad_genome.txt`. Please check the input path of the two reference files before running the script. `tabix` is required to run this script.
 ```
-python filterVCF_by_gnomAD.py input.vcf.gz output.vcf.gz
+# Conver the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
+bcftools annotate --rename-chrs chr_to_number.txt input.vcf.gz -Oz -o input_rmchr.vcf.gz
+# Then remove variants that are not in gnomAD database:
+python filterVCF_by_gnomAD.py input_rmchr.vcf.gz output.vcf.gz
 ```
 Note that, gnomAD also contains low quality calls. For example, variant [1-30548-T-G](https://gnomad.broadinstitute.org/variant/1-30548-T-G?dataset=gnomad_r2_1) is covered in fewer than 50% of individuals in exomes and genomes (gnomAD v2.1.1) and the allele balance are skewed in some individuals. Specifically, this variant has a "." in the exome reference file (hg19_gnomad_exome.txt). But it will be kept since the genome reference (hg19_gnomad_genome.txt) has a record of this variant.
 
@@ -115,6 +118,7 @@ bcftools view -S xx00 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgD
 # If no separation of individuals:
 bcftools annotate --remove 'ID,INFO,FORMAT' source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz | bcftools view --no-header -Oz -o source_EthSEQinput.vcf.gz
 # Run EthSEQ:
+# "export R_MAX_VSIZE=32000000000" can be used to increase memory before running below for larger datasets
 Rscript ethnicity_EthSEQ.R source_EthSEQinput.vcf.gz /path/to/output/folder
 ```
 
@@ -175,16 +179,23 @@ For a new dataset, we first check if the pre-calculated SNAP score file already 
 ```
 Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
 ```
+If "Transcript-ProtLength.csv lacks protein length info. Please check and run this script again.", the script outputs a file of mRNA accession numbers to query at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez), and the `Transcript-ProtLength.csv` file needs to be updated.
+
 The above command first check if the SNAP score file `Mutations.mutOut` contains all the variants in the dataset. If not, the script prints out the number of "missing SNAP" mutations and generates SNAP input for those variants. To do this, the script first checks if `prot_seqs.txt` file contains all protein sequences and then generates SNAP input files for new variants.
 
-If `prot_seqs.txt` is not complete, the script outputs a file with mRNA accession numbers (`TranscriptAccess_missing_prot_seq.txt`) in the output folder. User needs to retrieve the corresponding protein sequences at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez). Upload the `TranscriptAccess_missing_prot_seq.txt` file with "Choose File" and *Retrieve* in the *Nucleotide database*. Then click *Send to* at the resulting page, choose *Coding Sequences* and *FASTA Protein* to get the protein sequence. Click *Create File* to download. Then, append the protein sequences to the original `prot_seqs.txt` file by:
+If `prot_seqs.txt` is not complete, the script outputs a file with mRNA accession numbers (`TranscriptAccess_missing_prot_seq.txt`) in the output folder. User needs to retrieve the corresponding protein sequences at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez).
+
+* [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez) steps:
+ * Upload the mRNA accesion list file with "Choose File" and *Retrieve* in the *Nucleotide database*.
+ * Then click *Send to* at the resulting page, choose *Coding Sequences* and *FASTA Protein* to get the protein sequence.
+ * Click *Create File* to download.
+ * Then, append the protein sequences to the original `prot_seqs.txt` file by:
 ```
 cat prot_seqs.txt sequence.txt > prot_seqs_new.txt
 rm prot_seqs.txt
 mv prot_seqs_new.txt prot_seqs.txt
 ```
-
-Then update the `Transcript-ProtLength.csv` file in *db* folder:
+ * Then update the `Transcript-ProtLength.csv` file in *db* folder:
 ```
 Rscript update_Transcript-ProtLength.R /path/to/db/folder
 # Check if the output Transcript-ProtLength_update.csv is correct
@@ -285,7 +296,7 @@ Rscript cal_genescore_make_genescore.R \
 ```
 All gene score calculation functions and pre-processing steps are stored at `cal_genescore_make_genescore.R` script. There are some arguments required for the gene score calculation: `-m` asks user to choose either to sum or multiply variant scores into *gene score*; `-n` asks if normalize by protein length; `-heti` asks for the coefficient used for the heterozygous genotypes and `HIPred` means using the happloinsufficienty predictions from [HIPred](https://www.ncbi.nlm.nih.gov/pubmed/28137713); `-o` asks user to specify the output= path.
 
-*gene score* is defined as a **sum** or **production** of the all variant scores within the gene coding region.
+*gene score* is defined as a **sum** or **product** of the all variant scores within the gene coding region.
 
 *EQUATIONS*
 

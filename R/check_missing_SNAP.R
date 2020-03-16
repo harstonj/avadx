@@ -14,6 +14,7 @@ mutOut <- read.table("Mutations.mutOut", stringsAsFactors=F, header=F, sep="\t")
 
 exonic <- data.table::fread(exonic.file, header=F, data.table=F)
 exonic <- exonic[exonic$V3!="UNKNOWN",]
+exonic <- exonic[exonic$V2 %in% c("synonymous SNV", "nonsynonymous SNV", "stopgain", "stoploss"), ]
 
 variants <- strsplit(exonic$V3, ",")
 variants <- lapply(variants, function(x) strsplit(x, ":"))
@@ -41,6 +42,9 @@ for(i in 1:length(variants)){
 gene_mRNA <- data.table::rbindlist(gene_mRNA_list, use.names=T)
 gene_mRNA$prot_length <- df_len$Prot_length[match(gene_mRNA$Transcript, df_len$Transcript)]
 if(any(is.na(gene_mRNA$prot_length))){
+  setwd(outputfolder)
+  write.table(unique(as.character(gene_mRNA$Transcript[is.na(gene_mRNA$prot_length)])), 
+              file="missing_mRNA_accession.txt", quote=F, col.names=F, row.names=F)
   stop("Transcript-ProtLength.csv lacks protein length info. Please check and run this script again.")
 }
 

@@ -31,6 +31,7 @@ for(f in gs_list){
   rm(f)
 }
 
+
 # Un-normed:
 if("gene_score" %in% colnames(gs[[1]])){
   gs_unnormed <- lapply(gs, function(x) {

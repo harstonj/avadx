@@ -308,33 +308,52 @@ Rscript merge_genescore.R \
 ---
 ## Step Five: Feature selection (FS) and training (cross-validation)
 
-There are three types of FS types: filter, wrapper, and embedded.
-
-Current AVA,Dx does not use the wrapper method because wrapper method usually takes long time to search feature subset and there are always multiple optimal feature sets, and it is hard to interpret from a biological perspective.
-
-Current AVA,Dx uses both filter and embedded methods. Filter method includes K-S test and others. Embedded methods are primarily from R package CORElearn.
+There are three types of FS types: filter, wrapper, and embedded. Currently, AVA,Dx does not use the wrapper method because wrapper method usually takes long time to search feature subset and there are always multiple optimal feature sets. AVA,Dx uses both filter and embedded methods. Default filter method is performing K-S (Kolmogorov–Smirnov) test between gene score distributions of the disease and healthy statuses in the training fold. Embedded method is DKM algorithm from R package CORElearn.
 
 To perform FS in cross-validated fashion, user needs to provide a cross-validation scheme file. For example, we split Tourette dataset (yale-1) into three folds and each contains unrelated probands, their parents are used as healthy controls and the probands' own parents should be in other folds, so that the probands are compared with unrelated healthy parents.
-* User needs to provide a file with three columns:  sample_ID (character), fold_num (fold #, integer), status (character - categorical), for example:
+
+* User needs to provide a cross-validation scheme file with three columns:  *SampleID*, *Phenotype*, *fold*. For example:
 ```
-sample_ID fold_num  status
-sample1 1 sick
-sample2 1 healthy
-sample3 2 sick
-sample4 2 healthy
+SampleID fold  Phenotype
+sample1 1 1
+sample2 1 0
+sample3 2 1
+sample4 2 0
 ...
+sample100 10 1
+sample101 10 0
 ```
 
-Then, do feature selection by:
+* Then, do feature selection by:
 ```
-Rscript FS.R \
-  /path/to/GeneScoreTable.txt \
-  /path/to/cv_scheme.txt \
-  /path/to/result/folder
-# Example:
-Rscript FS.R /Users/WangYanran/Desktop/tmp/GeneScoreTable_normed.txt /Users/WangYanran/Documents/BrombergLab/AVA_Method_paper_TS/Phenotype/cv scheme.txt /Users/WangYanran/Desktop/tmp/FS_result
+Rscript FS-CVperf-kfold.R \
+  -f /path/to/GeneScoreTable_normed.txt \
+  -m ks \  # current options: ks or DKM
+  -M rf \  # current options: rf or SVM
+  -s /path/to/cv-scheme.text \  # contains columns 'SampleID', 'Phenotype', 'fold'
+  -k 10 \
+  -l /path/to/Transcript-ProtLength_cleaned.csv \
+  -t 5 \  # increase gene numbers by 5
+  -n 200 \  # test by top ranked genes until the top 200
+  -o /path/to/output/folder
 ```
-This generates feature selection results in the output folder.
+This generates feature selection results in the output folder. Example outputs are: `10F-CV-ks-selectedGenes.xlsx` and `10F-CV-rf-performance.xlsx` with `-m ks`, `-M rf`, and `-k 10`.
 
-* The **CORElearn package** only deals with FS in a relatively small dataset. For a larger data frame, it runs into "Error: protect(): protection stack overflow" and setting `--max-ppsize=5000000` does not help, either.
-* The **Boruta package** has `Boruta()` function, which uses the [Boruta algorithm](https://cran.r-project.org/web/packages/Boruta/vignettes/inahurry.pdf) for feature selection. Briefly, Boruta is based on random forest from the **ranger package**. Boruta gets scores from the random forest ranking of features, and uses shadow features (copies of original features but with randomly mixed values) to keep the feature's original distribution but wipes out its importance. If the original feature has a much higher score compared with its own shadow features, it'll be a *hit*. As a result, Boruta **will** return redundant features.
+* Then check pathway over-representation with selected genes. Make sure that there is `10F-CV-ks-selectedGenes.xlsx` file before running script below.
+```
+Rscript FS-CVgeneOverRep-kfold.R \
+  -f /path/to/10F-CV-ks-selectedGenes.xlsx \
+  -b /path/to/GeneScoreTable_normed.NAto0.nzv85-15.txt \  # cleaned gene score table
+  -n 100 \  # number of genes to select for over-representation analysis
+  -d /path/to/CPDB_pathways_genesymbol.tab \
+  -a T \  # or F depending on the FS method
+  -o /path/to/output/folder
+```
+This generates the over-represented pathways for designated top-ranked genes.
+
+---
+### Troubleshooting
+
+
+* The *CORElearn* package only deals with FS in a relatively small dataset. For a larger data frame, it runs into `Error: protect(): protection stack overflow` and setting `--max-ppsize=5000000` does not help, either.
+* **NOT ADDED YET:** The Boruta package has `Boruta()` function, which uses the [Boruta algorithm](https://cran.r-project.org/web/packages/Boruta/vignettes/inahurry.pdf) for feature selection. Briefly, Boruta is based on random forest from the ranger package. Boruta gets scores from the random forest ranking of features, and uses shadow features (copies of original features but with randomly mixed values) to keep the feature's original distribution but wipes out its importance. If the original feature has a much higher score compared with its own shadow features, it'll be a *hit*. As a result, Boruta **will** return redundant features.

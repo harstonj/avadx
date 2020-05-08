@@ -1,29 +1,40 @@
-# AVA,Dx workflow
+# **AVA,Dx workflow**
 
 ---
-## Inputs and ouputs
+## **Inputs and outputs**
+
 
 * **Input**:
- * VCF file
- * class label file
- * individual list (sample IDs of interest, optional)
- * (cross-validation) data split schemes (optional)
- * external gene set to use as features (optional)
+ * VCF file (GRCh37/hg19)
+   * e.g. `source.vcf.gz`
+ * Class label file
+   * e.g. `diagnosis.txt`
+ * (optional) individual list (sample IDs of interest)
+   * in case VCF file contains extra individuals
+   * e.g. `sampleID.txt`
+ * (optional) cross-validation data split schemes
+   * in case of non-random split
+   * e.g. `cv-scheme.txt`
+ * (optional) external gene set to use as features
+   * to test the predictability of known genes
+   * e.g. `known-genes.txt`
 
 
 * **Output**:
  * a *gene score* table
- * selected genes (with default FS method: *Kolmogorov–Smirnov test* or *DKM method* from CORElearn R package)
- * model performance (with default settings: SVM from e1071 R package)
+   * two schemes to choose: *sum* or *product* (see details below)
+   * e.g. `GeneScoreTable_normed.txt`
+ * selected genes
+   * e.g. `.xlsx`
+ * model performance
+   * e.g. `performance.xlsx`
 
 
 * **Check before running all steps**:
  * The current workflow works with hg19 only.
- * This pipeline is currently for regular VCF file input. If gVCF is provided, some of the scripts need to be re-written.
- * All thresholds along all steps are arbitrarily and empirically determined (details below).
- * Outlier identification (e.g. ethnicity check, quality check after QC) may need human interpretation.
- * For a new input VCF, pre-calculated SNAP scores may not contain all mutations and SNAP needs to be re-run for the "missing SNAP" mutations.
- * Four different *gene score* calculation methods are available currently (details below).
+ * This pipeline is currently for regular VCF file input (scripts need to be updated for gVCF files).
+ * Manual check of quality outliers, ethnicity, etc. are highly recommended.
+ * When input VCF contains variants with no SNAP score records in the snapfundb, the snapfun.db needs to be updated.
  * Feature selection (FS) and model selection in model training, including FS method choosing, model choosing, model tuning, etc. need human interpretation.
 
 ---
@@ -34,11 +45,12 @@
 * [bcftools](https://samtools.github.io/bcftools/)
 * [ANNOVAR](http://annovar.openbioinformatics.org)
 * [PLINK](https://www.cog-genomics.org/plink2/)
+* Slurm cluster system (e.g. [Amarel](https://oarc.rutgers.edu/amarel/)) for submitting jobs parallelly
 
 ---
-## Step One: VCF file variant QC
+## **Step 1:** VCF file variant QC
 
-This very first step removes bad varaiants loci in the VCF file. Thresholds used here for all metrics are determined empirically. Users can change them according to specific need.
+Analyses in AVA,Dx and many other methods need stringent QC of the VCF file. Because all genes are taken into consideration in FS and model building, and artifacts in the data could lead to biased results. This very first step removes "bad" variants in the VCF file by removing variant locations and individuals. Thresholds used here for all metrics are determined empirically. User can change them according to specific need.
 
 * Extract individuals of interest (diseased and healthy individuals of interest).
 ```
@@ -154,97 +166,39 @@ bcftools -S ^outliers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-max
 ```
 
 ---
-## Step Three: Variant annotation and SNAP score calculation
+## Mapping RefSeq to UniProt
 
-* Run ANNOVAR for VCF annotation:
+RefSeq GRCh37 mRNA and protein sequences downloaded on May/5/2020.
+
+ANNOVAR humandb hg19_refGeneMrna.fa with a date on June/1/2017.
+
+---
+## Step Three: Query SNAP database
+
+The SNAP database stores pre-calculated SNAP scores for all possible non-synonymous variant in UniProt human protein sequences.
+* Example records in this database are:
 ```
-# Convert VCF file into ANNOVAR input format:
-convert2annovar.pl -format vcf4old source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz -outfile source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput
-# Annotate using hg19 human reference:
-annotate_variation.pl -buildver hg19 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput humandb/
+uniprotid,variant,reliability,accuracy
+A6NL99,H341D,Non-neutral,1,63.0
+A6NL99,H341H,Neutral,6,92.0
+A6NL99,H341L,Non-neutral,0,58.0
+A6NL99,H341N,Neutral,0,53.0
 ```
-In the above commands, `vcf4old` argument must be used to ensure that all records in the VCF file is output to one resulting file, which contains every possible variant in this dataset. The output file should include `source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function`, which is used as input for steps below.
-
-
-* AVA,Dx has pre-calculated SNAP scores stored in the *db* folder (`Mutations.mutOut`; it has three columns: mRNA accession, amino acid mutation, pre-calculated SNAP score). Additionally in the same folder, `mRNA_identifiers.txt` stores the transcript identifiers (currently 46,327 mRNA transcripts), and `prot_seqs.txt` stores the protein sequences with "NM_XX_prot_NP_YY" in the header lines for mapping uses. For a new dataset, first check if the pre-calculated SNAP score file already has recorded all the variants. If not, we generate a "missing SNAP" list and make SNAP input files for those variants first.
-
-
-* Check if the dataset has a "missing SNAP score":
+and can be queried by:
 ```
-Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
+A6NL99 H341D
+A6NL99 H341H
+A6NL99 H341L
+A6NL99 H341N
 ```
-If "Transcript-ProtLength.csv lacks protein length info. Please check and run this script again.", the script outputs a file of mRNA accession numbers to query at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez), and the `Transcript-ProtLength.csv` file needs to be updated.
-
-
-* The above command first check if the SNAP score file `Mutations.mutOut` contains all the variants in the dataset. If not, the script prints out the number of "missing SNAP" mutations and generates SNAP input for those variants. To do this, the script first checks if `prot_seqs.txt` file contains all protein sequences and then generates SNAP input files for new variants.
-
-
-* If `prot_seqs.txt` is not complete, the script outputs a file with mRNA accession numbers (`TranscriptAccess_missing_prot_seq.txt`) in the output folder. User needs to retrieve the corresponding protein sequences at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez).
-
-* [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez) steps:
- * Upload the mRNA accesion list file with "Choose File" and *Retrieve* in the *Nucleotide database*.
- * Then click *Send to* at the resulting page, choose *Coding Sequences* and *FASTA Protein* to get the protein sequence.
- * Click *Create File* to download.
- * Then, append the protein sequences to the original `prot_seqs.txt` file by:
+ANNOVAR annotates variants with RefSeq transcripts. Therefore, user needs to map the ANNOVAR output to UniProt IDs to query the SNAP scores. However, sometimes RefSeq and UniProt records for the same protein do not have exact same sequences. So, the best way to query is to use:
 ```
-cat prot_seqs.txt sequence.txt > prot_seqs_new.txt
-rm prot_seqs.txt
-mv prot_seqs_new.txt prot_seqs.txt
-```
- * Then update the `Transcript-ProtLength.csv` file in *db* folder:
-```
-Rscript update_Transcript-ProtLength.R /path/to/db/folder
-# Check if the output Transcript-ProtLength_update.csv is correct
-rm Transcript-ProtLength.csv
-mv Transcript-ProtLength_update.csv Transcript-ProtLength.csv
-```
-Every time if there are new records added o the `Transcript-ProtLength.csv`, user needs to run `clean_Transcript-ProtLength.R` to make sure that the transcripts with the longest protein lengths were kept by:
-```
-Rscript clean_Transcript-ProtLength.R /path/to/db/Transcript-ProtLength.csv /path/to/db/Transcript-ProtLength_cleaned.csv
-```
-Note that by doing this (above), only one transcript of a gene will be kept. Therefore, if a variant is annotated to a shorter transcript by ANNOVAR, the current pipeline below will just ignore that variant. For example, if a sample has variants chr1:7913029-A-G and chr1:7913445-C-T, the former maps to UTS2:NM_006786:exon1:c.T35C:p.I12T and the latter maps to UTS2:NM_021995:exon1:c.G47A:p.R16Q. We currently only considers the latter for the *gene score* of UTS2 and we ignore the former, because NM_021995 encodes a longer protein than NM_006786 in RefSeq database.
-
-
-* After the protein sequences are updated by above steps, run the `check_missing_SNAP.R` again to generate mutation files for SNAP input:
-```
-Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
-```
-All SNAP input files (*amino acid mutation list* `geneA.mutation` and the *protein fasta file* `geneA.fasta`) will be output to `/path/to/output/folder`, This process might take some time if there are many missing SNAPs.
-
-
-* After all SNAP input files are ready, SNAP is available on [amarel server](https://oarc.rutgers.edu/amarel/) and can be run using code below (submit.sh SBATCH submission shell script):
-```
-#!/bin/bash
-#SBATCH --partition=bromberg_1,main
-#SBATCH --time=72:00:00
-#SBATCH --mem=100000
-#SBATCH --array=0-999
-#SBATCH --requeue
-module load singularity/.2.4-PR1106
-input=(geneA geneB geneC ...)
-singularity exec /home/yw410/bromberglab_predictprotein_yanran-2017-12-06-fa6f97ee098c.img snapfun -i /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input/$input.fasta -m /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input/$input.mutation -o /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_output/$input.out --print-collection --tolerate-sift-failure --tolerate-psic-failure
+SEQUENCE H341D
+SEQUENCE H341H
+SEQUENCE H341L
+SEQUENCE H341N
 ```
 
-* SNAP outputs plain text files `geneA.out` of predicted variant scores. It needs to be converted to tab-separated format using below code for SNAP output of all genes:
-```
-#!/bin/bash
-for f in /path/to/snap/output/*.out
-do
-	python snap-scores-mutOut.py $f
-done
-# Outputs Mutations.mutOut file
-```
-After all new SNAP output has been converted to tab-separated format, merge them with the original SNAP scores stored in the *db* folder:
-```
-cat /path/to/db/folder/Mutations.mutOut Mutations.mutOut > /path/to/db/folder/Mutations_new.mutOut
-cd /path/to/db/folder/
-rm Mutations.mutOut
-mv Mutations_new.mutOut Mutations.mutOut
-```
-Now the *db* folder should have:
-
- * updated SNAP score file `Mutations.mutOut`
- * updated transcript - protein - protein length file `Transcript-ProtLength.csv`
 
 ---
 ## Step Four: Gene score calculation
@@ -357,3 +311,96 @@ This generates the over-represented pathways for designated top-ranked genes.
 
 * The *CORElearn* package only deals with FS in a relatively small dataset. For a larger data frame, it runs into `Error: protect(): protection stack overflow` and setting `--max-ppsize=5000000` does not help, either.
 * **NOT ADDED YET:** The Boruta package has `Boruta()` function, which uses the [Boruta algorithm](https://cran.r-project.org/web/packages/Boruta/vignettes/inahurry.pdf) for feature selection. Briefly, Boruta is based on random forest from the ranger package. Boruta gets scores from the random forest ranking of features, and uses shadow features (copies of original features but with randomly mixed values) to keep the feature's original distribution but wipes out its importance. If the original feature has a much higher score compared with its own shadow features, it'll be a *hit*. As a result, Boruta **will** return redundant features.
+
+---
+## Step Three (Original): Variant annotation and SNAP score calculation
+
+* Run ANNOVAR for VCF annotation:
+```
+# Convert VCF file into ANNOVAR input format:
+convert2annovar.pl -format vcf4old source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz -outfile source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput
+# Annotate using hg19 human reference:
+annotate_variation.pl -buildver hg19 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput humandb/
+```
+In the above commands, `vcf4old` argument must be used to ensure that all records in the VCF file is output to one resulting file, which contains every possible variant in this dataset. The output file should include `source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function`, which is used as input for steps below.
+
+
+* AVA,Dx has pre-calculated SNAP scores stored in the *db* folder (`Mutations.mutOut`; it has three columns: mRNA accession, amino acid mutation, pre-calculated SNAP score). Additionally in the same folder, `mRNA_identifiers.txt` stores the transcript identifiers (currently 46,327 mRNA transcripts), and `prot_seqs.txt` stores the protein sequences with "NM_XX_prot_NP_YY" in the header lines for mapping uses. For a new dataset, first check if the pre-calculated SNAP score file already has recorded all the variants. If not, we generate a "missing SNAP" list and make SNAP input files for those variants first.
+
+
+* Check if the dataset has a "missing SNAP score":
+```
+Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
+```
+If "Transcript-ProtLength.csv lacks protein length info. Please check and run this script again.", the script outputs a file of mRNA accession numbers to query at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez), and the `Transcript-ProtLength.csv` file needs to be updated.
+
+
+* The above command first check if the SNAP score file `Mutations.mutOut` contains all the variants in the dataset. If not, the script prints out the number of "missing SNAP" mutations and generates SNAP input for those variants. To do this, the script first checks if `prot_seqs.txt` file contains all protein sequences and then generates SNAP input files for new variants.
+
+
+* If `prot_seqs.txt` is not complete, the script outputs a file with mRNA accession numbers (`TranscriptAccess_missing_prot_seq.txt`) in the output folder. User needs to retrieve the corresponding protein sequences at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez).
+
+* [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez) steps:
+ * Upload the mRNA accesion list file with "Choose File" and *Retrieve* in the *Nucleotide database*.
+ * Then click *Send to* at the resulting page, choose *Coding Sequences* and *FASTA Protein* to get the protein sequence.
+ * Click *Create File* to download.
+ * Then, append the protein sequences to the original `prot_seqs.txt` file by:
+```
+cat prot_seqs.txt sequence.txt > prot_seqs_new.txt
+rm prot_seqs.txt
+mv prot_seqs_new.txt prot_seqs.txt
+```
+ * Then update the `Transcript-ProtLength.csv` file in *db* folder:
+```
+Rscript update_Transcript-ProtLength.R /path/to/db/folder
+# Check if the output Transcript-ProtLength_update.csv is correct
+rm Transcript-ProtLength.csv
+mv Transcript-ProtLength_update.csv Transcript-ProtLength.csv
+```
+Every time if there are new records added o the `Transcript-ProtLength.csv`, user needs to run `clean_Transcript-ProtLength.R` to make sure that the transcripts with the longest protein lengths were kept by:
+```
+Rscript clean_Transcript-ProtLength.R /path/to/db/Transcript-ProtLength.csv /path/to/db/Transcript-ProtLength_cleaned.csv
+```
+Note that by doing this (above), only one transcript of a gene will be kept. Therefore, if a variant is annotated to a shorter transcript by ANNOVAR, the current pipeline below will just ignore that variant. For example, if a sample has variants chr1:7913029-A-G and chr1:7913445-C-T, the former maps to UTS2:NM_006786:exon1:c.T35C:p.I12T and the latter maps to UTS2:NM_021995:exon1:c.G47A:p.R16Q. We currently only considers the latter for the *gene score* of UTS2 and we ignore the former, because NM_021995 encodes a longer protein than NM_006786 in RefSeq database.
+
+
+* After the protein sequences are updated by above steps, run the `check_missing_SNAP.R` again to generate mutation files for SNAP input:
+```
+Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
+```
+All SNAP input files (*amino acid mutation list* `geneA.mutation` and the *protein fasta file* `geneA.fasta`) will be output to `/path/to/output/folder`, This process might take some time if there are many missing SNAPs.
+
+
+* After all SNAP input files are ready, SNAP is available on [amarel server](https://oarc.rutgers.edu/amarel/) and can be run using code below (submit.sh SBATCH submission shell script):
+```
+#!/bin/bash
+#SBATCH --partition=bromberg_1,main
+#SBATCH --time=72:00:00
+#SBATCH --mem=100000
+#SBATCH --array=0-999
+#SBATCH --requeue
+module load singularity/.2.4-PR1106
+input=(geneA geneB geneC ...)
+singularity exec /home/yw410/bromberglab_predictprotein_yanran-2017-12-06-fa6f97ee098c.img snapfun -i /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input/$input.fasta -m /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input/$input.mutation -o /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_output/$input.out --print-collection --tolerate-sift-failure --tolerate-psic-failure
+```
+
+* SNAP outputs plain text files `geneA.out` of predicted variant scores. It needs to be converted to tab-separated format using below code for SNAP output of all genes:
+```
+#!/bin/bash
+for f in /path/to/snap/output/*.out
+do
+	python snap-scores-mutOut.py $f
+done
+# Outputs Mutations.mutOut file
+```
+After all new SNAP output has been converted to tab-separated format, merge them with the original SNAP scores stored in the *db* folder:
+```
+cat /path/to/db/folder/Mutations.mutOut Mutations.mutOut > /path/to/db/folder/Mutations_new.mutOut
+cd /path/to/db/folder/
+rm Mutations.mutOut
+mv Mutations_new.mutOut Mutations.mutOut
+```
+Now the *db* folder should have:
+
+ * updated SNAP score file `Mutations.mutOut`
+ * updated transcript - protein - protein length file `Transcript-ProtLength.csv`

@@ -128,12 +128,12 @@ for line in vcf:
 
 		elif len(ad) == 0: # No AB and no AD available.
 			wlog.write(position + "\tNo_AB_or_AD_field\t" + "NA" + "\n")
-			print "Cannot calculate AB!"
+			#print "Cannot calculate AB!"
 		#print ab
 
 		c += 1
 
-		print c
+		#print c
 		#if c == 100: break
 	else:
 		fw.write(line)

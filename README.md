@@ -48,9 +48,10 @@
 * Slurm cluster system (e.g. [Amarel](https://oarc.rutgers.edu/amarel/)) for submitting jobs parallelly
 
 ---
-## **Step 1:** VCF file variant QC
+## **Step 1:** Variant QC
 
 Analyses in AVA,Dx and many other methods need stringent QC of the VCF file. Because all genes are taken into consideration in FS and model building, and artifacts in the data could lead to biased results. This very first step removes "bad" variants in the VCF file by removing variant locations and individuals. Thresholds used here for all metrics are determined empirically. User can change them according to specific need.
+
 
 * Extract individuals of interest (diseased and healthy individuals of interest).
 ```
@@ -90,35 +91,23 @@ python filterVCF_by_gnomAD.py input_rmchr.vcf.gz output.vcf.gz
 Note that, gnomAD also contains low quality calls. For example, variant [1-30548-T-G](https://gnomad.broadinstitute.org/variant/1-30548-T-G?dataset=gnomad_r2_1) is covered in fewer than 50% of individuals in exomes and genomes (gnomAD v2.1.1) and the allele balance are skewed in some individuals. Specifically, this variant has a "." in the exome reference file (`hg19_gnomad_exome.txt`). But it will be kept as long as the genome reference (`hg19_gnomad_genome.txt`) has a record of this variant.
 
 ---
-## Step Two: VCF file individual QC
+## **Step 2:** Individual QC
 
-Identify outliers in terms of **quality** and **ethnicity**.
+**Quality** check:
 
 * Check quality outliers by examine nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing.
 ```
+# Output quality metrics after variant QC:
 bcftools stats -v -s - source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt
-Rscript source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt output.pdf
+# Draw individual quality figure:
+Rscript stats_quality_pca.R -f source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt
 ```
+Above script output a PCA figure of samples clustered by their quality metrics *after* variant QC. User needs to pick up the outliers and decide whether to keep them in later analyses.
 
 
-* Check ethnicity with AIM (ancestry informative markers) or LD-pruned SNPs.
+**Ethnicity** check:
 
- * *Method 1*: AIPS from [Byun *et al*](https://morgan1.dartmouth.edu/~f000q4v/html/aips.html).
-```
-# Convert VCF file into plink format.
-plink xx
-# Merge user file and the reference file.
-plink --bfile euro952samples --bmerge input.bed input.bim input.fam --recodeA --out outputA
-# Run AIPS-PCA.R and AIPS-AI.R.
-```
-
- * *Method 2*: PCA with [SNPRelate package](http://corearray.sourceforge.net/tutorials/SNPRelate/) in R.
-```
-Rscript ethnicity_SNPRelate.R \
-  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
-```
-
- * *Method 3*: [EthSEQ](https://cran.r-project.org/web/packages/EthSEQ/index.html) R package.
+* [EthSEQ](https://cran.r-project.org/web/packages/EthSEQ/index.html) R package.
 ```
 # If the number of individuals exceeds certain number, "memory exhausted" error may occur. Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
 bcftools query -l source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > sample_list.txt
@@ -404,3 +393,21 @@ Now the *db* folder should have:
 
  * updated SNAP score file `Mutations.mutOut`
  * updated transcript - protein - protein length file `Transcript-ProtLength.csv`
+
+---
+## Other methods for ethnicity check:
+
+ * *Method 1*: AIPS from [Byun *et al*](https://morgan1.dartmouth.edu/~f000q4v/html/aips.html).
+```
+# Convert VCF file into plink format.
+plink xx
+# Merge user file and the reference file.
+plink --bfile euro952samples --bmerge input.bed input.bim input.fam --recodeA --out outputA
+# Run AIPS-PCA.R and AIPS-AI.R.
+```
+
+ * *Method 2*: PCA with [SNPRelate package](http://corearray.sourceforge.net/tutorials/SNPRelate/) in R.
+```
+Rscript ethnicity_SNPRelate.R \
+  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
+```

@@ -1,10 +1,10 @@
-# **AVA,Dx workflow**
+# **AVA,Dx pipeline**
+------
 
----
+
 ## **Inputs and outputs**
 
-
-* **Input**:
+### **Input**:
  * VCF file (GRCh37/hg19)
    * e.g. `source.vcf.gz`
  * Class label file
@@ -20,7 +20,7 @@
    * e.g. `known-genes.txt`
 
 
-* **Output**:
+### **Output**:
  * a *gene score* table
    * two schemes to choose: *sum* or *product* (see details below)
    * e.g. `GeneScoreTable_normed.txt`
@@ -30,7 +30,7 @@
    * e.g. `performance.xlsx`
 
 
-* **Check before running all steps**:
+### **Check before running all steps**:
  * The current workflow works with hg19 only.
  * This pipeline is currently for regular VCF file input (scripts need to be updated for gVCF files).
  * Manual check of quality outliers, ethnicity, etc. are highly recommended.

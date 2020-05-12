@@ -11,7 +11,7 @@
    * e.g. `diagnosis.txt`
  * (optional) individual list (sample IDs of interest)
    * in case VCF file contains extra individuals
-   * e.g. `sampleID.txt`
+   * e.g. `sampleID_of_interest.txt`
  * (optional) cross-validation data split schemes
    * in case of non-random split
    * e.g. `cv-scheme.txt`
@@ -95,7 +95,7 @@ Note that, gnomAD also contains low quality calls. For example, variant [1-30548
 
 **Quality** check:
 
-* Check quality outliers by examine nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing.
+* Check quality outliers by examine nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
 ```
 # Output quality metrics after variant QC:
 bcftools stats -v -s - source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt
@@ -107,59 +107,66 @@ Above script output a PCA figure of samples clustered by their quality metrics *
 
 **Ethnicity** check:
 
-* [EthSEQ](https://cran.r-project.org/web/packages/EthSEQ/index.html) R package.
+* Annotate ethnicity with [EthSEQ](https://cran.r-project.org/web/packages/EthSEQ/index.html) R package:
 ```
-# If the number of individuals exceeds certain number, "memory exhausted" error may occur. Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
+# OPTIONAL: If the number of individuals exceeds certain number, "memory exhausted" error may occur. Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
 bcftools query -l source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > sample_list.txt
 csplit sample_list.txt 500  # outputs from xx00 to xx0n
-# Clean VCF format for EthSEQ input (do the same thing for every chunk):
+# OPTIONAL: Clean VCF format for EthSEQ input (do the same thing for every chunk):
 bcftools view -S xx00 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz | bcftools annotate --remove 'ID,INFO,FORMAT' | bcftools view --no-header -Oz -o source_xx00_EthSEQinput.vcf.gz
-# If no separation of individuals:
+# If no separation of individuals needed:
 bcftools annotate --remove 'ID,INFO,FORMAT' source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz | bcftools view --no-header -Oz -o source_EthSEQinput.vcf.gz
 # Run EthSEQ:
 # "export R_MAX_VSIZE=32000000000" can be used to increase memory before running below for larger datasets
 Rscript ethnicity_EthSEQ.R source_EthSEQinput.vcf.gz /path/to/output/folder
 ```
 
- * Results of ethnicity predictions are in `/path/to/output/folder/Report.txt` and the corresponding sample IDs are in `sample_list.txt`.
+ * Results of ethnicity predictions are in `/path/to/output/folder/Report.txt` and the corresponding sample IDs are in `sample_list.txt` (`sample_list.txt` obtained by running `bcftools query -l source.vcf.gz > sample_list.txt`).
 ```
 Rscript ethnicity_EthSEQ_summary.R /path/to/output/folder/Report.txt sample_list.txt /path/to/output/folder
 ```
  * Above returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. **`sampleID_inside_EUR.txt` contains the sample ID for all EUR individuals in the dataset, which generally should be used for further analysis**. Customized script should be used for special requirements.
 
-  * *Method 4*: Calculate probabilities of individuals being a [known ethnicity](https://frog.med.yale.edu/FrogKB/FrogServlet) by forensic marker [frequency production](https://frog.med.yale.edu/FrogKB/formula.jsp).
-```
-# Extract only the 55 markers from KiddLab.
-bcftools view -R 55markers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_Kidd-markers.vcf.gz
-# Calculate the probability using a production method.
-Rscript forensic_method.R source_Kidd-markers.vcf.gz
-```
+**Relatedness** check:
 
-* **Note that:**
-   * *Method 1* uses AIMs to infer ethnicity using reference labels (952 ancestry known samples).
-   * *Method 2* takes all SNPs and do PCA on LD-pruned SNPs to infer ethnicity using reference labels (user defined).
-   * *Method 3* uses pre-calculated reference SS2 model and gives prediction of five 1000Genomes population code.
-   * *Method 4* uses AIMs to infer ethnicities (known ethnicities).
-   * Technically, results should be very **consistent across all method**. But human interpretation may be needed for specific cases.
-
-
-* *OPTIONAL:* Check relatedness within datasets. A BID > 0.05 is considered to be related. Check HW equilibrium within diseased / healthy cohort. Also, check sex if sex labels are provided.
+* Check relatedness within datasets. A default kinship > 0.3 is considered to be related.
 ```
-Rscript relatedness_SNPRelate.R \
-  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
+Rscript relatedness.R -i source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -g source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.gds -c 0.3 -o /path/to/output/folder
 ```
+The output folder contains 3 files: `IBD_histogram.pdf`, `IBD.txt`, and `IBD_related.txt`. The histogram shows the distribution of kinship values of all individual pairs from the input VCF. `IBD.txt` is a complete table of the kinship values. `IBD_related.txt` only contains related pairs per the `-c` cutoff.
 
-* Remove individual outliers from dataset.
+* Outlier individual IDs should be combined from the PCA, ethnicity annotation, and relatedness calculation to a file `outliers.txt` (one ID per row). Then remove individual outliers by:
 ```
 bcftools -S ^outliers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz
 ```
 
 ---
-## Mapping RefSeq to UniProt
+## **Step 3:** Query SNAP scores for all variants from cleaned VCF
+
+* Get all variant annotations with ANNOVAR:
+```
+# Convert VCF file into ANNOVAR input format:
+convert2annovar.pl -format vcf4old source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz -outfile source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput
+# Annotate using hg19 RefSeq:
+annotate_variation.pl -buildver hg19 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput humandb/
+```
+Note that `-format vcf4old` is important to get all variants in the VCF. The latest ANNOVAR version 2019Oct24. RefSeq is the default reference that ANNOVAR uses. All exonic variant will be recorded in the `*.exonic_variant_function` file.
+
+* Then, extract all variants from `*.exonic_variant_function` to query snap scores from `snapfun.db`.
+```
+# Make query file:
+# -e: path to *.exonic_variant_function file
+# -m: path to map_RefSeq_and_UniProt.csv file
+Rscript exonic_variant_function2snap_query.R -e source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput.exonic_variant_function -m /path/to/map_RefSeq_and_UniProt.csv
+```
+
+### Mapping RefSeq to UniProt
 
 RefSeq GRCh37 mRNA and protein sequences downloaded on May/5/2020.
 
 ANNOVAR humandb hg19_refGeneMrna.fa with a date on June/1/2017.
+
+
 
 ---
 ## Step Three: Query SNAP database
@@ -394,6 +401,7 @@ Now the *db* folder should have:
  * updated SNAP score file `Mutations.mutOut`
  * updated transcript - protein - protein length file `Transcript-ProtLength.csv`
 
+
 ---
 ## Other methods for ethnicity check:
 
@@ -411,3 +419,17 @@ plink --bfile euro952samples --bmerge input.bed input.bim input.fam --recodeA --
 Rscript ethnicity_SNPRelate.R \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
 ```
+* *Method 4*: Calculate probabilities of individuals being a [known ethnicity](https://frog.med.yale.edu/FrogKB/FrogServlet) by forensic marker [frequency production](https://frog.med.yale.edu/FrogKB/formula.jsp).
+```
+# Extract only the 55 markers from KiddLab.
+bcftools view -R 55markers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_Kidd-markers.vcf.gz
+# Calculate the probability using a production method.
+Rscript forensic_method.R source_Kidd-markers.vcf.gz
+```
+
+* **Note that:**
+ * *Method 1* uses AIMs to infer ethnicity using reference labels (952 ancestry known samples).
+ * *Method 2* takes all SNPs and do PCA on LD-pruned SNPs to infer ethnicity using reference labels (user defined).
+ * *Method 3* uses pre-calculated reference SS2 model and gives prediction of five 1000Genomes population code.
+ * *Method 4* uses AIMs to infer ethnicities (known ethnicities).
+ * Technically, results should be very **consistent across all method**. But human interpretation may be needed for specific cases.

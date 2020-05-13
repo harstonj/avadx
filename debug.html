@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>/*
+
+github.com style (c) Vasily Polovnyov <vast@whiteants.net>
+
+*/
+
+.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 0.5em;
+  color: #333;
+  background: #f8f8f8;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #998;
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-subst {
+  color: #333;
+  font-weight: bold;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag .hljs-attr {
+  color: #008080;
+}
+
+.hljs-string,
+.hljs-doctag {
+  color: #d14;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-selector-id {
+  color: #900;
+  font-weight: bold;
+}
+
+.hljs-subst {
+  font-weight: normal;
+}
+
+.hljs-type,
+.hljs-class .hljs-title {
+  color: #458;
+  font-weight: bold;
+}
+
+.hljs-tag,
+.hljs-name,
+.hljs-attribute {
+  color: #000080;
+  font-weight: normal;
+}
+
+.hljs-regexp,
+.hljs-link {
+  color: #009926;
+}
+
+.hljs-symbol,
+.hljs-bullet {
+  color: #990073;
+}
+
+.hljs-built_in,
+.hljs-builtin-name {
+  color: #0086b3;
+}
+
+.hljs-meta {
+  color: #999;
+  font-weight: bold;
+}
+
+.hljs-deletion {
+  background: #fdd;
+}
+
+.hljs-addition {
+  background: #dfd;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: bold;
+}
+</style><style>/*
+ * Your Stylesheet
+ *
+ * This stylesheet is loaded when Atom starts up and is reloaded automatically
+ * when it is changed and saved.
+ *
+ * Add your own CSS or Less to fully customize Atom.
+ * If you are unfamiliar with Less, you can read more about it here:
+ * http://lesscss.org
+ */
+/*
+ * Examples
+ * (To see them, uncomment and save)
+ */
+</style>
+
+        <!--<script src=""></script>-->
+    </head>
+    <body class="markdown-body">
+        <h1 id="avadx-pipeline"><strong>AVA,Dx pipeline</strong></h1>
+<h2 id="inputs-and-outputs"><strong>Inputs and outputs</strong></h2>
+<h3 id="input"><strong>Input</strong>:</h3>
+<ul>
+<li>VCF file (GRCh37/hg19)<ul>
+<li>e.g. <code>source.vcf.gz</code></li></ul></li>
+<li>Class label file<ul>
+<li>e.g. <code>diagnosis.txt</code></li></ul></li>
+<li>(optional) individual list (sample IDs of interest)<ul>
+<li>in case VCF file contains extra individuals</li>
+<li>e.g. <code>sampleID_of_interest.txt</code></li></ul></li>
+<li>(optional) cross-validation data split schemes<ul>
+<li>in case of non-random split</li>
+<li>e.g. <code>cv-scheme.txt</code></li></ul></li>
+<li>(optional) external gene set to use as features<ul>
+<li>to test the predictability of known genes</li>
+<li>e.g. <code>known-genes.txt</code></li></ul></li>
+</ul>
+<h3 id="output"><strong>Output</strong>:</h3>
+<ul>
+<li>a <em>gene score</em> table<ul>
+<li>two schemes to choose: <em>sum</em> or <em>product</em> (see details below)</li>
+<li>e.g. <code>GeneScoreTable_normed.txt</code></li></ul></li>
+<li>selected genes<ul>
+<li>e.g. <code>.xlsx</code></li></ul></li>
+<li>model performance<ul>
+<li>e.g. <code>performance.xlsx</code></li></ul></li>
+</ul>
+<h3 id="check-before-running-all-steps"><strong>Check before running all steps</strong>:</h3>
+<ul>
+<li>The current workflow works with hg19 only.</li>
+<li>This pipeline is currently for regular VCF file input (scripts need to be updated for gVCF files).</li>
+<li>Manual check of quality outliers, ethnicity, etc. are highly recommended.</li>
+<li>When input VCF contains variants with no SNAP score records in the snapfundb, the snapfun.db needs to be updated.</li>
+<li>Feature selection (FS) and model selection in model training, including FS method choosing, model choosing, model tuning, etc. need human interpretation.</li>
+</ul>
+<hr>
+<h2 id="prerequisite">Prerequisite</h2>
+<ul>
+<li>R and packages (data.table, tydiverse, seqinr, stringr, EthSEQ, SNPRelate, e1071, caret)</li>
+<li>python</li>
+<li>tabix</li>
+<li><a href="https://samtools.github.io/bcftools/">bcftools</a></li>
+<li><a href="http://annovar.openbioinformatics.org">ANNOVAR</a></li>
+<li><a href="https://www.cog-genomics.org/plink2/">PLINK</a></li>
+<li>Slurm cluster system (e.g. <a href="https://oarc.rutgers.edu/amarel/">Amarel</a>) for submitting jobs parallelly</li>
+</ul>
+<hr>
+<h2 id="step-1-variant-qc"><strong>Step 1:</strong> Variant QC</h2>
+<p>Analyses in AVA,Dx and many other methods need stringent QC of the VCF file. Because all genes are taken into consideration in FS and model building, and artifacts in the data could lead to biased results. This very first step removes &quot;bad&quot; variants in the VCF file by removing variant locations and individuals. Thresholds used here for all metrics are determined empirically. User can change them according to specific need.</p>
+<ul>
+<li>Extract individuals of interest (diseased and healthy individuals of interest).</li>
+</ul>
+<pre><code class="hljs"><span class="hljs-selector-tag">bcftools</span> <span class="hljs-selector-tag">view</span> <span class="hljs-selector-tag">-S</span> <span class="hljs-selector-tag">sampleID</span><span class="hljs-selector-class">.txt</span> <span class="hljs-selector-tag">source</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span> <span class="hljs-selector-tag">-Oz</span> <span class="hljs-selector-tag">-o</span> <span class="hljs-selector-tag">source_s-selected</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span></code></pre>
+<ul>
+<li>Remove variant sites which did not pass the VQSR standard.</li>
+</ul>
+<pre><code class="hljs">bcftools<span class="hljs-built_in"> filter </span>-i <span class="hljs-string">&apos;FILTER=&quot;PASS&quot;&apos;</span> source_s-selected.vcf.gz -Oz -o source_s-selected_v-PASS.vcf.gz</code></pre>
+<ul>
+<li>Split SNV and InDel calls to separated files because they use different QC thresholds. Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.</li>
+</ul>
+<pre><code class="hljs"><span class="hljs-selector-tag">bcftools</span> <span class="hljs-selector-tag">view</span> <span class="hljs-selector-tag">--types</span> <span class="hljs-selector-tag">snps</span> <span class="hljs-selector-tag">source_s-selected_v-PASS</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span> <span class="hljs-selector-tag">-Oz</span> <span class="hljs-selector-tag">-o</span> <span class="hljs-selector-tag">source_s-selected_v-PASS_snps</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span>
+<span class="hljs-selector-tag">bcftools</span> <span class="hljs-selector-tag">view</span> <span class="hljs-selector-tag">--types</span> <span class="hljs-selector-tag">indels</span> <span class="hljs-selector-tag">source_s-selected_v-PASS</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span> <span class="hljs-selector-tag">-Oz</span> <span class="hljs-selector-tag">-o</span> <span class="hljs-selector-tag">source_s-selected_v-PASS_indels</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span></code></pre>
+<ul>
+<li>Remove variant sites by site-wise quality. Good site-wise qualities are: QUAL &gt; 30, mean DP &gt; 6, mean DP &lt; 150. These thresholds are arbitrarily and empirically determined.</li>
+</ul>
+<pre><code class="hljs">bcftools view -<span class="hljs-selector-tag">i</span> <span class="hljs-string">&apos;QUAL&gt;30 &amp; AVG(FMT/DP)&lt;=150 &amp; AVG(FMT/DP)&gt;=6&apos;</span> source_s-selected_v-PASS_snps<span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span> -Oz -o source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150<span class="hljs-selector-class">.vcf</span>.gz</code></pre>
+<ul>
+<li>Check individual call quality. Good individual call qualities are: AB &gt; 0.3 and AB &lt; 0.7, GQ &gt; 15, DP &gt; 4. These thresholds are arbitrarily and empirically determined. Bad individual GTs are converted into missing &quot;./.&quot;. Remove variant sites with a low call rate. Low call rate is arbitrarily determined as a call rate &lt; 80%, <em>i.e.</em> missing rate &gt;= 20%.</li>
+</ul>
+<pre><code class="hljs"><span class="hljs-selector-tag">python</span> <span class="hljs-selector-tag">filterVCF_by_ABAD</span><span class="hljs-selector-class">.py</span> \
+  <span class="hljs-selector-tag">source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span> \
+  <span class="hljs-selector-tag">source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span></code></pre>
+<ul>
+<li>Lastly, gnomAD filter: filtering out variants that were not recorded in the gnomAD database. The gnomAD reference used here is the ANNOVAR gnomAD file <code>hg19_gnomad_exome.txt</code> and <code>hg19_gnomad_genome.txt</code>. Check the input path of the two reference files before running the script. Note that <code>tabix</code> is required to run this script.</li>
+</ul>
+<pre><code class="hljs"># <span class="hljs-selector-tag">Conver</span> <span class="hljs-selector-tag">the</span> <span class="hljs-selector-tag">chromosome</span> <span class="hljs-selector-tag">annotation</span> <span class="hljs-selector-tag">if</span> <span class="hljs-selector-tag">the</span> <span class="hljs-selector-tag">chromosomes</span> <span class="hljs-selector-tag">are</span> <span class="hljs-selector-tag">recorded</span> <span class="hljs-selector-tag">as</span> &quot;<span class="hljs-selector-tag">chr1</span>&quot; <span class="hljs-selector-tag">instead</span> <span class="hljs-selector-tag">of</span> &quot;1&quot;:
+<span class="hljs-selector-tag">bcftools</span> <span class="hljs-selector-tag">annotate</span> <span class="hljs-selector-tag">--rename-chrs</span> <span class="hljs-selector-tag">chr_to_number</span><span class="hljs-selector-class">.txt</span> <span class="hljs-selector-tag">input</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span> <span class="hljs-selector-tag">-Oz</span> <span class="hljs-selector-tag">-o</span> <span class="hljs-selector-tag">input_rmchr</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span>
+# <span class="hljs-selector-tag">Then</span> <span class="hljs-selector-tag">remove</span> <span class="hljs-selector-tag">variants</span> <span class="hljs-selector-tag">that</span> <span class="hljs-selector-tag">are</span> <span class="hljs-selector-tag">not</span> <span class="hljs-selector-tag">in</span> <span class="hljs-selector-tag">gnomAD</span> <span class="hljs-selector-tag">database</span>:
+<span class="hljs-selector-tag">python</span> <span class="hljs-selector-tag">filterVCF_by_gnomAD</span><span class="hljs-selector-class">.py</span> <span class="hljs-selector-tag">input_rmchr</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span> <span class="hljs-selector-tag">output</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span></code></pre>
+<p>Note that, gnomAD also contains low quality calls. For example, variant <a href="https://gnomad.broadinstitute.org/variant/1-30548-T-G?dataset=gnomad_r2_1">1-30548-T-G</a> is covered in fewer than 50% of individuals in exomes and genomes (gnomAD v2.1.1) and the allele balance are skewed in some individuals. Specifically, this variant has a &quot;.&quot; in the exome reference file (<code>hg19_gnomad_exome.txt</code>). But it will be kept as long as the genome reference (<code>hg19_gnomad_genome.txt</code>) has a record of this variant. This step could be slow if there&apos;re a lot of variants to check.</p>
+<hr>
+<h2 id="step-2-individual-qc"><strong>Step 2:</strong> Individual QC</h2>
+<p><strong>Quality</strong> check:</p>
+<ul>
+<li>Check quality outliers by examine nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:</li>
+</ul>
+<pre><code class="hljs"># <span class="hljs-selector-tag">Output</span> <span class="hljs-selector-tag">quality</span> <span class="hljs-selector-tag">metrics</span> <span class="hljs-selector-tag">after</span> <span class="hljs-selector-tag">variant</span> <span class="hljs-selector-tag">QC</span>:
+<span class="hljs-selector-tag">bcftools</span> <span class="hljs-selector-tag">stats</span> <span class="hljs-selector-tag">-v</span> <span class="hljs-selector-tag">-s</span> <span class="hljs-selector-tag">-</span> <span class="hljs-selector-tag">source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span> &gt; <span class="hljs-selector-tag">source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc</span><span class="hljs-selector-class">.stats</span><span class="hljs-selector-class">.txt</span>
+# <span class="hljs-selector-tag">Draw</span> <span class="hljs-selector-tag">individual</span> <span class="hljs-selector-tag">quality</span> <span class="hljs-selector-tag">figure</span>:
+<span class="hljs-selector-tag">Rscript</span> <span class="hljs-selector-tag">stats_quality_pca</span><span class="hljs-selector-class">.R</span> <span class="hljs-selector-tag">-f</span> <span class="hljs-selector-tag">source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc</span><span class="hljs-selector-class">.stats</span><span class="hljs-selector-class">.txt</span></code></pre>
+<p>Above script output a PCA figure of samples clustered by their quality metrics <em>after</em> variant QC. User needs to pick up the outliers and decide whether to keep them in later analyses.</p>
+<p><strong>Ethnicity</strong> check:</p>
+<ul>
+<li>Annotate ethnicity with <a href="https://cran.r-project.org/web/packages/EthSEQ/index.html">EthSEQ</a> R package:</li>
+</ul>
+<pre><code class="hljs"># OPTIONAL: If the <span class="hljs-keyword">number</span> of individuals exceeds certain <span class="hljs-keyword">number</span>, <span class="hljs-string">&quot;memory exhausted&quot;</span> error may occur. Manually divide <span class="hljs-built_in">input</span> VCF into chunks of individuals <span class="hljs-built_in">and</span> run EthSEQ separately <span class="hljs-keyword">for</span> each chunk:
+bcftools query -<span class="hljs-keyword">l</span> source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz &gt; sample_list.txt
+csplit sample_list.txt <span class="hljs-number">500</span>  # outputs from xx00 <span class="hljs-keyword">to</span> xx0n
+# OPTIONAL: Clean VCF format <span class="hljs-keyword">for</span> EthSEQ <span class="hljs-built_in">input</span> (<span class="hljs-keyword">do</span> the same thing <span class="hljs-keyword">for</span> every chunk):
+bcftools <span class="hljs-keyword">view</span> -S xx00 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz | bcftools annotate --<span class="hljs-built_in">remove</span> <span class="hljs-string">&apos;ID,INFO,FORMAT&apos;</span> | bcftools <span class="hljs-keyword">view</span> --<span class="hljs-keyword">no</span>-header -Oz -<span class="hljs-keyword">o</span> source_xx00_EthSEQinput.vcf.gz
+# If <span class="hljs-keyword">no</span> separation of individuals needed:
+bcftools annotate --<span class="hljs-built_in">remove</span> <span class="hljs-string">&apos;ID,INFO,FORMAT&apos;</span> source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz | bcftools <span class="hljs-keyword">view</span> --<span class="hljs-keyword">no</span>-header -Oz -<span class="hljs-keyword">o</span> source_EthSEQinput.vcf.gz
+# Run EthSEQ:
+# <span class="hljs-string">&quot;export R_MAX_VSIZE=32000000000&quot;</span> can <span class="hljs-keyword">be</span> used <span class="hljs-keyword">to</span> increase memory before running below <span class="hljs-keyword">for</span> larger datasets
+Rscript ethnicity_EthSEQ.R source_EthSEQinput.vcf.gz /path/<span class="hljs-keyword">to</span>/output/folder</code></pre>
+<ul>
+<li>Results of ethnicity predictions are in <code>/path/to/output/folder/Report.txt</code> and the corresponding sample IDs are in <code>sample_list.txt</code> (<code>sample_list.txt</code> obtained by running <code>bcftools query -l source.vcf.gz &gt; sample_list.txt</code>).</li>
+</ul>
+<pre><code class="hljs">Rscript ethnicity_EthSEQ_summary.R <span class="hljs-regexp">/path/</span>to<span class="hljs-regexp">/output/</span>folder<span class="hljs-regexp">/Report.txt sample_list.txt /</span>path<span class="hljs-regexp">/to/</span>output<span class="hljs-regexp">/folder</span></code></pre>
+<ul>
+<li>Above returns two files: <code>sampleID_closest_EUR.txt</code> and <code>sampleID_inside_EUR.txt</code>. <strong><code>sampleID_inside_EUR.txt</code> contains the sample ID for all EUR individuals in the dataset, which generally should be used for further analysis</strong>. Customized script should be used for special requirements.</li>
+</ul>
+<p><strong>Relatedness</strong> check:</p>
+<ul>
+<li>Check relatedness within datasets withe the <a href="https://bioconductor.org/packages/release/bioc/html/SNPRelate.html">SNPRelate</a> R package. A default kinship &gt; 0.3 is considered to be related.</li>
+</ul>
+<pre><code class="hljs">Rscript relatedness.R -i source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">MR20perc</span>.</span></span>vcf.gz -g source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">MR20perc</span>.</span></span>gds -c <span class="hljs-number">0.3</span> -o /path/<span class="hljs-keyword">to</span>/output/folder</code></pre>
+<p>The output folder contains 3 files: <code>IBD_histogram.pdf</code>, <code>IBD.txt</code>, and <code>IBD_related.txt</code>. The histogram shows the distribution of kinship values of all individual pairs from the input VCF. <code>IBD.txt</code> is a complete table of the kinship values. <code>IBD_related.txt</code> only contains related pairs per the <code>-c</code> cutoff.</p>
+<ul>
+<li>Outlier individual IDs should be combined from the PCA, ethnicity annotation, and relatedness calculation to a file <code>outliers.txt</code> (one ID per row). Then remove individual outliers by:</li>
+</ul>
+<pre><code class="hljs"><span class="hljs-selector-tag">bcftools</span> <span class="hljs-selector-tag">-S</span> ^<span class="hljs-selector-tag">outliers</span><span class="hljs-selector-class">.txt</span> <span class="hljs-selector-tag">source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span> <span class="hljs-selector-tag">-Oz</span> <span class="hljs-selector-tag">-o</span> <span class="hljs-selector-tag">source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span></code></pre>
+<hr>
+<h2 id="step-3-query-snap-scores-for-all-variants"><strong>Step 3:</strong> Query SNAP scores for all variants</h2>
+<ul>
+<li>Get all variant annotations with ANNOVAR for cleaned VCF:</li>
+</ul>
+<pre><code class="hljs"># Convert VCF <span class="hljs-keyword">file</span> into ANNOVAR <span class="hljs-keyword">input</span> <span class="hljs-keyword">format</span>:
+convert2annovar.<span class="hljs-keyword">pl</span> -<span class="hljs-keyword">format</span> vcf4old source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz -<span class="hljs-keyword">outfile</span> source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput
+# Annotate using hg19 RefSeq:
+annotate_variation.<span class="hljs-keyword">pl</span> -buildver hg19 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput humandb/</code></pre>
+<p>Note that <code>-format vcf4old</code> is important to get all variants in the VCF. The latest ANNOVAR version 2019Oct24. RefSeq is the default reference that ANNOVAR uses. All exonic variant will be recorded in the <code>*.exonic_variant_function</code> file.</p>
+<ul>
+<li>Then, extract all variants from <code>*.exonic_variant_function</code> to query snap scores from <code>snapfun.db</code>. The <code>db</code> folder already contains a file (<code>Mutations.mutOut</code>) of pre-calculated SNAP scores for variants from previous studies. Below steps will generate query file for variants which are not included in <code>Mutations.mutOut</code>.</li>
+</ul>
+<pre><code class="hljs"># Make query <span class="hljs-keyword">file</span>:
+# -e: path <span class="hljs-keyword">to</span> *.exonic_variant_function <span class="hljs-keyword">file</span>
+# -m: path <span class="hljs-keyword">to</span> map_RefSeq_and_UniProt.csv <span class="hljs-keyword">file</span>
+Rscript exonic_variant_function2snap_query.R -e source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput.exonic_variant_function -m /path/<span class="hljs-keyword">to</span>/map_RefSeq_and_UniProt.csv</code></pre>
+<p>Note that ANNOVAR annotates variants to RefSeq mRNA transcripts (e.g. NM_001). The corresponding protein entry (e.g. NP_098) can be retrieved from NCBI database. So for each exonic variant, we know its genomic and genetic location, the mutation (from what to what), and corresponding RefSeq mRNA transcript and protein accesion numbers from the annotation.</p>
+<p>But <code>snapfun.db</code> is based on UniProt protein records (e.g. P11310 is the ID for entry name ACADM_HUMAN). There are around a quarter of protein sequences do not match between RefSeq protein and UniProt protein. Therefore, the script <code>exonic_variant_function2snap_query.R</code> can only output the query file of those protein that can be mapped to UniProt sequences. Query file looks like:</p>
+<p>To query for SNAP scores for all variants, including those unmappable ones, we recommend using protein sequences instead of UniProt IDs as query inputs.</p>
+<ul>
+<li>After obtaining SNAP scores for &quot;new&quot; variants, update the <code>Mutations.mutOut</code> file by:</li>
+</ul>
+<pre><code class="hljs">cat /path/<span class="hljs-keyword">to</span>/<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">Mutations</span>.</span></span>mutOut query_result.txt &gt; /path/<span class="hljs-keyword">to</span>/<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">Mutations</span>.</span></span>mutOut</code></pre>
+<hr>
+<h2 id="step-4-gene-score-calculation"><strong>Step 4:</strong> Gene score calculation</h2>
+<ul>
+<li>Convert cleaned VCF to <strong>individual</strong> ANNOVAR annotation files by:</li>
+</ul>
+<pre><code class="hljs">convert2annovar.<span class="hljs-keyword">pl</span> -<span class="hljs-keyword">format</span> vcf4 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz -<span class="hljs-keyword">outfile</span> /path/to/output/folder/<span class="hljs-keyword">sample</span> -allsample</code></pre>
+<p>The <code>vcf4</code> and <code>-allsample</code> arguments specify that one <code>sample*.avinput</code> output file are generated for <strong>every individual</strong> in the VCF, i.e. multiple output files.</p>
+<p><em>Troubleshooting:</em> <code>convert2annovar.pl</code> script opens new files simultaneously for all samples, and when the sample number exceeds the maximum number (2048 to be set by <code>ulimit -n 2048</code>), the script returns error because it cannot open a larger number of files. If sample number exceeds 2048, split the VCF file into chunks of samples and run <code>convert2annovar.pl</code> separately for each chunk.</p>
+<ul>
+<li>Next, do annotation with hg19 assembly to all <code>sample*.avinput</code> files, preferably on amarel using job arrays (<code>submit.sh</code> file for a 500 sample VCF):</li>
+</ul>
+<pre><code class="hljs"><span class="hljs-meta">#!/bin/bash</span>
+<span class="hljs-comment">#SBATCH --partition=main</span>
+<span class="hljs-comment">#SBATCH --time=2:00:00</span>
+<span class="hljs-comment">#SBATCH --array=0-499</span>
+<span class="hljs-comment">#SBATCH --requeue</span>
+inArray=(sample1.avinput sample2.avinput sample3.avinput ...)
+input=<span class="hljs-variable">${inArray[$SLURM_ARRAY_TASK_ID]}</span>
+./annotate_variation.pl -build hg19 <span class="hljs-variable">$input</span> /humandb</code></pre>
+<ul>
+<li><em>Optional (sanity check):</em> From above, individual <code>.exonic_variant_function</code> file will be generated and will be used later to calculate gene score. Before that, if we double-check if there&apos;re missing SNAP for the individual <code>.exonic_variant_function</code> file by:</li>
+</ul>
+<pre><code class="hljs">Rscript cal_genescore_make_missingSNAP.R -f /<span class="hljs-type">path</span>/<span class="hljs-keyword">to</span>/sample<span class="hljs-number">.1</span>.avinput.exonic_variant_function \
+  -s /<span class="hljs-type">path</span>/<span class="hljs-keyword">to</span>/db/Mutations.mutOut \
+  -l /<span class="hljs-type">path</span>/<span class="hljs-keyword">to</span>/db/Transcript-ProtLength_cleaned.csv \
+  -o /<span class="hljs-type">path</span>/<span class="hljs-keyword">to</span>/output/folder</code></pre>
+<p>From above, if there are still missing SNAP mutations in the <code>/path/to/output/folder</code> folder. These are the mutations that we excluded when we generated the SNAP input in previous steps, because their REF nucleotide base disagrees with the RefSeq fasta sequence. Those variants usually do not account for a very large portion of the total variants in the data and will be ignored by <code>cal_genescore_make_genescore.R</code> later.</p>
+<ul>
+<li>After <code>.exonic_variant_function</code> files for all samples are generated, calculate gene score by:</li>
+</ul>
+<pre><code class="hljs"><span class="hljs-comment"># Run this for every person using .sh script on amarel:</span>
+Rscript cal_genescore_make_genescore.R \
+  -f <span class="hljs-regexp">/Users/</span>WangYanran<span class="hljs-regexp">/Documents/</span>BrombergLab<span class="hljs-regexp">/AVA_Method_paper_TS/</span>Filtered_Data<span class="hljs-regexp">/exonic_variant_function/</span>sample.<span class="hljs-number">25000</span>.fa.avinput.exonic_variant_function \
+  -s <span class="hljs-regexp">/Users/</span>WangYanran<span class="hljs-regexp">/Documents/</span>Bitbucket<span class="hljs-regexp">/repos/</span>avadx-meta<span class="hljs-regexp">/db/</span>Mutations.mutOut \
+  -l <span class="hljs-regexp">/Users/</span>WangYanran<span class="hljs-regexp">/Documents/</span>Bitbucket<span class="hljs-regexp">/repos/</span>avadx-meta<span class="hljs-regexp">/db/</span>Transcript-ProtLength_cleaned.csv \
+  -m sum \ <span class="hljs-comment"># or production</span>
+  -n both \
+  -o <span class="hljs-regexp">/Users/</span>WangYanran<span class="hljs-regexp">/Desktop/</span>tmp</code></pre>
+<p>All gene score calculation functions and pre-processing steps are stored at <code>cal_genescore_make_genescore.R</code> script.</p>
+<p><code>-m</code> asks user to choose either to sum or multiply variant scores into <em>gene score</em>;</p>
+<p><code>-n</code> asks if normalize by protein length;</p>
+<p><code>-heti</code> asks for the coefficient used for the heterozygous genotypes;</p>
+<p><code>-o</code> asks user to specify the output= path.</p>
+<ul>
+<li><p><em>gene score</em> is defined as a <strong>sum</strong> or <strong>product</strong> of the all variant scores within the gene coding region.</p></li>
+<li><p><em>EQUATIONS</em></p></li>
+<li><p>Note that, a small part of genes will have different gene names between the ANNOVAR annotation (in the .exonic_variant_function file) and the Transcript-ProtLength.csv file. For example, NM_138383 maps to NP_612392 and gene &quot;<em>MTSS2</em>&quot; in the RefSeq database and maps to &quot;<em>MTSS1L</em>&quot; in the ANNOVAR annotation. This happens likely because the version of ANNOVAR annotation and RefSeq database aren&apos;t exactly the same version, or it could be because the gene names are not a constant ID. Therefore, our script (<code>cal_genescore_make_genescore.R</code>) uses transcript NM_ numbers as identifiers, not gene names. The output <em>gene score</em> file contains gene names from the ANNOVAR annotation version, i.e. NM_138383 will have a gene name &quot;<em>MTSS1L</em>&quot; in the resulting <em>gene score</em> file.</p></li>
+<li><p>Assuming there are N individuals in the dataset, N resulting files will be generated. Below script will read-in all files and merge them into a file table where a row is an individual and a column is a gene (protein).</p></li>
+</ul>
+<pre><code class="hljs">Rscript merge_genescore.R \
+  -f <span class="hljs-regexp">/path/</span>to<span class="hljs-regexp">/individual/</span>score<span class="hljs-regexp">/folder \
+  -o /</span>path<span class="hljs-regexp">/to/</span>output</code></pre>
+<hr>
+<h2 id="step-five-feature-selection-fs-and-training-cross-validation">Step Five: Feature selection (FS) and training (cross-validation)</h2>
+<p>There are three types of FS types: filter, wrapper, and embedded. Currently, AVA,Dx does not use the wrapper method because wrapper method usually takes long time to search feature subset and there are always multiple optimal feature sets. AVA,Dx uses both filter and embedded methods. Default filter method is performing K-S (Kolmogorov&#x2013;Smirnov) test between gene score distributions of the disease and healthy statuses in the training fold. Embedded method is DKM algorithm from R package CORElearn.</p>
+<p>To perform FS in cross-validated fashion, user needs to provide a cross-validation scheme file. For example, we split Tourette dataset (yale-1) into three folds and each contains unrelated probands, their parents are used as healthy controls and the probands&apos; own parents should be in other folds, so that the probands are compared with unrelated healthy parents.</p>
+<ul>
+<li>User needs to provide a cross-validation scheme file with three columns:  <em>SampleID</em>, <em>Phenotype</em>, <em>fold</em>. For example:</li>
+</ul>
+<pre><code class="hljs">SampleID fold  Phenotype
+sample1 <span class="hljs-number">1</span> <span class="hljs-number">1</span>
+sample2 <span class="hljs-number">1</span> <span class="hljs-number">0</span>
+sample3 <span class="hljs-number">2</span> <span class="hljs-number">1</span>
+sample4 <span class="hljs-number">2</span> <span class="hljs-number">0</span>
+...
+sample100 <span class="hljs-number">10</span> <span class="hljs-number">1</span>
+sample101 <span class="hljs-number">10</span> <span class="hljs-number">0</span></code></pre>
+<ul>
+<li>Then, do feature selection by:</li>
+</ul>
+<pre><code class="hljs">Rscript FS-CVperf-kfold.R \
+  -f /<span class="hljs-type">path</span>/<span class="hljs-keyword">to</span>/GeneScoreTable_normed.txt \
+  -m ks \  # <span class="hljs-keyword">current</span> <span class="hljs-keyword">options</span>: ks <span class="hljs-keyword">or</span> DKM
+  -M rf \  # <span class="hljs-keyword">current</span> <span class="hljs-keyword">options</span>: rf <span class="hljs-keyword">or</span> SVM
+  -s /<span class="hljs-type">path</span>/<span class="hljs-keyword">to</span>/cv-scheme.text \  # contains <span class="hljs-keyword">columns</span> <span class="hljs-string">&apos;SampleID&apos;</span>, <span class="hljs-string">&apos;Phenotype&apos;</span>, <span class="hljs-string">&apos;fold&apos;</span>
+  -k <span class="hljs-number">10</span> \
+  -l /<span class="hljs-type">path</span>/<span class="hljs-keyword">to</span>/Transcript-ProtLength_cleaned.csv \
+  -t <span class="hljs-number">5</span> \  # increase gene numbers <span class="hljs-keyword">by</span> <span class="hljs-number">5</span>
+  -n <span class="hljs-number">200</span> \  # test <span class="hljs-keyword">by</span> top ranked genes <span class="hljs-keyword">until</span> the top <span class="hljs-number">200</span>
+  -o /<span class="hljs-type">path</span>/<span class="hljs-keyword">to</span>/output/folder</code></pre>
+<p>This generates feature selection results in the output folder. Example outputs are: <code>10F-CV-ks-selectedGenes.xlsx</code> and <code>10F-CV-rf-performance.xlsx</code> with <code>-m ks</code>, <code>-M rf</code>, and <code>-k 10</code>.</p>
+<ul>
+<li>Then check pathway over-representation with selected genes. Make sure that there is <code>10F-CV-ks-selectedGenes.xlsx</code> file before running script below.</li>
+</ul>
+<pre><code class="hljs">Rscript FS-CVgeneOverRep-kfold.R \
+  -f /path/<span class="hljs-keyword">to</span>/<span class="hljs-number">10</span>F-CV-ks-selectedGenes.xlsx \
+  -b /path/<span class="hljs-keyword">to</span>/GeneScoreTable_normed.NAto0.nzv85-<span class="hljs-number">15</span>.txt \  # cleaned gene score table
+  -n <span class="hljs-number">100</span> \  # number <span class="hljs-keyword">of</span> genes <span class="hljs-keyword">to</span> <span class="hljs-keyword">select</span> <span class="hljs-keyword">for</span> over-representation analysis
+  -d /path/<span class="hljs-keyword">to</span>/CPDB_pathways_genesymbol.tab \
+  -a T \  # <span class="hljs-keyword">or</span> F depending <span class="hljs-keyword">on</span> the FS <span class="hljs-function"><span class="hljs-keyword">method</span>
+  -<span class="hljs-title">o</span> /<span class="hljs-title">path</span>/<span class="hljs-title">to</span>/<span class="hljs-title">output</span>/<span class="hljs-title">folder</span></span></code></pre>
+<p>This generates the over-represented pathways for designated top-ranked genes.</p>
+<hr>
+<h3 id="troubleshooting">Troubleshooting</h3>
+<ul>
+<li>The <em>CORElearn</em> package only deals with FS in a relatively small dataset. For a larger data frame, it runs into <code>Error: protect(): protection stack overflow</code> and setting <code>--max-ppsize=5000000</code> does not help, either.</li>
+<li><strong>NOT ADDED YET:</strong> The Boruta package has <code>Boruta()</code> function, which uses the <a href="https://cran.r-project.org/web/packages/Boruta/vignettes/inahurry.pdf">Boruta algorithm</a> for feature selection. Briefly, Boruta is based on random forest from the ranger package. Boruta gets scores from the random forest ranking of features, and uses shadow features (copies of original features but with randomly mixed values) to keep the feature&apos;s original distribution but wipes out its importance. If the original feature has a much higher score compared with its own shadow features, it&apos;ll be a <em>hit</em>. As a result, Boruta <strong>will</strong> return redundant features.</li>
+</ul>
+<hr>
+<h2 id="step-three-original-variant-annotation-and-snap-score-calculation">Step Three (Original): Variant annotation and SNAP score calculation</h2>
+<ul>
+<li>Run ANNOVAR for VCF annotation:</li>
+</ul>
+<pre><code class="hljs"># Convert VCF <span class="hljs-keyword">file</span> into ANNOVAR <span class="hljs-keyword">input</span> <span class="hljs-keyword">format</span>:
+convert2annovar.<span class="hljs-keyword">pl</span> -<span class="hljs-keyword">format</span> vcf4old source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz -<span class="hljs-keyword">outfile</span> source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput
+# Annotate using hg19 human reference:
+annotate_variation.<span class="hljs-keyword">pl</span> -buildver hg19 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput humandb/</code></pre>
+<p>In the above commands, <code>vcf4old</code> argument must be used to ensure that all records in the VCF file is output to one resulting file, which contains every possible variant in this dataset. The output file should include <code>source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function</code>, which is used as input for steps below.</p>
+<ul>
+<li><p>AVA,Dx has pre-calculated SNAP scores stored in the <em>db</em> folder (<code>Mutations.mutOut</code>; it has three columns: mRNA accession, amino acid mutation, pre-calculated SNAP score). Additionally in the same folder, <code>mRNA_identifiers.txt</code> stores the transcript identifiers (currently 46,327 mRNA transcripts), and <code>prot_seqs.txt</code> stores the protein sequences with &quot;NM_XX_prot_NP_YY&quot; in the header lines for mapping uses. For a new dataset, first check if the pre-calculated SNAP score file already has recorded all the variants. If not, we generate a &quot;missing SNAP&quot; list and make SNAP input files for those variants first.</p></li>
+<li><p>Check if the dataset has a &quot;missing SNAP score&quot;:</p></li>
+</ul>
+<pre><code class="hljs">Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function <span class="hljs-regexp">/path/</span>to<span class="hljs-regexp">/db/</span>folder <span class="hljs-regexp">/path/</span>to<span class="hljs-regexp">/output/</span>folder</code></pre>
+<p>If &quot;Transcript-ProtLength.csv lacks protein length info. Please check and run this script again.&quot;, the script outputs a file of mRNA accession numbers to query at <a href="https://www.ncbi.nlm.nih.gov/sites/batchentrez">NCBI Batch Entrez</a>, and the <code>Transcript-ProtLength.csv</code> file needs to be updated.</p>
+<ul>
+<li><p>The above command first check if the SNAP score file <code>Mutations.mutOut</code> contains all the variants in the dataset. If not, the script prints out the number of &quot;missing SNAP&quot; mutations and generates SNAP input for those variants. To do this, the script first checks if <code>prot_seqs.txt</code> file contains all protein sequences and then generates SNAP input files for new variants.</p></li>
+<li><p>If <code>prot_seqs.txt</code> is not complete, the script outputs a file with mRNA accession numbers (<code>TranscriptAccess_missing_prot_seq.txt</code>) in the output folder. User needs to retrieve the corresponding protein sequences at <a href="https://www.ncbi.nlm.nih.gov/sites/batchentrez">NCBI Batch Entrez</a>.</p></li>
+<li><p><a href="https://www.ncbi.nlm.nih.gov/sites/batchentrez">NCBI Batch Entrez</a> steps:</p>
+<ul>
+<li>Upload the mRNA accesion list file with &quot;Choose File&quot; and <em>Retrieve</em> in the <em>Nucleotide database</em>.</li>
+<li>Then click <em>Send to</em> at the resulting page, choose <em>Coding Sequences</em> and <em>FASTA Protein</em> to get the protein sequence.</li>
+<li>Click <em>Create File</em> to download.</li>
+<li>Then, append the protein sequences to the original <code>prot_seqs.txt</code> file by:</li></ul></li>
+</ul>
+<pre><code class="hljs"><span class="hljs-selector-tag">cat</span> <span class="hljs-selector-tag">prot_seqs</span><span class="hljs-selector-class">.txt</span> <span class="hljs-selector-tag">sequence</span><span class="hljs-selector-class">.txt</span> &gt; <span class="hljs-selector-tag">prot_seqs_new</span><span class="hljs-selector-class">.txt</span>
+<span class="hljs-selector-tag">rm</span> <span class="hljs-selector-tag">prot_seqs</span><span class="hljs-selector-class">.txt</span>
+<span class="hljs-selector-tag">mv</span> <span class="hljs-selector-tag">prot_seqs_new</span><span class="hljs-selector-class">.txt</span> <span class="hljs-selector-tag">prot_seqs</span><span class="hljs-selector-class">.txt</span></code></pre>
+<ul>
+<li>Then update the <code>Transcript-ProtLength.csv</code> file in <em>db</em> folder:</li>
+</ul>
+<pre><code class="hljs">Rscript update_Transcript-ProtLength.R /path/<span class="hljs-keyword">to</span>/db/folder
+# Check <span class="hljs-keyword">if</span> the output Transcript-<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">ProtLength_update</span>.</span></span>csv is correct
+rm Transcript-<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">ProtLength</span>.</span></span>csv
+mv Transcript-<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">ProtLength_update</span>.</span></span>csv Transcript-<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">ProtLength</span>.</span></span>csv</code></pre>
+<p>Every time if there are new records added o the <code>Transcript-ProtLength.csv</code>, user needs to run <code>clean_Transcript-ProtLength.R</code> to make sure that the transcripts with the longest protein lengths were kept by:</p>
+<pre><code class="hljs">Rscript clean_Transcript-ProtLength.R /path/<span class="hljs-keyword">to</span>/db/Transcript-<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">ProtLength</span>.</span></span>csv /path/<span class="hljs-keyword">to</span>/db/Transcript-<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">ProtLength_cleaned</span>.</span></span>csv</code></pre>
+<p>Note that by doing this (above), only one transcript of a gene will be kept. Therefore, if a variant is annotated to a shorter transcript by ANNOVAR, the current pipeline below will just ignore that variant. For example, if a sample has variants chr1:7913029-A-G and chr1:7913445-C-T, the former maps to UTS2:NM_006786:exon1:c.T35C:p.I12T and the latter maps to UTS2:NM_021995:exon1:c.G47A:p.R16Q. We currently only considers the latter for the <em>gene score</em> of UTS2 and we ignore the former, because NM_021995 encodes a longer protein than NM_006786 in RefSeq database.</p>
+<ul>
+<li>After the protein sequences are updated by above steps, run the <code>check_missing_SNAP.R</code> again to generate mutation files for SNAP input:</li>
+</ul>
+<pre><code class="hljs">Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function <span class="hljs-regexp">/path/</span>to<span class="hljs-regexp">/db/</span>folder <span class="hljs-regexp">/path/</span>to<span class="hljs-regexp">/output/</span>folder</code></pre>
+<p>All SNAP input files (<em>amino acid mutation list</em> <code>geneA.mutation</code> and the <em>protein fasta file</em> <code>geneA.fasta</code>) will be output to <code>/path/to/output/folder</code>, This process might take some time if there are many missing SNAPs.</p>
+<ul>
+<li>After all SNAP input files are ready, SNAP is available on <a href="https://oarc.rutgers.edu/amarel/">amarel server</a> and can be run using code below (submit.sh SBATCH submission shell script):</li>
+</ul>
+<pre><code class="hljs"><span class="hljs-meta">#!/bin/bash</span>
+<span class="hljs-comment">#SBATCH --partition=bromberg_1,main</span>
+<span class="hljs-comment">#SBATCH --time=72:00:00</span>
+<span class="hljs-comment">#SBATCH --mem=100000</span>
+<span class="hljs-comment">#SBATCH --array=0-999</span>
+<span class="hljs-comment">#SBATCH --requeue</span>
+module load singularity/.2.4-PR1106
+input=(geneA geneB geneC ...)
+singularity <span class="hljs-built_in">exec</span> /home/yw410/bromberglab_predictprotein_yanran-2017-12-06-fa6f97ee098c.img snapfun -i /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input/<span class="hljs-variable">$input</span>.fasta -m /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_input/<span class="hljs-variable">$input</span>.mutation -o /home/yw410/singularity_in/SNAPinput-dbGaP/SNAP_output/<span class="hljs-variable">$input</span>.out --<span class="hljs-built_in">print</span>-collection --tolerate-sift-failure --tolerate-psic-failure</code></pre>
+<ul>
+<li>SNAP outputs plain text files <code>geneA.out</code> of predicted variant scores. It needs to be converted to tab-separated format using below code for SNAP output of all genes:</li>
+</ul>
+<pre><code class="hljs"><span class="hljs-meta">#!/bin/bash</span>
+<span class="hljs-keyword">for</span> f <span class="hljs-keyword">in</span> /path/to/snap/output/*.out
+<span class="hljs-keyword">do</span>
+    python snap-scores-mutOut.py <span class="hljs-variable">$f</span>
+<span class="hljs-keyword">done</span>
+<span class="hljs-comment"># Outputs Mutations.mutOut file</span></code></pre>
+<p>After all new SNAP output has been converted to tab-separated format, merge them with the original SNAP scores stored in the <em>db</em> folder:</p>
+<pre><code class="hljs">cat /path/<span class="hljs-keyword">to</span>/db/folder/<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">Mutations</span>.</span></span>mutOut <span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">Mutations</span>.</span></span>mutOut &gt; /path/<span class="hljs-keyword">to</span>/db/folder/<span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">Mutations_new</span>.</span></span>mutOut
+cd /path/<span class="hljs-keyword">to</span>/db/folder/
+rm <span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">Mutations</span>.</span></span>mutOut
+mv <span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">Mutations_new</span>.</span></span>mutOut <span class="hljs-module-access"><span class="hljs-module"><span class="hljs-identifier">Mutations</span>.</span></span>mutOut</code></pre>
+<p>Now the <em>db</em> folder should have:</p>
+<ul>
+<li>updated SNAP score file <code>Mutations.mutOut</code></li>
+<li>updated transcript - protein - protein length file <code>Transcript-ProtLength.csv</code></li>
+</ul>
+<hr>
+<h2 id="other-methods-for-ethnicity-check">Other methods for ethnicity check:</h2>
+<ul>
+<li><em>Method 1</em>: AIPS from <a href="https://morgan1.dartmouth.edu/~f000q4v/html/aips.html">Byun <em>et al</em></a>.</li>
+</ul>
+<pre><code class="hljs"># Convert VCF <span class="hljs-keyword">file</span> into plink <span class="hljs-keyword">format</span>.
+plink xx
+# <span class="hljs-keyword">Merge</span> user <span class="hljs-keyword">file</span> and the reference <span class="hljs-keyword">file</span>.
+plink --bfile euro952samples --bmerge <span class="hljs-keyword">input</span>.bed <span class="hljs-keyword">input</span>.bim <span class="hljs-keyword">input</span>.fam --recodeA --<span class="hljs-keyword">out</span> outputA
+# <span class="hljs-keyword">Run</span> AIPS-<span class="hljs-keyword">PCA</span>.R and AIPS-AI.R.</code></pre>
+<ul>
+<li><em>Method 2</em>: PCA with <a href="http://corearray.sourceforge.net/tutorials/SNPRelate/">SNPRelate package</a> in R.</li>
+</ul>
+<pre><code class="hljs"><span class="hljs-selector-tag">Rscript</span> <span class="hljs-selector-tag">ethnicity_SNPRelate</span><span class="hljs-selector-class">.R</span> \
+  <span class="hljs-selector-tag">source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc</span><span class="hljs-selector-class">.vcf</span><span class="hljs-selector-class">.gz</span></code></pre>
+<ul>
+<li><em>Method 4</em>: Calculate probabilities of individuals being a <a href="https://frog.med.yale.edu/FrogKB/FrogServlet">known ethnicity</a> by forensic marker <a href="https://frog.med.yale.edu/FrogKB/formula.jsp">frequency production</a>.</li>
+</ul>
+<pre><code class="hljs"># Extract only the <span class="hljs-number">55</span> markers <span class="hljs-keyword">from</span> KiddLab.
+bcftools view -R <span class="hljs-number">55</span>markers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_Kidd-markers.vcf.gz
+# Calculate the probability <span class="hljs-keyword">using</span> a production <span class="hljs-function"><span class="hljs-keyword">method</span>.
+<span class="hljs-title">Rscript</span> <span class="hljs-title">forensic_method</span>.<span class="hljs-title">R</span> <span class="hljs-title">source_Kidd</span>-<span class="hljs-title">markers</span>.<span class="hljs-title">vcf</span>.<span class="hljs-title">gz</span></span></code></pre>
+<ul>
+<li><p><strong>Note that:</strong></p>
+<ul>
+<li><em>Method 1</em> uses AIMs to infer ethnicity using reference labels (952 ancestry known samples).</li>
+<li><em>Method 2</em> takes all SNPs and do PCA on LD-pruned SNPs to infer ethnicity using reference labels (user defined).</li>
+<li><em>Method 3</em> uses pre-calculated reference SS2 model and gives prediction of five 1000Genomes population code.</li>
+<li><em>Method 4</em> uses AIMs to infer ethnicities (known ethnicities).</li>
+<li>Technically, results should be very <strong>consistent across all method</strong>. But human interpretation may be needed for specific cases.</li></ul>
+<p>RefSeq GRCh37 mRNA and protein sequences downloaded on May/5/2020.</p>
+<p>ANNOVAR humandb hg19_refGeneMrna.fa with a date on June/1/2017.</p></li>
+</ul>
+    </body>
+</html>

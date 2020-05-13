@@ -7,9 +7,9 @@
 ##  (2) Use cluster (amarel) and run this paralelly for each input files using arrays.
 
 library(optparse, quietly=T, warn.conflicts=F)
-library(data.table)
-library(tidyr)
-library(dplyr)
+library(data.table, quietly=T, warn.conflicts=F)
+library(tidyr, quietly=T, warn.conflicts=F)
+library(dplyr, quietly=T, warn.conflicts=F)
 
 # Example inputs:
 # f <- "/path/to/ANNOVAR/output/files/CD_01.exonic"

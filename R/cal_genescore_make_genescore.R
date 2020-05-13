@@ -7,9 +7,9 @@
 ##  (2) Use cluster (amarel) and run this paralelly for each input files using arrays.
 
 library(optparse, quietly=T, warn.conflicts=F)
-library(data.table)
-library(tidyr)
-library(dplyr)
+library(data.table, quietly=T, warn.conflicts=F)
+library(tidyr, quietly=T, warn.conflicts=F)
+library(dplyr, quietly=T, warn.conflicts=F)
 
 option_list = list(
   make_option(c("-f", "--exonic_file"), type="character", default=NULL, 

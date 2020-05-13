@@ -1,41 +1,40 @@
 # **AVA,Dx pipeline**
-------
 
 
 ## **Inputs and outputs**
 
 ### **Input**:
- * VCF file (GRCh37/hg19)
-   * e.g. `source.vcf.gz`
- * Class label file
-   * e.g. `diagnosis.txt`
- * (optional) individual list (sample IDs of interest)
-   * in case VCF file contains extra individuals
-   * e.g. `sampleID_of_interest.txt`
- * (optional) cross-validation data split schemes
-   * in case of non-random split
-   * e.g. `cv-scheme.txt`
- * (optional) external gene set to use as features
-   * to test the predictability of known genes
-   * e.g. `known-genes.txt`
+* VCF file (GRCh37/hg19)    
+  e.g. `source.vcf.gz`
+* Class label file    
+  e.g. `diagnosis.txt`
+* (optional) individual list (sample IDs of interest)    
+  in case VCF file contains extra individuals    
+  e.g. `sampleID_of_interest.txt`
+* (optional) cross-validation data split schemes    
+  in case of non-random split    
+  e.g. `cv-scheme.txt`
+* (optional) external gene set to use as features    
+  to test the predictability of known genes    
+  e.g. `known-genes.txt`
 
 
 ### **Output**:
- * a *gene score* table
+* a *gene score* table
    * two schemes to choose: *sum* or *product* (see details below)
    * e.g. `GeneScoreTable_normed.txt`
- * selected genes
+* selected genes
    * e.g. `.xlsx`
- * model performance
+* model performance
    * e.g. `performance.xlsx`
 
 
 ### **Check before running all steps**:
- * The current workflow works with hg19 only.
- * This pipeline is currently for regular VCF file input (scripts need to be updated for gVCF files).
- * Manual check of quality outliers, ethnicity, etc. are highly recommended.
- * When input VCF contains variants with no SNAP score records in the snapfundb, the snapfun.db needs to be updated.
- * Feature selection (FS) and model selection in model training, including FS method choosing, model choosing, model tuning, etc. need human interpretation.
+* The current workflow works with hg19 only.
+* This pipeline is currently for regular VCF file input (scripts need to be updated for gVCF files).
+* Manual check of quality outliers, ethnicity, etc. are highly recommended.
+* When input VCF contains variants with no SNAP score records in the snapfundb, the snapfun.db needs to be updated.
+* Feature selection (FS) and model selection in model training, including FS method choosing, model choosing, model tuning, etc. need human interpretation.
 
 ---
 ## Prerequisite
@@ -69,19 +68,21 @@ bcftools view --types snps source_s-selected_v-PASS.vcf.gz -Oz -o source_s-selec
 bcftools view --types indels source_s-selected_v-PASS.vcf.gz -Oz -o source_s-selected_v-PASS_indels.vcf.gz
 ```
 
-* Remove variant sites by site-wise quality. Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150. These thresholds are arbitrarily and empirically determined.
+* Remove variant sites by site-wise quality. Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150.
 ```
-bcftools view -i 'QUAL>30 & AVG(FMT/DP)<=150 & AVG(FMT/DP)>=6' source_s-selected_v-PASS_snps.vcf.gz -Oz -o source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz
+bcftools view -i 'QUAL>30 & AVG(FMT/DP)<=150 & AVG(FMT/DP)>=6' source_s-selected_v-PASS_snps.vcf.gz \
+  -Oz -o source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz
 ```
 
-* Check individual call quality. Good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4. These thresholds are arbitrarily and empirically determined. Bad individual GTs are converted into missing "./.". Remove variant sites with a low call rate. Low call rate is arbitrarily determined as a call rate < 80%, *i.e.* missing rate >= 20%.
+
+* Check individual call quality. In `filterVCF_by_ABAD.py`: good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4; bad individual GTs are converted into missing "./."; low call rate is determined as a call rate < 80%, *i.e.* missing rate >= 20%. Variant sites with a low call rate are removed.
 ```
 python filterVCF_by_ABAD.py \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz \
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz
 ```
 
-* Lastly, gnomAD filter: filtering out variants that were not recorded in the gnomAD database. The gnomAD reference used here is the ANNOVAR gnomAD file `hg19_gnomad_exome.txt` and `hg19_gnomad_genome.txt`. Check the input path of the two reference files before running the script. Note that `tabix` is required to run this script.
+* Lastly, gnomAD filter: filtering out variants that were not recorded in the gnomAD database. The gnomAD reference used here is the ANNOVAR gnomAD file `hg19_gnomad_exome.txt` and `hg19_gnomad_genome.txt`. Check the input path of the two reference files before running the script. Note that `tabix` is required for indexing to run this script (this step could be slow if there're a lot of variants to check).
 ```
 # Conver the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
 bcftools annotate --rename-chrs chr_to_number.txt input.vcf.gz -Oz -o input_rmchr.vcf.gz
@@ -93,57 +94,78 @@ Note that, gnomAD also contains low quality calls. For example, variant [1-30548
 ---
 ## **Step 2:** Individual QC
 
-**Quality** check:
+#### Quality check:
 
 * Check quality outliers by examine nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
 ```
 # Output quality metrics after variant QC:
-bcftools stats -v -s - source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt
+bcftools stats -v -s - \
+  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > \
+  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt
 # Draw individual quality figure:
-Rscript stats_quality_pca.R -f source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt
+Rscript stats_quality_pca.R \
+  -f source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt
 ```
-Above script output a PCA figure of samples clustered by their quality metrics *after* variant QC. User needs to pick up the outliers and decide whether to keep them in later analyses.
+Above script output a PCA figure of samples clustered by their quality metrics *after variant QC*. User needs to pick up the outliers and decide whether to keep them in later analyses.
 
+> Manual check/interpretation needed for above step.
 
-**Ethnicity** check:
+#### Ethnicity check:
 
 * Annotate ethnicity with [EthSEQ](https://cran.r-project.org/web/packages/EthSEQ/index.html) R package:
-```
+  ```
 # OPTIONAL: If the number of individuals exceeds certain number, "memory exhausted" error may occur. Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
-bcftools query -l source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > sample_list.txt
+bcftools query \    
+  -l source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > sample_list.txt
 csplit sample_list.txt 500  # outputs from xx00 to xx0n
 # OPTIONAL: Clean VCF format for EthSEQ input (do the same thing for every chunk):
-bcftools view -S xx00 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz | bcftools annotate --remove 'ID,INFO,FORMAT' | bcftools view --no-header -Oz -o source_xx00_EthSEQinput.vcf.gz
+bcftools view -S xx00 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz \    
+  | bcftools annotate --remove 'ID,INFO,FORMAT' \    
+  | bcftools view --no-header \    
+  -Oz -o source_xx00_EthSEQinput.vcf.gz
 # If no separation of individuals needed:
-bcftools annotate --remove 'ID,INFO,FORMAT' source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz | bcftools view --no-header -Oz -o source_EthSEQinput.vcf.gz
+bcftools annotate --remove 'ID,INFO,FORMAT' \    
+  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz \    
+  | bcftools view --no-header \    
+  -Oz -o source_EthSEQinput.vcf.gz
 # Run EthSEQ:
 # "export R_MAX_VSIZE=32000000000" can be used to increase memory before running below for larger datasets
-Rscript ethnicity_EthSEQ.R source_EthSEQinput.vcf.gz /path/to/output/folder
+Rscript ethnicity_EthSEQ.R \    
+  source_EthSEQinput.vcf.gz \    
+  /path/to/output/folder
 ```
 
- * Results of ethnicity predictions are in `/path/to/output/folder/Report.txt` and the corresponding sample IDs are in `sample_list.txt` (`sample_list.txt` obtained by running `bcftools query -l source.vcf.gz > sample_list.txt`).
+Results of ethnicity predictions are in `/path/to/output/folder/Report.txt` and the corresponding sample IDs are in `sample_list.txt` (`sample_list.txt` obtained by running `bcftools query -l source.vcf.gz > sample_list.txt`).
 ```
 Rscript ethnicity_EthSEQ_summary.R /path/to/output/folder/Report.txt sample_list.txt /path/to/output/folder
 ```
- * Above returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. **`sampleID_inside_EUR.txt` contains the sample ID for all EUR individuals in the dataset, which generally should be used for further analysis**. Customized script should be used for special requirements.
+Above returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. **`sampleID_inside_EUR.txt` contains the sample ID for all EUR individuals in the dataset, which generally should be used for further analysis**.
 
-**Relatedness** check:
+#### Relatedness check:
 
-* Check relatedness within datasets. A default kinship > 0.3 is considered to be related.
+* Check relatedness within datasets withe the [SNPRelate](https://bioconductor.org/packages/release/bioc/html/SNPRelate.html) R package. A default kinship > 0.3 is considered to be related.
 ```
-Rscript relatedness.R -i source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -g source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.gds -c 0.3 -o /path/to/output/folder
+Rscript relatedness.R \    
+  -i source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz \    
+  -g source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.gds \    
+  -c 0.3 \    
+  -o /path/to/output/folder
 ```
 The output folder contains 3 files: `IBD_histogram.pdf`, `IBD.txt`, and `IBD_related.txt`. The histogram shows the distribution of kinship values of all individual pairs from the input VCF. `IBD.txt` is a complete table of the kinship values. `IBD_related.txt` only contains related pairs per the `-c` cutoff.
 
+#### Remove individual outliers:
+
 * Outlier individual IDs should be combined from the PCA, ethnicity annotation, and relatedness calculation to a file `outliers.txt` (one ID per row). Then remove individual outliers by:
 ```
-bcftools -S ^outliers.txt source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz -o source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz
+bcftools -S ^outliers.txt \    
+  source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz \
+  -Oz -o source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz
 ```
 
 ---
-## **Step 3:** Query SNAP scores for all variants from cleaned VCF
+## **Step 3:** Query SNAP scores for all variants
 
-* Get all variant annotations with ANNOVAR:
+* Get all variant annotations with ANNOVAR for cleaned VCF:
 ```
 # Convert VCF file into ANNOVAR input format:
 convert2annovar.pl -format vcf4old source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz -outfile source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput
@@ -152,95 +174,95 @@ annotate_variation.pl -buildver hg19 source_s-selected_v-PASS_snps_site-v-Q30-mi
 ```
 Note that `-format vcf4old` is important to get all variants in the VCF. The latest ANNOVAR version 2019Oct24. RefSeq is the default reference that ANNOVAR uses. All exonic variant will be recorded in the `*.exonic_variant_function` file.
 
-* Then, extract all variants from `*.exonic_variant_function` to query snap scores from `snapfun.db`.
+#### Make `snapfun.db` query file for missing SNAPs:
+
+* Then, extract all variants from `*.exonic_variant_function` to query snap scores from `snapfun.db`. The `db` folder already contains a file (`Mutations.mutOut`) of pre-calculated SNAP scores for variants from previous studies. Below steps will generate query file for variants which are not included in `Mutations.mutOut`.
 ```
 # Make query file:
 # -e: path to *.exonic_variant_function file
 # -m: path to map_RefSeq_and_UniProt.csv file
-Rscript exonic_variant_function2snap_query.R -e source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput.exonic_variant_function -m /path/to/map_RefSeq_and_UniProt.csv
+# -s: path to Mutations.mutOut file (already contains SNAP scores for previous VCF datasets)
+Rscript exonic_variant_function2snap_query.R -e source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput.exonic_variant_function -m /path/to/map_RefSeq_and_UniProt.csv -s /path/to/Mutations.mutOut -o /path/to/out
+```
+Note that ANNOVAR annotates variants to RefSeq mRNA transcripts (e.g. NM_001). The corresponding protein entry (e.g. NP_098) can be retrieved from NCBI database. So for each exonic variant, we know its genomic and genetic location, the mutation (from what to what), and corresponding RefSeq mRNA transcript and protein accesion numbers from the annotation.
+
+  But `snapfun.db` is based on UniProt protein records (e.g. P11310 is the ID for entry name ACADM_HUMAN). There are around a quarter of protein sequences do not match between RefSeq protein and UniProt protein. Therefore, the script `exonic_variant_function2snap_query.R` can only output the query file of those protein that can be mapped to UniProt sequences. Query file looks like:
+
+  To query for SNAP scores for all variants, including those unmappable ones, we recommend using protein sequences instead of UniProt IDs as query inputs.
+
+* After obtaining SNAP scores for "new" variants, update the `Mutations.mutOut` file by:
+```
+cat /path/to/Mutations.mutOut query_result.txt > /path/to/Mutations.mutOut
 ```
 
-### Mapping RefSeq to UniProt
 
-RefSeq GRCh37 mRNA and protein sequences downloaded on May/5/2020.
+#### Make SNAP input files for missing SNAPs:
 
-ANNOVAR humandb hg19_refGeneMrna.fa with a date on June/1/2017.
-
-
+The `check_missing_SNAP.R` script generates SNAP input files (mutation files) for missing SNAP.
+```
+Rscript check_missing_SNAP.R \
+   -f /path/to/*.exonic_variant_function \
+   -s /path/to/db/Mutations.mutOut \
+   -l /path/to/db/Transcript-ProtLength.csv \
+   -o /path/to/output/folder
+```
 
 ---
-## Step Three: Query SNAP database
+## **Step 4:** Gene score calculation
 
-The SNAP database stores pre-calculated SNAP scores for all possible non-synonymous variant in UniProt human protein sequences.
-* Example records in this database are:
+* Convert cleaned VCF to **individual** ANNOVAR annotation files by:
 ```
-uniprotid,variant,reliability,accuracy
-A6NL99,H341D,Non-neutral,1,63.0
-A6NL99,H341H,Neutral,6,92.0
-A6NL99,H341L,Non-neutral,0,58.0
-A6NL99,H341N,Neutral,0,53.0
-```
-and can be queried by:
-```
-A6NL99 H341D
-A6NL99 H341H
-A6NL99 H341L
-A6NL99 H341N
-```
-ANNOVAR annotates variants with RefSeq transcripts. Therefore, user needs to map the ANNOVAR output to UniProt IDs to query the SNAP scores. However, sometimes RefSeq and UniProt records for the same protein do not have exact same sequences. So, the best way to query is to use:
-```
-SEQUENCE H341D
-SEQUENCE H341H
-SEQUENCE H341L
-SEQUENCE H341N
-```
-
-
----
-## Step Four: Gene score calculation
-
-* Before *gene score* calculation, cleaned VCF file should be converted to individual ANNOVAR annotations by:
-```
-ulimit -n 2048  # set number of open files limit to max
 convert2annovar.pl -format vcf4 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz -outfile /path/to/output/folder/sample -allsample
 ```
-The `vcf4` and `-allsample` arguments specify that one `sample*.avinput` output file will be generated for every individual in the VCF. Note that `convert2annovar.pl` script opens new files simultaneously for all samples, and when the sample number exceeds the maximum number (2048 set by `ulimit -n 2048`), the script returns error because it cannot open a larger number of files. User needs to split the VCF file into chunks of samples and run `convert2annovar.pl` separately for each chunk.
+The `vcf4` and `-allsample` arguments specify that one `sample*.avinput` output file are generated for **every individual** in the VCF, i.e. multiple output files.
 
-* Next, do annotation with hg19 assembly to all `sample*.avinput` files (preferably on amarel using job arrays):
+  *Troubleshooting:* `convert2annovar.pl` script opens new files simultaneously for all samples, and when the sample number exceeds the maximum number (2048 to be set by `ulimit -n 2048`), the script returns error because it cannot open a larger number of files. If sample number exceeds 2048, split the VCF file into chunks of samples and run `convert2annovar.pl` separately for each chunk.
+
+* Next, do annotation with hg19 assembly to all `sample*.avinput` files, preferably on amarel using job arrays (`submit.sh` file for a 500 sample VCF):
 ```
 #!/bin/bash
-#SBATCH --partition=bromberg_1,main
-#SBATCH --time=24:00:00
-#SBATCH --mem=12288
-#SBATCH --array=0-371
+#SBATCH --partition=main
+#SBATCH --time=2:00:00
+#SBATCH --array=0-499
 #SBATCH --requeue
 inArray=(sample1.avinput sample2.avinput sample3.avinput ...)
 input=${inArray[$SLURM_ARRAY_TASK_ID]}
-annotate_variation.pl -build hg19 $input /humandb
+./annotate_variation.pl -build hg19 $input /humandb
 ```
-* *OPTIONAL: From above, individual `.exonic_variant_function` file will be generated and will be used later to calculate gene score. Before that, if we double-check if there're missing SNAP for the individual `.exonic_variant_function` file by:*
+* Or, if the sample size is small, do a for loop by:
+```
+for f in /path/to/output/folder/sample.*.avinput; do ./annotate_variation.pl -build hg19 $f humandb/; done
+```
+
+* *Optional (sanity check):* From above, individual `.exonic_variant_function` file will be generated and will be used later to calculate gene score. Before that, if we double-check if there're missing SNAP for the individual `.exonic_variant_function` file by:
 ```
 Rscript cal_genescore_make_missingSNAP.R -f /path/to/sample.1.avinput.exonic_variant_function \
   -s /path/to/db/Mutations.mutOut \
   -l /path/to/db/Transcript-ProtLength_cleaned.csv \
   -o /path/to/output/folder
 ```
-
-* *We'll still get a some missing SNAP mutations in the `-o /path/to/output/folder` folder. These are the mutations that we excluded when we generated the SNAP input in previous steps, because their REF nucleotide base disagrees with the RefSeq fasta sequence. Those mutations will be ignored by `cal_genescore_make_genescore.R`* The above *italic* part is an optional step, and it is only for a sanity check.
-
+From above, if there are still missing SNAP mutations in the `/path/to/output/folder` folder. These are the mutations that we excluded when we generated the SNAP input in previous steps, because their REF nucleotide base disagrees with the RefSeq fasta sequence. Those variants usually do not account for a very large portion of the total variants in the data and will be ignored by `cal_genescore_make_genescore.R` later.
 
 * After `.exonic_variant_function` files for all samples are generated, calculate gene score by:
 ```
 # Run this for every person using .sh script on amarel:
 Rscript cal_genescore_make_genescore.R \
-  -f /Users/WangYanran/Documents/BrombergLab/AVA_Method_paper_TS/Filtered_Data/exonic_variant_function/sample.25000.fa.avinput.exonic_variant_function \
-  -s /Users/WangYanran/Documents/Bitbucket/repos/avadx-meta/db/Mutations.mutOut \
-  -l /Users/WangYanran/Documents/Bitbucket/repos/avadx-meta/db/Transcript-ProtLength_cleaned.csv \
+  -f /path/to/sample.1.avinput.exonic_variant_function \
+  -s /path/to/db/Mutations.mutOut \
+  -l /path/to/db/Transcript-ProtLength_cleaned.csv \
   -m sum \ # or production
   -n both \
-  -o /Users/WangYanran/Desktop/tmp
+  -o /path/to/output/folder
 ```
-All gene score calculation functions and pre-processing steps are stored at `cal_genescore_make_genescore.R` script. There are some arguments required for the gene score calculation: `-m` asks user to choose either to sum or multiply variant scores into *gene score*; `-n` asks if normalize by protein length; `-heti` asks for the coefficient used for the heterozygous genotypes and `HIPred` means using the happloinsufficienty predictions from [HIPred](https://www.ncbi.nlm.nih.gov/pubmed/28137713); `-o` asks user to specify the output= path.
+All gene score calculation functions and pre-processing steps are stored at `cal_genescore_make_genescore.R` script.
+
+  `-m` asks user to choose either to sum or multiply variant scores into *gene score*;
+
+  `-n` asks if normalize by protein length;
+
+  `-heti` asks for the coefficient used for the heterozygous genotypes;
+
+  `-o` asks user to specify the output= path.
 
 * *gene score* is defined as a **sum** or **product** of the all variant scores within the gene coding region.
 
@@ -309,7 +331,7 @@ This generates the over-represented pathways for designated top-ranked genes.
 * **NOT ADDED YET:** The Boruta package has `Boruta()` function, which uses the [Boruta algorithm](https://cran.r-project.org/web/packages/Boruta/vignettes/inahurry.pdf) for feature selection. Briefly, Boruta is based on random forest from the ranger package. Boruta gets scores from the random forest ranking of features, and uses shadow features (copies of original features but with randomly mixed values) to keep the feature's original distribution but wipes out its importance. If the original feature has a much higher score compared with its own shadow features, it'll be a *hit*. As a result, Boruta **will** return redundant features.
 
 ---
-## Step Three (Original): Variant annotation and SNAP score calculation
+## (Original) Step 3: Variant annotation and SNAP score calculation
 
 * Run ANNOVAR for VCF annotation:
 ```
@@ -318,17 +340,20 @@ convert2annovar.pl -format vcf4old source_s-selected_v-PASS_snps_site-v-Q30-mina
 # Annotate using hg19 human reference:
 annotate_variation.pl -buildver hg19 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput humandb/
 ```
-In the above commands, `vcf4old` argument must be used to ensure that all records in the VCF file is output to one resulting file, which contains every possible variant in this dataset. The output file should include `source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function`, which is used as input for steps below.
-
 
 * AVA,Dx has pre-calculated SNAP scores stored in the *db* folder (`Mutations.mutOut`; it has three columns: mRNA accession, amino acid mutation, pre-calculated SNAP score). Additionally in the same folder, `mRNA_identifiers.txt` stores the transcript identifiers (currently 46,327 mRNA transcripts), and `prot_seqs.txt` stores the protein sequences with "NM_XX_prot_NP_YY" in the header lines for mapping uses. For a new dataset, first check if the pre-calculated SNAP score file already has recorded all the variants. If not, we generate a "missing SNAP" list and make SNAP input files for those variants first.
 
 
 * Check if the dataset has a "missing SNAP score":
 ```
-Rscript check_missing_SNAP.R source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.exonic_variant_function /path/to/db/folder /path/to/output/folder
+Rscript check_missing_SNAP.R \
+   -f /path/to/*.exonic_variant_function \
+   -s /path/to/db/Mutations.mutOut \
+   -l /path/to/db/Transcript-ProtLength.csv \
+   -o /path/to/output/folder
 ```
-If "Transcript-ProtLength.csv lacks protein length info. Please check and run this script again.", the script outputs a file of mRNA accession numbers to query at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez), and the `Transcript-ProtLength.csv` file needs to be updated.
+
+If "Transcript-ProtLength.csv lacks protein length info. Check and run this script again.", the script outputs a file of mRNA accession numbers to query at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez), and the `Transcript-ProtLength.csv` file needs to be updated.
 
 
 * The above command first check if the SNAP score file `Mutations.mutOut` contains all the variants in the dataset. If not, the script prints out the number of "missing SNAP" mutations and generates SNAP input for those variants. To do this, the script first checks if `prot_seqs.txt` file contains all protein sequences and then generates SNAP input files for new variants.
@@ -433,3 +458,9 @@ Rscript forensic_method.R source_Kidd-markers.vcf.gz
  * *Method 3* uses pre-calculated reference SS2 model and gives prediction of five 1000Genomes population code.
  * *Method 4* uses AIMs to infer ethnicities (known ethnicities).
  * Technically, results should be very **consistent across all method**. But human interpretation may be needed for specific cases.
+
+
+
+ RefSeq GRCh37 mRNA and protein sequences downloaded on May/5/2020.
+
+ ANNOVAR humandb hg19_refGeneMrna.fa with a date on June/1/2017.

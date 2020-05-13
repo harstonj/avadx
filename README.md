@@ -114,7 +114,7 @@ Above script output a PCA figure of samples clustered by their quality metrics *
 #### Ethnicity check:
 
 * Annotate ethnicity with [EthSEQ](https://cran.r-project.org/web/packages/EthSEQ/index.html) R package:
-  ```
+```
 # OPTIONAL: If the number of individuals exceeds certain number, "memory exhausted" error may occur. Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
 bcftools query \    
   -l source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > sample_list.txt

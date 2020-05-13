@@ -19,7 +19,7 @@ option_list = list(
   make_option(c("-l", "--protlength_file"), type="character", default=NULL, 
               help="protein length file where columns are: gene name, NM_ number, corresponding protein length from RefSeq", metavar="character"),
   make_option(c("-m", "--method"), type="character", default=NULL, 
-              help="method to use for calculating gene score: 'sum' - as the prototype; 'production' - as in the VTE paper", metavar="character"),
+              help="method to use for calculating gene score: 'sum' or 'product'", metavar="character"),
   make_option(c("-n", "--norm"), type="character", default=NULL, 
               help="whether to normalize the gene score by protein length: 'y' - yes; 'n' - no; 'both' - return both results of yes and no. Note that the normalization is done by: gene score * 100 / protein length, so that the normalized score ranges approximately from 0 to 1.", metavar="character"),
   make_option(c("-o", "--out"), type="character", default=NULL, 
@@ -89,7 +89,7 @@ if(opt$m=="sum"){
     mutate(gene_score_normed = gene_score * 100/Prot_length)
 
 
-  }else if(opt$m=="production"){
+  }else if(opt$m=="product"){
     # Generate variant scores:
     df <- exonic_flted %>%
       mutate(heti = ifelse(V9=="het", 0.25, 1)) %>%

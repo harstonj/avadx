@@ -102,6 +102,8 @@ if(fs_method %in% c("ks", "KS")){
   if(file.exists(paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx"))){
     ks_FS_result <- read.xlsx(paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx"), 1)
     ks_FS_result$Gene <- as.character(ks_FS_result$Gene)
+  }else if(file.exists(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"))){
+    ks_FS_result <- read.csv(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"), stringsAsFactors=F, header=T)
   }else{
     # FS with KStest:
     ks_FS <- function(df){
@@ -128,14 +130,18 @@ if(fs_method %in% c("ks", "KS")){
     colnames(ks_FS_result) <- c("Gene", paste0("Pvalue_fold", 1:k, "out"))
     ks_FS_result$Gene <- as.character(ks_FS_result$Gene)
     
-    write.xlsx(ks_FS_result, paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx"), row.names=F)
-    print(paste0("KS FS results has been output to ", paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx")))
+    #write.xlsx(ks_FS_result, paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx"), row.names=F)
+    #print(paste0("KS FS results has been output to ", paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx")))
+    write.csv(ks_FS_result, paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"), quote=F, row.names=F)
+    print(paste0("KS FS results has been output to ", paste0(k, "F-CV-", fs_method, "-selectedGenes.csv")))
   }
 }else if(fs_method %in% c("DKM", "DKMcost")){
   # Do CORElearn FS in a k-fold fashion:
   if(file.exists(paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx"))){
     cl_fs_result <- read.xlsx(paste0(k, "F-CV-", fs_method,"-selectedGenes.xlsx"), 1)
     cl_fs_result$Gene <- as.character(cl_fs_result$Gene)
+  }else if(file.exists(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"))){
+    cl_fs_result <- read.csv(paste0(k, "F-CV-", fs_method,"-selectedGenes.xlsx"), stringsAsFactors=F, header=T)
   }else{
     suppressMessages(library(CORElearn))
     cl_fs_res <- list()
@@ -150,10 +156,13 @@ if(fs_method %in% c("ks", "KS")){
     cl_fs_result <- do.call("cbind", cl_fs_res)
     cl_fs_result <- cbind(colnames(df_input)[-ncol(df_input)], cl_fs_result)
     colnames(cl_fs_result) <- c("Gene", paste0("Merit_fold", 1:k, "out"))
+    cl_fs_result <- as.data.frame(cl_fs_result)
     cl_fs_result$Gene <- as.character(cl_fs_result$Gene)
     
-    write.xlsx(cl_fs_result, paste0(k, "F-CV-", fs_method,"-selectedGenes.xlsx"), row.names=F)
-    print(paste0("CORElearn FS results has been output to ", paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx")))
+    #write.xlsx(cl_fs_result, paste0(k, "F-CV-", fs_method,"-selectedGenes.xlsx"), row.names=F)
+    #print(paste0("CORElearn FS results has been output to ", paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx")))
+    write.csv(cl_fs_result, paste0(k, "F-CV-", fs_method,"-selectedGenes.csv"), quote=F, row.names=F)
+    print(paste0("CORElearn FS results has been output to ", paste0(k, "F-CV-", fs_method, "-selectedGenes.csv")))
   }
   
 }

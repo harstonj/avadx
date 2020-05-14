@@ -288,23 +288,21 @@ Two files: `GeneScoreTable_normed.txt` and `GeneScoreTable_unnormed.txt` will be
 ---
 ## Step 5: Feature selection (FS) and model building
 
-There are three types of FS types: filter, wrapper, and embedded. Currently, AVA,Dx does not use the wrapper method because wrapper method usually takes long time to search feature subset and there are always multiple optimal feature sets. AVA,Dx uses both filter and embedded methods. Default filter method is performing K-S (Kolmogorov–Smirnov) test between gene score distributions of the disease and healthy statuses in the training fold. Embedded method is DKM algorithm from R package CORElearn.
+AVA,Dx by default uses K-S (Kolmogorov–Smirnov) test for FS, random forest for model building, and 10-fold cross validation to test the predictability of the top-ranking genes. Other FS methods and machine learning models are also included.
 
-To perform FS in cross-validated fashion, user needs to provide a cross-validation scheme file. For example, we split Tourette dataset (yale-1) into three folds and each contains unrelated probands, their parents are used as healthy controls and the probands' own parents should be in other folds, so that the probands are compared with unrelated healthy parents.
+User needs to provide a cross-validation scheme file. For example, we split Tourette dataset (*e.g.* yale-1) into 10 folds and the individuals from the same family enter the same fold, so that to compare sick *v.s.* healthy instead of differentiating families.
 
-* User needs to provide a cross-validation scheme file with three columns:  *SampleID*, *Phenotype*, *fold*. For example:
+* Cross-validation scheme file should be tab-separated and contain three columns:  *SampleID*, *Phenotype*, *fold*. For example:
 ```
 SampleID fold  Phenotype
 sample1 1 1
 sample2 1 0
-sample3 2 1
-sample4 2 0
 ...
 sample100 10 1
 sample101 10 0
 ```
 
-* Then, do feature selection by:
+* Then, do cross-validation by:
 ```
 Rscript FS-CVperf-kfold.R \
   -f /path/to/GeneScoreTable_normed.txt \
@@ -317,9 +315,9 @@ Rscript FS-CVperf-kfold.R \
   -n 200 \  # test by top ranked genes until the top 200
   -o /path/to/output/folder
 ```
-This generates feature selection results in the output folder. Example outputs are: `10F-CV-ks-selectedGenes.xlsx` and `10F-CV-rf-performance.xlsx` with `-m ks`, `-M rf`, and `-k 10`.
+This generates FS results in the output folder. Example outputs are: `10F-CV-ks-selectedGenes.xlsx` and `10F-CV-rf-performance.xlsx` with `-m ks`, `-M rf`, and `-k 10`.
 
-* Then check pathway over-representation with selected genes. Make sure that there is `10F-CV-ks-selectedGenes.xlsx` file before running script below.
+* Then, check pathway over-representation with selected genes. `10F-CV-ks-selectedGenes.xlsx` is needed:
 ```
 Rscript FS-CVgeneOverRep-kfold.R \
   -f /path/to/10F-CV-ks-selectedGenes.xlsx \
@@ -331,7 +329,11 @@ Rscript FS-CVgeneOverRep-kfold.R \
 ```
 This generates the over-represented pathways for designated top-ranked genes.
 
-
+* Permutation test for the significance of the cv performance:
+```
+# RE-WRITE SCRIPT NEEDED:
+Rscript FS-CVperf-kfold-pval~~.R
+```
 
 
 
@@ -344,7 +346,7 @@ This generates the over-represented pathways for designated top-ranked genes.
 * **NOT ADDED YET:** The Boruta package has `Boruta()` function, which uses the [Boruta algorithm](https://cran.r-project.org/web/packages/Boruta/vignettes/inahurry.pdf) for feature selection. Briefly, Boruta is based on random forest from the ranger package. Boruta gets scores from the random forest ranking of features, and uses shadow features (copies of original features but with randomly mixed values) to keep the feature's original distribution but wipes out its importance. If the original feature has a much higher score compared with its own shadow features, it'll be a *hit*. As a result, Boruta **will** return redundant features.
 
 ---
-## (Original) Step 3: Variant annotation and SNAP score calculation
+## Original Step 3: Variant annotation and SNAP score calculation
 
 * Run ANNOVAR for VCF annotation:
 ```
@@ -441,7 +443,7 @@ Now the *db* folder should have:
 
 
 ---
-## Other methods for ethnicity check:
+## Supplementary - other methods for ethnicity check:
 
  * *Method 1*: AIPS from [Byun *et al*](https://morgan1.dartmouth.edu/~f000q4v/html/aips.html).
 ```

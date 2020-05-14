@@ -83,14 +83,13 @@ python filterVCF_by_ABAD.py \
 ```
 
 * Lastly, gnomAD filter: filtering out variants that were not recorded in the gnomAD database. The gnomAD reference used here is the ANNOVAR gnomAD file `hg19_gnomad_exome.txt` and `hg19_gnomad_genome.txt`. Check the input path of the two reference files before running the script. Note that `tabix` is required for indexing to run this script.    
-> This step could be slow if there're a lot of variants to check.
+> This step could be slow if there're a lot of variants to check. The gnomAD filter step requires gnomAD variant files `hg19_gnomad_exome_allAFabove0.txt.gz` and `hg19_gnomad_genome_allAFabove0.txt.gz`, which are currently not provided here yet.
 ```
 # Conver the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
 bcftools annotate --rename-chrs chr_to_number.txt input.vcf.gz -Oz -o input_rmchr.vcf.gz
 # Then remove variants that are not in gnomAD database:
 python filterVCF_by_gnomAD.py input_rmchr.vcf.gz output.vcf.gz
 ```
-> The gnomAD filter step requires gnomAD variant files `hg19_gnomad_exome_allAFabove0.txt.gz` and `hg19_gnomad_genome_allAFabove0.txt.gz`, which are currently not provided here yet.
 
 Note that, gnomAD also contains low quality calls. For example, variant [1-30548-T-G](https://gnomad.broadinstitute.org/variant/1-30548-T-G?dataset=gnomad_r2_1) is covered in fewer than 50% of individuals in exomes and genomes (gnomAD v2.1.1) and the allele balance are skewed in some individuals. Specifically, this variant has a "." in the exome reference file (`hg19_gnomad_exome.txt`). But it will be kept as long as the genome reference (`hg19_gnomad_genome.txt`) has a record of this variant.
 

@@ -90,6 +90,8 @@ bcftools annotate --rename-chrs chr_to_number.txt input.vcf.gz -Oz -o input_rmch
 # Then remove variants that are not in gnomAD database:
 python filterVCF_by_gnomAD.py input_rmchr.vcf.gz output.vcf.gz
 ```
+> The gnomAD filter step requires gnomAD variant files `hg19_gnomad_exome_allAFabove0.txt.gz` and `hg19_gnomad_genome_allAFabove0.txt.gz`, which are currently not provided here yet.
+
 Note that, gnomAD also contains low quality calls. For example, variant [1-30548-T-G](https://gnomad.broadinstitute.org/variant/1-30548-T-G?dataset=gnomad_r2_1) is covered in fewer than 50% of individuals in exomes and genomes (gnomAD v2.1.1) and the allele balance are skewed in some individuals. Specifically, this variant has a "." in the exome reference file (`hg19_gnomad_exome.txt`). But it will be kept as long as the genome reference (`hg19_gnomad_genome.txt`) has a record of this variant.
 
 ---

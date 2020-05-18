@@ -211,7 +211,17 @@ Rscript check_missing_SNAP.R \
    -l /path/to/db/Transcript-ProtLength.csv \
    -o /path/to/output/folder
 ```
-The fasta files for SNAP input can be retrieved at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez).
+Above step generates multiple files with RefSeq transcript as their names (*e.g.* NM_001) and mutations in each file. The fasta files for SNAP input can be retrieved at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez).    
+
+To run SNAP on Amarel, prepare two input files for each protein: (1) mutation files; (2) fasta sequence.
+```
+# e.g. mutation file (NM_001.mut):
+A2V
+D3M
+# e.g. fasta sequence (NM_001.fasta):
+>proteinA
+MADVAMD
+```
 
 > There will still be a small part of variants with no SNAP scores even after above query/calculation.
 >
@@ -314,6 +324,7 @@ Rscript FS-CVperf-kfold.R \
   -l /path/to/Transcript-ProtLength_cleaned.csv \
   -t 5 \  # increase gene numbers by 5
   -n 200 \  # test by top ranked genes until the top 200
+  -v 99 \  # 99 means if 99% samples have same scores, the gene is removed
   -o /path/to/output/folder
 ```
 This generates FS results in the output folder. Example outputs are: `10F-CV-ks-selectedGenes.xlsx` and `10F-CV-rf-performance.xlsx` with `-m ks`, `-M rf`, and `-k 10`.
@@ -325,16 +336,10 @@ Rscript FS-CVgeneOverRep-kfold.R \
   -b /path/to/GeneScoreTable_normed.NAto0.nzv85-15.txt \  # cleaned gene score table
   -n 100 \  # number of genes to select for over-representation analysis
   -d /path/to/CPDB_pathways_genesymbol.tab \
-  -a T \  # or F depending on the FS method
+  -a T \  # ascending; T is for KS and F is for CORElearn methods
   -o /path/to/output/folder
 ```
 This generates the over-represented pathways for designated top-ranked genes.
-
-* Permutation test for the significance of the cv performance:
-```
-# RE-WRITE SCRIPT NEEDED:
-Rscript FS-CVperf-kfold-pval~~.R
-```
 
 
 

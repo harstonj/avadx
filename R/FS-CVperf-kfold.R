@@ -21,6 +21,8 @@ option_list = list(
               help="feature selection method to use: 'ks' - Kolmogorov–Smirnov test between disease and control samples", metavar="character"),
   make_option(c("-M", "--ml_method"), type="character", default=NULL,
               help="machine learning method to use: 'rf' - random forest from package ranger; 'svm' - SVM from package e1071", metavar="character"),
+  make_option(c("-v", "--variance_cutoff"), type="numeric", default=85,
+              help="a cutoff percentage value to remove features/genes with low variance; default is 85, i.e. the feature/gene is removed if over 85% individuals have the same gene score"),
   make_option(c("-s", "--cv_scheme"), type="character", default=NULL,
               help="path to cross-validation scheme file; should contain columns 'SampleID', 'Phenotype', 'fold'. Note that Phenotype should be 0 and 1, where 0 means control and 1 means case/sick.", metavar="character"),
   make_option(c("-k", "--k_fold"), type="numeric", default=NULL,
@@ -63,8 +65,9 @@ cvsch$sample_id <- paste0("sample.", cvsch$SampleID) # In case the sample IDs st
 
 # Move features/genes with low variance:
 # Default variance cutoff is 85%-15%; i.e. if over 85% individuals have the same value for the feature/gene, it is removed.
-if(file.exists(paste0(gsub(".txt","",gs_fp), ".NAto0.nzv85-15.txt"))){
-  df_input <- read.csv(paste0(gsub(".txt","",gs_fp), ".NAto0.nzv85-15.txt"), stringsAsFactors=F)
+if(file.exists(paste0(gsub(".txt","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".txt")))){
+  df_input <- read.csv(paste0(gsub(".txt","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".txt")), stringsAsFactors=F, check.names=F)
+  df_input$status <- ifelse(df_input$status==1, "Positive", ifelse(df_input$status==0, "Negative", df_input$status))
   df_input$status <- as.factor(df_input$status)
 }else{
   df <- fread(gs_fp, data.table=F)
@@ -87,12 +90,13 @@ if(file.exists(paste0(gsub(".txt","",gs_fp), ".NAto0.nzv85-15.txt"))){
   df_fs[is.na(df_fs)] <- 0
   colnames(df_fs) <- colname_map$Gene
   # Remove nzv:
-  nzv <- nearZeroVar(df_fs, 85/15)
+  nzv <- nearZeroVar(df_fs, opt$variance_cutoff/(100-opt$variance_cutoff))
   df.X <- df_fs[, -nzv]
   df.y <- cvsch$Phenotype[match(rownames(df_fs), cvsch$sample_id)]
   df_input <- cbind(df.X, df.y)
   colnames(df_input)[ncol(df_input)] <- "status"
-  write.table(df_input, paste0(gsub(".txt", "", gs_fp), ".NAto0.nzv85-15.txt"), sep=",", quote=F, col.names=T, row.names=T)
+  df_input$status <- ifelse(df_input$status==1, "Positive", ifelse(df_input$status==0, "Negative", df_input$status))
+  write.table(df_input, paste0(gsub(".txt", "", gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".txt")), sep=",", quote=F, col.names=T, row.names=T)
   df_input$status <- as.factor(df_input$status)
 }
 
@@ -109,8 +113,8 @@ if(fs_method %in% c("ks", "KS")){
     ks_FS <- function(df){
       p_values <- c()
       for(i in 1:(ncol(df)-1)){ # (last col is status; remove)
-        ks.res <- ks.test(df[df$status==1, i], 
-                          df[df$status==0, i])
+        ks.res <- ks.test(df[df$status=="Positive", i], 
+                          df[df$status=="Negative", i])
         pval <- ks.res$p.value
         p_values <- c(p_values, pval)
       }
@@ -140,8 +144,10 @@ if(fs_method %in% c("ks", "KS")){
   if(file.exists(paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx"))){
     cl_fs_result <- read.xlsx(paste0(k, "F-CV-", fs_method,"-selectedGenes.xlsx"), 1)
     cl_fs_result$Gene <- as.character(cl_fs_result$Gene)
+    cl_fs_result$Gene <- gsub("\\.", "-", cl_fs_result$Gene)
   }else if(file.exists(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"))){
-    cl_fs_result <- read.csv(paste0(k, "F-CV-", fs_method,"-selectedGenes.xlsx"), stringsAsFactors=F, header=T)
+    cl_fs_result <- read.csv(paste0(k, "F-CV-", fs_method,"-selectedGenes.csv"), stringsAsFactors=F, header=T)
+    cl_fs_result$Gene <- gsub("\\.", "-", cl_fs_result$Gene)
   }else{
     suppressMessages(library(CORElearn))
     cl_fs_res <- list()
@@ -157,6 +163,8 @@ if(fs_method %in% c("ks", "KS")){
     cl_fs_result <- cbind(colnames(df_input)[-ncol(df_input)], cl_fs_result)
     colnames(cl_fs_result) <- c("Gene", paste0("Merit_fold", 1:k, "out"))
     cl_fs_result <- as.data.frame(cl_fs_result)
+    # CORElearn automatically checkes column name; Needed to be converted back from "." to "-" for gene names:
+    cl_fs_result$Gene <- gsub("\\.", "-", cl_fs_result$Gene)
     cl_fs_result$Gene <- as.character(cl_fs_result$Gene)
     
     #write.xlsx(cl_fs_result, paste0(k, "F-CV-", fs_method,"-selectedGenes.xlsx"), row.names=F)
@@ -179,7 +187,7 @@ for(gn in seq(0, opt$number_of_top_genes, opt$step_of_top_genes)){
       pred_res_rf <- list()
       suppressMessages(library(ranger))
       for(i in 1:k){
-        # print(i)
+        #print(i)
         train_dat <- df_input[rownames(df_input) %in% cvsch$sample_id[cvsch$fold %in% setdiff(c(1:k), c(i))],]
         test_dat <- df_input[rownames(df_input) %in% cvsch$sample_id[cvsch$fold %in% i],]
         
@@ -187,8 +195,8 @@ for(gn in seq(0, opt$number_of_top_genes, opt$step_of_top_genes)){
         w <- w/sum(w)
         
         weights <- rep(0, nrow(train_dat))
-        weights[train_dat$status==0] <- w["0"]
-        weights[train_dat$status==1] <- w["1"]
+        weights[train_dat$status=="Negative"] <- w["Negative"]
+        weights[train_dat$status=="Positive"] <- w["Positive"]
         
         if(fs_method %in% c("ks")){
           
@@ -219,7 +227,7 @@ for(gn in seq(0, opt$number_of_top_genes, opt$step_of_top_genes)){
           
         }
         
-        pred_num <- pred_rf$predictions[, "1"]
+        pred_num <- pred_rf$predictions[, "Positive"]
         pred_res_rf[[i]] <- data.frame("status"=test_dat$status,
                                        "prediction"=pred_num,
                                        stringsAsFactors=F)
@@ -227,8 +235,8 @@ for(gn in seq(0, opt$number_of_top_genes, opt$step_of_top_genes)){
       }
       # Performance evaluation:
       pred_res_rf.df <- bind_rows(pred_res_rf)
-      roc_rf <- roc.curve(pred_res_rf.df$prediction[pred_res_rf.df$status==1],
-                          pred_res_rf.df$prediction[pred_res_rf.df$status==0])
+      roc_rf <- roc.curve(pred_res_rf.df$prediction[pred_res_rf.df$status=="Positive"],
+                          pred_res_rf.df$prediction[pred_res_rf.df$status=="Negative"])
       # print(paste0(gn, " genes: ", roc_rf$auc))
       cv_performance_results[[paste0("GeneNumber.", gn)]] <- roc_rf$auc
       
@@ -236,6 +244,7 @@ for(gn in seq(0, opt$number_of_top_genes, opt$step_of_top_genes)){
       pred_res_svm <- list()
       suppressMessages(library(e1071))
       for(i in 1:k){
+        #print(i)
         train_dat <- df_input[rownames(df_input) %in% cvsch$sample_id[cvsch$fold %in% setdiff(c(1:k), c(i))],]
         test_dat <- df_input[rownames(df_input) %in% cvsch$sample_id[cvsch$fold %in% i],]
         
@@ -251,15 +260,17 @@ for(gn in seq(0, opt$number_of_top_genes, opt$step_of_top_genes)){
         }else if(fs_method %in% c("DKM", "DKMcost")){
           model_svm <- svm(x=train_dat[, c(cl_fs_result$Gene[order(cl_fs_result[, paste0("Merit_fold", i, "out")], decreasing=T)][1:gn])],
                            y=train_dat[, "status"],
+                           probability=T,
                            class.weights = 100 / table(train_dat$status)
           )
           
           pred_svm <- predict(model_svm, 
                               test_dat[, c(cl_fs_result$Gene[order(cl_fs_result[, paste0("Merit_fold", i, "out")], decreasing=T)][1:gn])],
-                              decision.values=T)
+                              decision.values=T, probability=T)
           
         }
-        pred_num <- attr(pred_svm, "decision.values")
+        #pred_num <- attr(pred_svm, "decision.values")
+        pred_num <- attr(pred_svm, "probabilities")
         pred_res_svm[[i]] <- as.data.frame(pred_num)
         pred_res_svm[[i]]$SampleID <- rownames(pred_res_svm[[i]])
         rm(train_dat, test_dat, model_svm, pred_svm, pred_num)
@@ -267,8 +278,8 @@ for(gn in seq(0, opt$number_of_top_genes, opt$step_of_top_genes)){
       # SVM performance evaluation:
       pred_res_svm.df <- bind_rows(pred_res_svm)
       pred_res_svm.df$status <- cvsch$Phenotype[match(pred_res_svm.df$SampleID, cvsch$sample_id)]
-      roc_svm <- roc.curve(pred_res_svm.df$`0/1`[pred_res_svm.df$status==1],
-                           pred_res_svm.df$`0/1`[pred_res_svm.df$status==0])
+      roc_svm <- roc.curve(pred_res_svm.df$Positive[pred_res_svm.df$status==1],
+                           pred_res_svm.df$Positive[pred_res_svm.df$status==0])
       # print(paste0(gn, " genes: ", roc_svm$auc))
       cv_performance_results[[paste0("GeneNumber.", gn)]] <- roc_svm$auc
     }

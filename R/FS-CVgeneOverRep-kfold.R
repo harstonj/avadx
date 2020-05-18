@@ -32,7 +32,12 @@ cpdb_genes <- strsplit(cpdb$hgnc_symbol_ids, ",")
 cpdb_genes_all <- unique(unlist(cpdb_genes))
 
 # Read in FS result:
-fs <- read.xlsx(opt$input_file, 1, stringsAsFactors=F)
+if(endsWith(opt$input_file, ".xlsx")){
+  fs <- read.xlsx(opt$input_file, 1, stringsAsFactors=F)
+}else if(endsWith(opt$input_file, ".csv")){
+  fs <- read.csv(opt$input_file, 1, stringsAsFactors=F)
+}
+
 
 # Read in gene score table for all background genes:
 df <- read.csv(opt$input_file_genescore, stringsAsFactors=F, check.names=F)

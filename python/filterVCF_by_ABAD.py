@@ -22,6 +22,7 @@ wlog = open(flog_p, "w")
 
 c = 0
 for line in vcf:
+	line = line.decode("utf-8") if type(line) == bytes else line
 	if line[0] != "#":
 		l = (line.strip()).split("\t")
 		position = "\t".join(l[0:5])
@@ -122,6 +123,7 @@ for line in vcf:
 
 			mr = n_bad_GTs / float(len(gt))
 			if mr < cutoff_MR:
+				line = line if type(line) == bytes else line.encode("utf-8")
 				fw.write(line)
 			else:
 				wlog.write(position + "\tHigh_Missing_Rate\t" + str(mr) + "\n")
@@ -136,6 +138,7 @@ for line in vcf:
 		#print c
 		#if c == 100: break
 	else:
+		line = line if type(line) == bytes else line.encode("utf-8")
 		fw.write(line)
 
 vcf.close()

@@ -12,11 +12,14 @@ vcf = xopen(sys.argv[1])
 fw_p = sys.argv[2]
 fw = gzip.open(fw_p, "wb")
 
+data_folder = sys.argv[3]
+
 flog_p = fw_p + ".removed.gz"
 wlog = gzip.open(flog_p, "wb")
 
 c = 0
 for line in vcf:
+	line = line.decode("utf-8") if type(line) == bytes else line
 	if line[0] != "#":
 		c += 1
 		l = (line.strip()).split("\t")
@@ -31,17 +34,20 @@ for line in vcf:
 		#fm_list = fm.split(":")
 		#idv = l[9:]
 		#idv_list = [x.split(":") for x in idv]
-		search_res_exome = subprocess.check_output("tabix /Users/WangYanran/Desktop/Tools/annovar/humandb/hg19_gnomad_exome_allAFabove0.txt.gz {}:{}-{}".format(chrom, pos, int(pos)+1), shell=True)
-		search_res_genome = subprocess.check_output("tabix /Users/WangYanran/Desktop/Tools/annovar/humandb/hg19_gnomad_genome_allAFabove0.txt.gz {}:{}-{}".format(chrom, pos, int(pos)+1), shell=True)
+		search_res_exome = subprocess.check_output("tabix {}/hg19_gnomad_exome_allAFabove0.txt.gz {}:{}-{}".format(data_folder, chrom, pos, int(pos)+1), shell=True)
+		search_res_genome = subprocess.check_output("tabix {}/hg19_gnomad_genome_allAFabove0.txt.gz {}:{}-{}".format(data_folder, chrom, pos, int(pos)+1), shell=True)
 		if (pos in search_res_exome) or (pos in search_res_genome):
 			#print "EXIST pos: {}-{}, ref: {}, alt: {}".format(chrom, pos, ref, alt)
+			line = line if type(line) == bytes else line.encode("utf-8")
 			fw.write(line)
 		else:
 			#print "NON-EXIST pos: {}-{}, ref: {}, alt: {}".format(chrom, pos, ref, alt)
+			line = line if type(line) == bytes else line.encode("utf-8")
 			wlog.write(line)
 
-		if c%1000==0: print c
+		if c%1000==0: print(c)
 	else:
+		line = line if type(line) == bytes else line.encode("utf-8")
 		fw.write(line)
 
 vcf.close()

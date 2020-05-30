@@ -177,12 +177,16 @@ def run_command(command, shell=False, print_output=False, env_exports={}, wait=T
                 print_(f'shell> {line}')
             stdout.append(line)
         if process.returncode != 0:
+            print_ = logger.error if logger else print
             stderr = []
             stderr_data = "" if not stderr_data else stderr_data
             for line in stderr_data.splitlines():
                 line = line.rstrip().decode('utf8')
                 stderr.append(line)
-            print_(f'Error while executing command: {" ".join(stderr)}')
+            error_msg = stderr if stderr else stderr + stdout
+            print_(f'Error while executing command')
+            for msg in error_msg:
+                print_(msg)
         return stdout
     else:
         return None

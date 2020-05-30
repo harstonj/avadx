@@ -34,4 +34,4 @@ ENV PYTHONPATH=/app/python
 ENTRYPOINT ["python", "-m"]
 
 # set app CMD
-CMD ["app.cli", "--help"]
+CMD ["app.pipeline", "--help"]

@@ -4,7 +4,7 @@ FROM biocontainers/bcftools:v1.9-1-deb_cv1 as base
 LABEL bio-node=v1.0
 
 # set environment variables
-WORKDIR /mnt
+WORKDIR /app
 
 # set app ENTRYPOINT
 ENTRYPOINT ["bcftools"]

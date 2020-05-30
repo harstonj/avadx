@@ -1,7 +1,12 @@
+#!/usr/bin/env python3
+
 import argparse
+import re
+import copy
 import uuid
 import shlex
 import subprocess
+import configparser
 import multiprocessing
 from pathlib import Path
 from datetime import datetime
@@ -18,10 +23,10 @@ LOG_FILE = None
 
 
 class AVADxMeta:
-    def __init__(self, daemon='docker'):
+    def __init__(self, config=None, daemon:str='docker'):
         self.log = self.get_logger()
         self.daemon = daemon
-        # config
+        self.config = config
         self.REGISTRY = {
             'singularity': {
                 'CMD_RUN': 'run'
@@ -42,19 +47,23 @@ class AVADxMeta:
         if func:
             return func(uid, **kwargs)
         else:
-            print(f'No method: {func_name}')
+            self.log.warn(f'No method: {func_name}')
 
     def run_container(self, container, args=[], uid=uuid.uuid1(), in_folder:Path=Path.cwd(), out_folder:Path=Path.cwd()):
+        config = copy.copy(self.config)
         if in_folder:
             in_folder.mkdir(parents=True, exist_ok=True)
         if out_folder:
-            (out_folder/ str(uid) / 'out').mkdir(parents=True, exist_ok=True)
-        wd_folder = out_folder/ str(uid) / 'wd'
+            (out_folder / str(uid) / 'out').mkdir(parents=True, exist_ok=True)
+        wd_folder = out_folder / str(uid) / 'wd'
         wd_folder.mkdir(parents=True, exist_ok=True)
+        data_folder = Path(config.get("DEFAULT", "datadir", fallback=wd_folder)).absolute()
         if self.daemon == 'docker':
             in_ = DOCKER_MNT / 'in'
             wd = DOCKER_MNT / 'out' / str(uid) / 'wd'
             out = DOCKER_MNT / 'out' / str(uid) / 'out'
+            data = DOCKER_MNT / 'data'
+            config.set('DEFAULT', 'datadir', str(data.absolute()))
         else:
             wd = out_folder / str(uid) / 'wd'
             out = out_folder / str(uid) / 'out'
@@ -69,11 +78,28 @@ class AVADxMeta:
                 '-v', f'{in_folder.absolute()}:{in_}',
                 '-v', f'{out_folder.absolute()}:{out}',
                 '-v', f'{wd_folder.absolute()}:{wd}',
+                '-v', f'{data_folder}:{data}',
             ]
         cmd_base += [
             container,
         ]
-        cmd = cmd_base + [a.replace('$WD', str(wd)).replace('$IN', str(in_)).replace('$OUT', str(out)) for a in args]
+        args_parsed = [
+            a
+             .replace('$WD', str(wd))
+             .replace('$IN', str(in_))
+             .replace('$OUT', str(out))
+            for a in args
+        ]
+        config_pattern = r'config\[(.*)\]'
+        args_parsed = [
+            re.sub(
+                config_pattern,
+                lambda x: config.get(x.group(1).split('.', 1)[0], x.group(1).split('.', 1)[1], fallback=''),
+                a
+            )
+            for a in args_parsed
+        ]
+        cmd = cmd_base + args_parsed
         self.log.debug(f'Executing: {" ".join(cmd)}')
 
         run_command(cmd)
@@ -91,11 +117,21 @@ class AVADxMeta:
     def filterVCF_by_ABAD(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-meta', 'filterVCF_by_ABAD', uid, kwargs)
 
+    def filterVCF_by_gnomAD(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-tabix', 'filterVCF_by_gnomAD', uid, kwargs)
+
 class Pipeline():
-    def __init__(self, actions=[], kwargs={}, uid=uuid.uuid1()):
+    def __init__(self, actions=[], kwargs={}, uid=uuid.uuid1(), config_file=None):
         self.actions = actions
         self.kwargs = kwargs
         self.uid = uid
+        self.config = self.load_config(config_file)
+
+    def load_config(self, config_file):
+        config = configparser.ConfigParser()
+        if config_file and config_file.exists():
+            config.read(str(config_file))
+        return config
 
     def add_action(self, action, args=''):
         self.actions += [action]
@@ -122,6 +158,7 @@ def parse_arguments():
             + "Test: XXX\n \n",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    parser.add_argument('config', nargs='?', type=Path, default=Path('pipeline.ini'))
     parser.add_argument('-a', '--action', action='append')
     parser.add_argument('-t', '--threads', type=int, default=1,
                         help="number of threads; default: 1")
@@ -154,7 +191,7 @@ def parse_arguments():
 
 
 def main(pipeline, extra):
-    app = AVADxMeta()
+    app = AVADxMeta(pipeline.config)
     if pipeline.kwargs.get('wd'):
         pipeline.kwargs.get('wd').mkdir(parents=True, exist_ok=True)
     timer_start = timer()
@@ -164,56 +201,82 @@ def main(pipeline, extra):
 
 
 def run_all(kwargs, extra):
-    pipeline = Pipeline(kwargs=kwargs)
+    pipeline = Pipeline(kwargs=kwargs, config_file=kwargs['config'])
+    get_extra = lambda x, y: [_.split('=')[1] for _ in x if _.startswith(y)]
+    uid = get_extra(extra, '--uid')
+    if uid:
+        pipeline.uid = uid[0]
 
-    # --- Step 1: Variant QC ---
-    # .1 Extract individuals of interest (diseased and healthy individuals of interest).
-    step1_1_in = '$IN/test/input_vcf.vcf'
-    step1_1_out = '$WD/source_s-selected.vcf.gz'
+    # # 1   Variant QC ---------------------------------------------------------------------------- #
+    # # 1.1 Extract individuals of interest (diseased and healthy individuals of interest).
+    # step1_1_in = '$IN/test/input_vcf.vcf'
+    # step1_1_out = '$WD/source_s-selected.vcf.gz'
+    # pipeline.add_action(
+    #     'bfctools',
+    #     f'view {step1_1_in} -Oz -o {step1_1_out}'
+    # )
+
+    # # 1.2 Remove variant sites which did not pass the VQSR standard.
+    # step1_2_out = '$WD/source_s-selected_v-PASS.vcf.gz'
+    # pipeline.add_action(
+    #     'bfctools',
+    #     f'filter -i \'FILTER="PASS"\' {step1_1_out} -Oz -o {step1_2_out}'
+    # )
+
+    # # 1.3 Split SNV and InDel calls to separated files because they use different QC thresholds.
+    # #    Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
+    # step1_3_out = '$WD/source_s-selected_v-PASS_snps.vcf.gz'
+    # pipeline.add_action(
+    #     'bfctools',
+    #     f'view --types snps {step1_2_out} -Oz -o {step1_3_out}' # -S sampleID.txt
+    # )
+
+    # # 1.4 Remove variant sites by site-wise quality.
+    # #  Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150.
+    # step1_4_out = '$WD/source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz'
+    # pipeline.add_action(
+    #     'bfctools',
+    #     f'view -i "QUAL>30 & AVG(FMT/DP)<=150 & AVG(FMT/DP)>=6" {step1_3_out} -Oz -o {step1_4_out}'
+    # )
+
+    # # 1.5 Check individual call quality. In filterVCF_by_ABAD.py:
+    # #  good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4;
+    # #  bad individual GTs are converted into missing "./.";
+    # #  low call rate is determined as a call rate < 80%,
+    # #  i.e. missing rate >= 20%. Variant sites with a low call rate are removed.
+    # step1_5_out = '$WD/source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz'
+    # pipeline.add_action(
+    #     'filterVCF_by_ABAD',
+    #     f'avadx.filterVCF_by_ABAD {step1_4_out} {step1_5_out}'
+    # )
+
+    # # 1.6 Lastly, gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
+    # #  The gnomAD reference used here is the ANNOVAR gnomAD file hg19_gnomad_exome.txt and hg19_gnomad_genome.txt.
+    # #  Check the input path of the two reference files before running the script.
+    # #  Note that tabix is required for indexing to run this script.
+    
+    # # 1.6.1 Conver the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
+    # step1_6_1_out = '$WD/input_rmchr.vcf.gz'
+    # pipeline.add_action(
+    #     'bfctools',
+    #     f'annotate {step1_5_out} -Oz -o {step1_6_1_out}' # --rename-chrs chr_to_number.txt
+    # )
+    step1_6_1_out = '$WD/input_rmchr.vcf.gz'
+
+    # 1.6.2 Then remove variants that are not in gnomAD database:
+    step1_6_2_out = '$WD/output.vcf.gz'
     pipeline.add_action(
-        'bfctools',
-        f'view {step1_1_in} -Oz -o {step1_1_out}'
+        'filterVCF_by_gnomAD',
+        f'avadx.filterVCF_by_gnomAD {step1_6_1_out} {step1_6_2_out} config[annovar.humandb]'
     )
 
-    # .2 Remove variant sites which did not pass the VQSR standard.
-    step1_2_out = '$WD/source_s-selected_v-PASS.vcf.gz'
-    pipeline.add_action(
-        'bfctools',
-        f'filter -i \'FILTER="PASS"\' {step1_1_out} -Oz -o {step1_2_out}'
-    )
-
-    # .3 Split SNV and InDel calls to separated files because they use different QC thresholds.
-    #    Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
-    step1_3_out = '$WD/source_s-selected_v-PASS_snps.vcf.gz'
-    pipeline.add_action(
-        'bfctools',
-        f'view --types snps {step1_2_out} -Oz -o {step1_3_out}'
-    )
-
-    # .4 Remove variant sites by site-wise quality.
-    #  Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150.
-    step1_4_out = '$WD/source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz'
-    pipeline.add_action(
-        'bfctools',
-        f'view -i "QUAL>30 & AVG(FMT/DP)<=150 & AVG(FMT/DP)>=6" {step1_3_out} -Oz -o {step1_4_out}'
-    )
-
-    # .5 Check individual call quality. In filterVCF_by_ABAD.py:
-    #  good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4;
-    #  bad individual GTs are converted into missing "./.";
-    #  low call rate is determined as a call rate < 80%,
-    #  i.e. missing rate >= 20%. Variant sites with a low call rate are removed.
-    step1_5_out = 'source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz'
-    pipeline.add_action(
-        'filterVCF_by_ABAD',
-        f'avadx.filterVCF_by_ABAD {step1_4_out} {step1_5_out}'
-    )
+    # 2   Individual QC ------------------------------------------------------------------------- #
 
     # run the pipeline
     main(pipeline, extra)
 
 
-if __name__ == "__main__":
+def init():
     namespace, extra = parse_arguments()
     actions = namespace.action
     del namespace.action
@@ -222,3 +285,7 @@ if __name__ == "__main__":
     else:
         pipeline = Pipeline(actions, vars(namespace))
         main(pipeline, extra)
+
+
+if __name__ == "__main__":
+    init()

@@ -8,7 +8,7 @@ else:
 
 
 def main():
-    from .cli import init
+    from .pipeline import init
     init()
 
 

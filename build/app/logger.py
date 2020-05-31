@@ -1,6 +1,6 @@
 from os import environ
 import logging
-
+import inspect
 
 class Logger():
 
@@ -13,21 +13,34 @@ class Logger():
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level if level else self.level)
         if formatted:
-            formatter = logging.Formatter(
-                "%(asctime)s - %(filename)s:%(lineno)-4s - [ %(levelname)8s ] --- %(message)s"
-            )
+            if console_handler.level == 20:
+                formatter = logging.Formatter(
+                    "[ %(levelname)8s ] --- %(message)s"
+                )
+            else:
+                formatter = logging.Formatter(
+                    "%(asctime)s - %(filename)15s:%(lineno)-4s - [ %(levelname)8s ] - %(funcName)15s --- %(message)s"
+                )
             console_handler.setFormatter(formatter)
         self.log.addHandler(console_handler)
 
     def addFileHandler(self, filename, level=None):
         file_handler = logging.FileHandler(filename)
         file_handler.setLevel(level if level else self.level)
-        formatter = logging.Formatter(
-                "%(asctime)s - %(filename)s:%(lineno)-4s - [ %(levelname)8s ] --- %(message)s"
+        if file_handler.level == 20:
+            formatter = logging.Formatter(
+                "[ %(levelname)8s ] --- %(message)s"
+            )
+        else:
+            formatter = logging.Formatter(
+                "%(asctime)s - %(filename)15s:%(lineno)-4s - [ %(levelname)8s ] - %(funcName)15s --- %(message)s"
             )
         file_handler.setFormatter(formatter)
         self.log.addHandler(file_handler)
     
+    def getFrame(self):
+        return inspect.currentframe().f_back.f_code
+
     def getLogger(self):
         return self.log
 

@@ -184,9 +184,10 @@ def run_command(command, shell=False, print_output=False, env_exports={}, wait=T
                 line = line.rstrip().decode('utf8')
                 stderr.append(line)
             error_msg = stderr if stderr else stderr + stdout
-            print_(f'Error while executing command')
             for msg in error_msg:
                 print_(msg)
+                if logger and logger.level > 10:
+                    break
         return stdout
     else:
         return None

@@ -332,8 +332,6 @@ def run_all(kwargs, extra, config, daemon):
         '--entrypoint=sh'
     )
 
-    step2_1_0_out = '$WD/source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt'
-
     # 2.1.1 Draw individual quality figure:
     pipeline.add_action(
         'stats_quality_pca',

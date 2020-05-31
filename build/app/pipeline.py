@@ -45,17 +45,25 @@ class AVADxMeta:
         self.log.debug(f'{name}: started {datetime.now()}')
         timer_start = timer()
         args = shlex.split(kwargs.get(name).pop(0))
-        self.pipeline.run_container(container, args=args, uid=uid, in_folder=Path(self.pipeline.config.get('DEFAULT', 'inputdir', fallback=Path.cwd())), out_folder=kwargs.get('wd'))
+        daemon_args = shlex.split(kwargs.get(name + "_darg").pop(0))
+        self.pipeline.run_container(
+            container, args=args, daemon_args=daemon_args, uid=uid,
+            in_folder=Path(self.pipeline.config.get('DEFAULT', 'inputdir', fallback=Path.cwd())),
+            out_folder=kwargs.get('wd')
+        )
         self.log.info(f'{name}: took {(timer() - timer_start):.3f} seconds')
 
-    def bfctools(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-bcftools', 'bfctools', uid, kwargs)
+    def bcftools(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-bcftools', 'bcftools', uid, kwargs)
 
     def filterVCF_by_ABAD(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-meta', 'filterVCF_by_ABAD', uid, kwargs)
 
     def filterVCF_by_gnomAD(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-tabix', 'filterVCF_by_gnomAD', uid, kwargs)
+
+    def stats_quality_pca(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-rscript', 'stats_quality_pca', uid, kwargs)
 
 class Pipeline():
 
@@ -85,7 +93,8 @@ class Pipeline():
 
     def init_daemon(self):
         if self.daemon == 'docker':
-            import docker
+            # import docker
+            pass
 
     def load_config(self, config_file):
         config = configparser.ConfigParser()
@@ -93,10 +102,11 @@ class Pipeline():
             config.read(str(config_file))
         return config
 
-    def add_action(self, action, description='', args=''):
+    def add_action(self, action, description='', args='', daemon_args=''):
         self.actions += [action]
-        self.kwargs[f'{action}_desc'] = self.kwargs.get(f'{action}_desc', []) + [description]
         self.kwargs[action] = self.kwargs.get(action, []) + [args]
+        self.kwargs[f'{action}_desc'] = self.kwargs.get(f'{action}_desc', []) + [description]
+        self.kwargs[f'{action}_darg'] = self.kwargs.get(f'{action}_darg', []) + [daemon_args]
 
     def check_optional(self, name, flag='', is_file=False):
         formatted = ''
@@ -111,9 +121,11 @@ class Pipeline():
             config.set('DEFAULT', 'inputdir', input_folder_orig)
             if not is_file or Path(option_value).exists():
                 formatted = f'{flag} {option_value}'
+            elif is_file and not Path(option_value).exists():
+                self.log.warn(f'Ignoring optional argument: {flag} {option_value}. Reason: file not found')
         return formatted
 
-    def run_container(self, container, args=[], uid=uuid.uuid1(), in_folder:Path=Path.cwd(), out_folder:Path=Path.cwd()):
+    def run_container(self, container, args=[], daemon_args=[], uid=uuid.uuid1(), in_folder:Path=Path.cwd(), out_folder:Path=Path.cwd()):
         config = copy.copy(self.config)
         if in_folder:
             in_folder.mkdir(parents=True, exist_ok=True)
@@ -145,7 +157,7 @@ class Pipeline():
                 '-v', f'{out_folder.absolute()}:{out}',
                 '-v', f'{wd_folder.absolute()}:{wd}',
                 '-v', f'{data_folder}:{data}',
-            ]
+            ] + daemon_args
         cmd_base += [
             container,
         ]
@@ -246,7 +258,7 @@ def run_all(kwargs, extra, config, daemon):
     step1_1_in = '$IN/input_vcf.vcf'
     step1_1_out = '$WD/source_s-selected.vcf.gz'
     pipeline.add_action(
-        'bfctools',
+        'bcftools',
         'filter for individuals of interest ',
         f'view {pipeline.check_optional("sampleids", flag="-S", is_file=True)} {step1_1_in} -Oz -o {step1_1_out}'
     )
@@ -254,7 +266,7 @@ def run_all(kwargs, extra, config, daemon):
     # 1.2 Remove variant sites which did not pass the VQSR standard.
     step1_2_out = '$WD/source_s-selected_v-PASS.vcf.gz'
     pipeline.add_action(
-        'bfctools',
+        'bcftools',
         'filter variant sites < VQSR standard',
         f'filter -i \'FILTER="PASS"\' {step1_1_out} -Oz -o {step1_2_out}'
     )
@@ -263,7 +275,7 @@ def run_all(kwargs, extra, config, daemon):
     #    Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
     step1_3_out = '$WD/source_s-selected_v-PASS_snps.vcf.gz'
     pipeline.add_action(
-        'bfctools',
+        'bcftools',
         'split SNV and InDel calls',
         f'view --types snps {step1_2_out} -Oz -o {step1_3_out}' # -S sampleID.txt
     )
@@ -272,7 +284,7 @@ def run_all(kwargs, extra, config, daemon):
     #  Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150.
     step1_4_out = '$WD/source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz'
     pipeline.add_action(
-        'bfctools',
+        'bcftools',
         'filter variant sites by site-wise quality',
         f'view -i "QUAL>30 & AVG(FMT/DP)<=150 & AVG(FMT/DP)>=6" {step1_3_out} -Oz -o {step1_4_out}'
     )
@@ -297,11 +309,10 @@ def run_all(kwargs, extra, config, daemon):
     # 1.6.1 Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
     step1_6_1_out = '$WD/input_rmchr.vcf.gz'
     pipeline.add_action(
-        'bfctools',
+        'bcftools',
         'convert the chromosome annotations',
-        f'annotate {pipeline.check_optional("chr2number", flag="--rename-chrs")} {step1_5_out} -Oz -o {step1_6_1_out}' # --rename-chrs chr_to_number.txt
+        f'annotate {pipeline.check_optional("chr2number", flag="--rename-chrs", is_file=True)} {step1_5_out} -Oz -o {step1_6_1_out}'
     )
-    step1_6_1_out = '$WD/input_rmchr.vcf.gz'
 
     # 1.6.2 Then remove variants that are not in gnomAD database:
     step1_6_2_out = '$WD/output.vcf.gz'
@@ -312,7 +323,25 @@ def run_all(kwargs, extra, config, daemon):
     )
 
     # 2   Individual QC ------------------------------------------------------------------------- #
+    # 2.1.0 Output quality metrics after variant QC:
+    step2_1_0_out = '$WD/source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt'
+    pipeline.add_action(
+        'bcftools',
+        'generate quality metrics after variant QC',
+        f'-c "bcftools stats -v -s - {step1_5_out} > {step2_1_0_out}"',
+        '--entrypoint=sh'
+    )
 
+    step2_1_0_out = '$WD/source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt'
+
+    # 2.1.1 Draw individual quality figure:
+    pipeline.add_action(
+        'stats_quality_pca',
+        'draw individual quality figures',
+        f'/app/R/avadx/stats_quality_pca.R -f {step2_1_0_out}'
+    )
+
+    # ------------------------------------------------------------------------------------------- #
     # run the pipeline
     main(pipeline, extra)
 

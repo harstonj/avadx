@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
 
 RUN R -e 'if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")'
 RUN R -e 'BiocManager::install(c("SNPRelate"))'
-RUN R -e "install.packages(c('optparse', 'data.table', 'tidyverse', 'seqinr', 'stringr', 'EthSEQ', 'e1071', 'caret', 'ggfortify'), repos = 'http://cran.us.r-project.org', lib = '/usr/local/lib/R/site-library')"
+RUN R -e "install.packages(c('optparse', 'data.table', 'tidyverse', 'seqinr', 'stringr', 'EthSEQ', 'e1071', 'caret', 'ggfortify', 'R.utils'), repos = 'http://cran.us.r-project.org', lib = '/usr/local/lib/R/site-library')"
 
 COPY ./R /app/R/avadx
 

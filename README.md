@@ -38,9 +38,18 @@
 
 ---
 ## Prerequisite
-* R and packages (data.table, tydiverse, seqinr, stringr, EthSEQ, SNPRelate, e1071, caret)
-* python
-* tabix
+* python (≥ 3.6)
+* R (≥ 3.6)
+  * BiocManager ('SNPRelate') 
+  ```bash
+  $> R -e 'if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")'
+  $> R -e 'BiocManager::install(c("SNPRelate"))'
+  ```
+  * Dependencies (optparse, data.table, tidyverse, seqinr, stringr, EthSEQ, SNPRelate, e1071, caret, ggfortify, R.utils)
+  ```bash
+  $> R -e "install.packages(c('optparse', 'data.table', 'tidyverse', 'seqinr', 'stringr', 'EthSEQ', 'e1071', 'caret', 'ggfortify', 'R.utils'), repos = 'http://cran.us.r-project.org')"
+  ```
+* [samtools/tabix](https://github.com/samtools/tabix)
 * [bcftools](https://samtools.github.io/bcftools/)
 * [ANNOVAR](http://annovar.openbioinformatics.org)
 * [PLINK](https://www.cog-genomics.org/plink2/)
@@ -119,7 +128,7 @@ Above script output a PCA figure of samples clustered by their quality metrics *
 # OPTIONAL: If the number of individuals exceeds certain number, "memory exhausted" error may occur. Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
 bcftools query \    
   -l source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz > sample_list.txt
-csplit sample_list.txt 500  # outputs from xx00 to xx0n
+split -d -l 500 sample_list.txt xx # outputs from xx00 to xx0n
 # OPTIONAL: Clean VCF format for EthSEQ input (do the same thing for every chunk):
 bcftools view -S xx00 source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz \    
   | bcftools annotate --remove 'ID,INFO,FORMAT' \    
@@ -159,7 +168,7 @@ The output folder contains 3 files: `IBD_histogram.pdf`, `IBD.txt`, and `IBD_rel
 
 * Outlier individual IDs should be combined from the above PCA, ethnicity annotation, and relatedness calculation to a file `outliers.txt` (one ID per row). Then remove individual outliers by:
 ```
-bcftools -S ^outliers.txt \    
+bcftools view -S ^outliers.txt \    
   source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz -Oz \
   -o source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz
 ```

@@ -8,7 +8,7 @@ RUN ln -s "$TOOLS/$TOOL_NAME/current/bin" /app
 WORKDIR /app
 
 # set app ENTRYPOINT
-ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT []
 
 # set app CMD
 CMD []

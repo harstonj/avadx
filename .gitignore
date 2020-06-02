@@ -2,4 +2,4 @@
 *.py[co]
 
 # Tests
-test/
+test*/

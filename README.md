@@ -215,10 +215,9 @@ cat /path/to/Mutations.mutOut query_result.txt > /path/to/Mutations.mutOut
 The `check_missing_SNAP.R` script generates SNAP input files (mutation files) for missing SNAP.
 ```
 Rscript check_missing_SNAP.R \
-   -f /path/to/*.exonic_variant_function \
-   -s /path/to/db/Mutations.mutOut \
-   -l /path/to/db/Transcript-ProtLength.csv \
-   -o /path/to/output/folder
+   /path/to/*.exonic_variant_function \
+   /path/to/db
+   /path/to/output/folder
 ```
 Above step generates multiple files with RefSeq transcript as their names (*e.g.* NM_001) and mutations in each file. The fasta files for SNAP input can be retrieved at [NCBI Batch Entrez](https://www.ncbi.nlm.nih.gov/sites/batchentrez).    
 

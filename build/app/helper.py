@@ -163,8 +163,11 @@ def run_command(command, shell=False, print_output=False, env_exports={}, wait=T
     print_ = logger.info if logger else print
     current_env = os.environ.copy()
     merged_env = {**current_env, **env_exports}
+    cmd = shlex.split(command) if type(command) == str else shlex.split(" ".join(command))
+    if logger:
+        logger.debug(f'Executing: {shlex.join(cmd)}')
     process = subprocess.Popen(
-        shlex.split(command) if type(command) == str else command,
+        cmd,
         shell=shell, env=merged_env,
         stdout=subprocess.PIPE if wait else None, stderr=subprocess.STDOUT if wait else None
     )

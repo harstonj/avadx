@@ -4,11 +4,19 @@ library(data.table, quietly=T, warn.conflicts=F)
 library(tidyr, quietly=T, warn.conflicts=F)
 library(dplyr, quietly=T, warn.conflicts=F)
 
+
+f <-
+m <- "/Users/WangYanran/Documents/Bitbucket/repos/avadx-meta/db/GCF_000001405.25_GRCh37.p13_rna.gbff.mRNA_ID-protein_ID.csv"
+s <- "/Users/WangYanran/Documents/Bitbucket/repos/avadx-meta/db/Mutations.mutOut"
+l <- "/Users/WangYanran/Documents/Bitbucket/repos/avadx-meta/db/GCF_000001405.25_GRCh37.p13_protein_ID-lengths.csv"
+
 exonic <- fread(f, header=F, data.table=F)
-map <- fread(m, header=T, data.table=F)
-map$UniProt.entry.ID <- unlist(lapply(strsplit(map$uniprot.id, "\\|"), function(x) x[2]))
-map$UniProt.entry.name <- unlist(lapply(strsplit(map$uniprot.id, "\\|"), function(x) x[3]))
-map$Transcript <- unlist(lapply(strsplit(map$RefSeq_mRNA, "\\."), function(x) x[1]))
+map <- fread(m, header=F, data.table=F)
+snap_exist <- fread(s, header=F, data.table=F)
+protein_length <- fread(l, header=T, data.table=F)
+
+colnames(map) <- c("Transcript", "ProteinID")
+colnames(snap_exist) <- c("Transcript", "aaMutation", "SNAPscore")
 
 # Add information to exonic file:
 exonic_flted <- exonic %>% 
@@ -16,8 +24,22 @@ exonic_flted <- exonic %>%
   select(V1, V2, V3, V9) %>%
   separate_rows(V3, sep=",") %>%  # split one row into multiple by V3
   filter(nchar(V3)!=0) %>%
-  separate(V3, c("Gene", "Transcript", "exon", "nuChange", "aaChange"), sep=":") %>%
-  left_join(map, by="Transcript") 
+  separate(V3, c("Gene", "Transcript", "exon", "nuChange", "aaChange"), sep=":")  %>%
+  mutate(aaMutation = gsub("p.", "", aaChange)) %>%
+  left_join(map, by="Transcript") %>%
+  left_join(protein_length, by="ProteinID") %>%
+  left_join(snap_exist, by=c("Transcript", "aaMutation"))
+
+# There are some transcripts in the ANNOVAR reference file that were deleted by RefSeq db
+# So, there will be some (a small part) records unmapped
+# unique(exonic_flted$Transcript[is.na(exonic_flted$ProteinID)])
+
+exonic_mapped <- exonic_flted[!is.na(exonic_flted$ProteinID),]
+
+exonic_mapped_unique <- exonic_mapped %>%
+  group_by(V1) %>% top_n(1, Length)
+
+any(duplicated(exonic_mapped_unique$V1))
 
 # Originally, exonic does not have duplicated rows
 # But after adding more information, there are duplicated rows in exonic_flted, because one variant maps to multiple transcript/proteins

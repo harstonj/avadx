@@ -39,7 +39,7 @@
 
 * The current workflow works primarily with hg19. For hg18, I recommend lifting over to hg19 first. For hg38, I recommend updating all reference databases used in this pipeline.
 * This pipeline is currently for regular VCF file input (modifications needed for gVCF files).
-* Manual interpretation of quality outliers, ethnicity, etc. are highly recommended.
+* Manual interpretation of quality outliers, ethnicity, is needed and recommended.
 * When input VCF contains variants with no SNAP score records in the `snapfun.db`, the snapfun.db needs to be updated. SNAP scores can also be calculated by running SNAP.
 
 
@@ -111,7 +111,7 @@ bcftools stats -v -s - \
 Rscript stats_quality_pca.R \
   -f source_samp_pass_snps_site-v_gt-v.vcf.stats.txt
 ```
-> Above script output a PCA plot of samples clustered by the first two PCs in terms of their quality metrics *after variant QC*. User needs to pick up the outliers and decide whether to keep them in later analyses.
+> Above script output a PCA plot of samples clustered by the first two PCs in terms of their quality metrics *after variant QC*. **User needs to pick up the outliers and decide whether to keep them in later analyses.**
 
 #### Ethnicity check:
 
@@ -156,7 +156,7 @@ bcftools query \
 Rscript ethnicity_EthSEQ_summary.R /path/to/output/folder/Report.txt sample_list.txt /path/to/output/folder
 ```
 
-> Above step returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. `sampleID_inside_EUR.txt` contains the sample IDs for all EUR individuals in the dataset. `sampleID_closest_EUR.txt` contains sample IDs that are *close to* EUR according to their variants. If target population is not EUR, pick the sample IDs of interest from `Report.txt` file.
+> Above step returns two files: `sampleID_closest_EUR.txt` and `sampleID_inside_EUR.txt`. `sampleID_inside_EUR.txt` contains the sample IDs for all EUR individuals in the dataset. `sampleID_closest_EUR.txt` contains sample IDs that are *close to* EUR according to their variants. **User needs to pick the sample IDs of interest for later analyses.**
 
 #### Relatedness check:
 
@@ -169,7 +169,7 @@ Rscript relatedness.R \
   -c 0.3 \    
   -o /path/to/output/folder
 ```
-The output folder contains 3 files: `IBD_histogram.pdf`, `IBD.txt`, and `IBD_related.txt`. The histogram shows the distribution of kinship values of all individual pairs from the input VCF. `IBD.txt` is a complete table of the kinship values. `IBD_related.txt` only contains related pairs per the `-c` cutoff. One individual from each related pair should be removed for further analysis.
+The output folder contains 3 files: `IBD_histogram.pdf`, `IBD.txt`, and `IBD_related.txt`. The histogram shows the distribution of kinship values of all individual pairs from the input VCF. `IBD.txt` is a complete table of the kinship values. `IBD_related.txt` only contains related pairs per the `-c` cutoff. **One individual from each related pair should be removed for further analysis.**
 
 #### Remove individual outliers:
 

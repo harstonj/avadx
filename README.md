@@ -39,15 +39,16 @@
 ---
 ## Prerequisite
 * python (≥ 3.6)
+* java (JDK ≥ 11; e.g. openjdk-11-jdk)
 * R (≥ 3.6)
   * BiocManager ('SNPRelate') 
   ```bash
   $> R -e 'if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")'
   $> R -e 'BiocManager::install(c("SNPRelate"))'
   ```
-  * Dependencies (optparse, data.table, tidyverse, seqinr, stringr, EthSEQ, SNPRelate, e1071, caret, ggfortify, R.utils)
+  * Dependencies (optparse, data.table, tidyverse, seqinr, stringr, EthSEQ, SNPRelate, e1071, caret, ggfortify, R.utils, PRROC, xlsx)
   ```bash
-  $> R -e "install.packages(c('optparse', 'data.table', 'tidyverse', 'seqinr', 'stringr', 'EthSEQ', 'e1071', 'caret', 'ggfortify', 'R.utils'), repos = 'http://cran.us.r-project.org')"
+  $> R -e "install.packages(c('optparse', 'data.table', 'tidyverse', 'seqinr', 'stringr', 'EthSEQ', 'e1071', 'caret', 'ggfortify', 'R.utils', 'PRROC', 'xlsx'), repos = 'http://cran.us.r-project.org')"
   ```
 * [samtools/tabix](https://github.com/samtools/tabix)
 * [bcftools](https://samtools.github.io/bcftools/)

@@ -113,6 +113,8 @@ class AVADxMeta:
     def cal_genescore_make_genescore(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-rscript', 'cal_genescore_make_genescore', uid, kwargs)
 
+    def FS_CVperf_kfold(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-rscript', 'FS_CVperf_kfold', uid, kwargs)
 
 class Pipeline():
 
@@ -380,7 +382,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'filterVCF_by_gnomAD',
         'filter variants missing in gnomAD database',
-        f'avadx.filterVCF_by_gnomAD $WD/{step1_6_1_out} $WD/{step1_6_2_out} config[annovar.humandb]'
+        f'avadx.filterVCF_by_gnomAD $WD/{step1_6_1_out} $WD/{step1_6_2_out} config[DEFAULT.annovar.humandb]'
     )
 
     # 2   Individual QC ------------------------------------------------------------------------- #
@@ -405,6 +407,8 @@ def run_all(kwargs, extra, config, daemon):
     # 2.2 Ethnicity check - Annotate ethnicity with EthSEQ R package:
     # 2.2.1 - OPTIONAL: If the number of individuals exceeds certain number, "memory exhausted" error may occur.
     #  Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
+    splits_cfg = int(pipeline.config.get('avadx', 'optional.split', fallback=0))
+    splits = splits_cfg if splits_cfg > 0 else int(10e12)
     step2_2_1_out = 'sample_list.txt'
     step2_2_1_outfolder = 'splits'
     step2_2_1_splits = 'splits.txt'
@@ -412,7 +416,7 @@ def run_all(kwargs, extra, config, daemon):
         'bcftools',
         'extract sample list',
         f'-c \\"bcftools query -l $WD/{step1_5_out} > $WD/{step2_2_1_out}; '
-        + f'SPLIT=$(SAMPLES=$(wc -l < $WD/{step2_2_1_out}); echo $((SAMPLES <= config[avadx.split] ? 0 : config[avadx.split]))); '
+        + f'SPLIT=$(SAMPLES=$(wc -l < $WD/{step2_2_1_out}); echo $((SAMPLES <= {splits} ? 0 : {splits}))); '
         + f'[[ $SPLIT -gt 0 ]] && split -d -l $SPLIT $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/xx || cp -f $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/xx00; '
         + f'(cd $WD/{step2_2_1_outfolder} && ls -f -1 xx*) > $WD/{step2_2_1_splits}\\"',
         '--entrypoint=bash',
@@ -504,7 +508,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar',
         'download database: hg19_gnomad_exome',
-        f'-c \\"[[ -f config[annovar.humandb]/hg19_gnomad_exome.txt ]] || annotate_variation.pl -buildver hg19 -downdb -webfrom annovar gnomad_exome config[annovar.humandb]/\\"',
+        f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/hg19_gnomad_exome.txt ]] || annotate_variation.pl -buildver hg19 -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/\\"',
         '--entrypoint=bash'
     )
 
@@ -512,7 +516,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar',
         'download database: hg19_refGene',
-        f'-c \\"[[ -f config[annovar.humandb]/hg19_refGene.txt ]] || annotate_variation.pl -buildver hg19 -downdb -webfrom annovar refGene config[annovar.humandb]/\\"',
+        f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/hg19_refGene.txt ]] || annotate_variation.pl -buildver hg19 -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/\\"',
         '--entrypoint=bash'
     )
 
@@ -521,7 +525,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar',
         'annotate using hg19 RefSeq',
-        f'annotate_variation.pl -buildver hg19 $WD/{step3_1_out} config[annovar.humandb]/'
+        f'annotate_variation.pl -buildver hg19 $WD/{step3_1_out} config[DEFAULT.annovar.humandb]/'
     )
 
     # 3.3 Make snapfun.db query file for missing SNAPs
@@ -540,7 +544,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'check_missing_SNAP',
         'check missing SNAP predictions',
-        f'/app/R/avadx/check_missing_SNAP.R $WD/{step3_2_3_out} config[avadx.base] $WD/{step3_4_outfolder}',
+        f'/app/R/avadx/check_missing_SNAP.R $WD/{step3_2_3_out} config[DEFAULT.avadx.data] $WD/{step3_4_outfolder}',
         outdir=(WD / step3_4_outfolder)
     )
 
@@ -561,7 +565,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar',
         'generate annovar annotation',
-        f'annotate_variation.pl -build hg19 $TASK config[annovar.humandb]/',
+        f'annotate_variation.pl -build hg19 $TASK config[DEFAULT.annovar.humandb]/',
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/')
     )
 
@@ -586,6 +590,26 @@ def run_all(kwargs, extra, config, daemon):
         'extract variants to query snapfun.db',
         f'/app/R/avadx/merge_genescore.R -f $WD/{step4_3_outfolder} -o $OUT/{step4_4_outfolder}',
         outdir=(OUT / step4_4_outfolder)
+    )
+
+    # 5   Feature selection (FS) and model building --------------------------------------------- #
+    #  AVA,Dx by default uses K-S (Kolmogorov–Smirnov) test for FS, random forest for model building,
+    #  and 10-fold cross validation to test the predictability of the top-ranking genes.
+    #  Other FS methods and machine learning models are also included.
+    #  User needs to provide a cross-validation scheme file. For example, we split Tourette dataset (e.g. yale-1)
+    #  into 10 folds and the individuals from the same family enter the same fold,
+    #  so that to compare sick v.s. healthy instead of differentiating families.
+
+    # 5.1 - Cross-validation:
+    step5_1_outfolder = 'crossvalidation'
+    pipeline.add_action(
+        'FS_CVperf_kfold',
+        'perform model cross-validation',
+        f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
+        + f'-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s config[avadx.cv.scheme] '
+        + f'-k config[avadx.cv.folds] -l config[avadx.trsprotlengthcleaned] -t config[avadx.cv.steps] '
+        + f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $WD/{step5_1_outfolder}',
+        outdir=(WD / step5_1_outfolder)
     )
 
     # ------------------------------------------------------------------------------------------- #

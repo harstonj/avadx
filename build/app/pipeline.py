@@ -164,12 +164,12 @@ class Pipeline():
 
     def check_optional(self, name, flag='', is_file=False):
         formatted = ''
-        if self.config.has_option('inputs', f'optional.{name}'):
+        if self.config.has_option('avadx', f'optional.{name}'):
             config_datadir_orig = self.config.get('DEFAULT', 'datadir', fallback=None)
             config_inputdir_orig = self.config.get('DEFAULT', 'inputdir', fallback=None)
             self.config.set('DEFAULT', 'datadir', str(DOCKER_MNT / 'data'))
             self.config.set('DEFAULT', 'inputdir', str(DOCKER_MNT / 'in'))
-            option_value = self.config.get('inputs', f'optional.{name}')
+            option_value = self.config.get('avadx', f'optional.{name}')
             self.config.set('DEFAULT', 'datadir', config_datadir_orig)
             self.config.set('DEFAULT', 'inputdir', config_inputdir_orig)
             if not is_file or Path(option_value).exists():
@@ -316,61 +316,76 @@ def run_all(kwargs, extra, config, daemon):
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
 
-    # 1   Variant QC ---------------------------------------------------------------------------- #
-    # 1.1 Extract individuals of interest (diseased and healthy individuals of interest).
-    step1_1_in = 'config[inputs.vcf]'
-    step1_1_out = 'source_s-selected.vcf.gz'
+    # 1     Variant QC -------------------------------------------------------------------------- #
+    
+    # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
+    step1_1_in = 'config[avadx.vcf]'
+    step1_1_out = 'source_samp.vcf.gz'
     pipeline.add_action(
         'bcftools',
         'filter for individuals of interest ',
         f'view {pipeline.check_optional("sampleids", flag="-S", is_file=True)} {step1_1_in} -Oz -o $WD/{step1_1_out}'
     )
 
-    # 1.2 Remove variant sites which did not pass the VQSR standard.
-    step1_2_out = 'source_s-selected_v-PASS.vcf.gz'
+    # 1.2   Remove variant sites which did not pass the VQSR standard.
+    step1_2_out = 'source_samp_pass.vcf.gz'
     pipeline.add_action(
         'bcftools',
         'filter variant sites < VQSR standard',
         f'filter -i \'FILTER=\\"PASS\\"\' $WD/{step1_1_out} -Oz -o $WD/{step1_2_out}'
     )
 
-    # 1.3 Split SNV and InDel calls to separated files because they use different QC thresholds.
-    #    Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
-    step1_3_out = 'source_s-selected_v-PASS_snps.vcf.gz'
+    # 1.3   Split SNV and InDel calls to separated files because they use different QC thresholds.
+    #       Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
+
+    # 1.3.1 snps
+    step1_3_1_out = 'source_samp_pass_snps.vcf.gz'
     pipeline.add_action(
         'bcftools',
         'split SNV and InDel calls',
-        f'view --types snps $WD/{step1_2_out} -Oz -o $WD/{step1_3_out}'
+        f'view --types snps $WD/{step1_2_out} -Oz -o $WD/{step1_3_1_out}'
+    )
+    # 1.3.2 indels
+    step1_3_2_out = 'source_samp_pass_indels.vcf.gz'
+    pipeline.add_action(
+        'bcftools',
+        'split SNV and InDel calls',
+        f'view --types indels $WD/{step1_2_out} -Oz -o $WD/{step1_3_2_out}'
     )
 
-    # 1.4 Remove variant sites by site-wise quality.
-    #  Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150.
-    step1_4_out = 'source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150.vcf.gz'
+    # 1.4   Remove variant sites by site-wise quality.
+    #       Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150.
+    step1_4_out = 'source_samp_pass_snps_site-v.vcf.gz'
     pipeline.add_action(
         'bcftools',
         'filter variant sites by site-wise quality',
-        f'view -i \\"QUAL>30 & AVG(FMT/DP)<=150 & AVG(FMT/DP)>=6\\" $WD/{step1_3_out} -Oz -o $WD/{step1_4_out}'
+        f'view -i \\"QUAL>config[avadx.qc.site.quality] & '
+        + f'AVG(FMT/DP)<=config[avadx.qc.site.mean_dp_upper] & '
+        + f'AVG(FMT/DP)>=config[avadx.qc.site.mean_dp_lower]\\" '
+        + f'$WD/{step1_3_1_out} -Oz -o $WD/{step1_4_out}'
     )
 
-    # 1.5 Check individual call quality. In filterVCF_by_ABAD.py:
-    #  good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4;
-    #  bad individual GTs are converted into missing "./.";
-    #  low call rate is determined as a call rate < 80%,
-    #  i.e. missing rate >= 20%. Variant sites with a low call rate are removed.
-    step1_5_out = 'source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.vcf.gz'
+    # 1.5   Check individual call quality. In filterVCF_by_ABAD.py:
+    #       good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4;
+    #       bad individual GTs are converted into missing "./.";
+    #       low call rate is determined as a call rate < 80%,
+    #       i.e. missing rate >= 20%. Variant sites with a low call rate are removed.
+    step1_5_out = 'source_samp_pass_snps_site-v_gt-v.vcf.gz'
     pipeline.add_action(
         'filterVCF_by_ABAD',
         'check individual call quality',
-        f'avadx.filterVCF_by_ABAD $WD/{step1_4_out} $WD/{step1_5_out}'
+        f'avadx.filterVCF_by_ABAD $WD/{step1_4_out} $WD/{step1_5_out} '
+        + f'config[avadx.qc.call.AB_low] config[avadx.qc.call.AB_high] '
+        + f'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]'
     )
 
-    # 1.6 Lastly, gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
-    #  The gnomAD reference used here is the ANNOVAR gnomAD file hg19_gnomad_exome.txt and hg19_gnomad_genome.txt.
-    #  Check the input path of the two reference files before running the script.
-    #  Note that tabix is required for indexing to run this script.
+    # 1.6   Lastly, gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
+    #       The gnomAD reference used here is the ANNOVAR gnomAD file hg19_gnomad_exome.txt and hg19_gnomad_genome.txt.
+    #       Check the input path of the two reference files before running the script.
+    #       Note that tabix is required for indexing to run this script.
     
     # 1.6.1 Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
-    step1_6_1_out = 'input_rmchr.vcf.gz'
+    step1_6_1_out = 'source_samp_pass_snps_site-v_gt-v_rmchr.vcf.gz'
     pipeline.add_action(
         'bcftools',
         'convert the chromosome annotations',
@@ -378,17 +393,19 @@ def run_all(kwargs, extra, config, daemon):
     )
 
     # 1.6.2 Then remove variants that are not in gnomAD database:
-    step1_6_2_out = 'output.vcf.gz'
+    step1_6_2_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.vcf.gz'
     pipeline.add_action(
         'filterVCF_by_gnomAD',
         'filter variants missing in gnomAD database',
         f'avadx.filterVCF_by_gnomAD $WD/{step1_6_1_out} $WD/{step1_6_2_out} config[DEFAULT.annovar.humandb]'
     )
 
-    # 2   Individual QC ------------------------------------------------------------------------- #
-    # 2.2 Quality check - Check quality outliers by examine nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
+    # 2     Individual QC ----------------------------------------------------------------------- #
+    
+    # 2.2   Quality check - Check quality outliers by examine nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
+
     # 2.1.0 Output quality metrics after variant QC:
-    step2_1_0_out = 'source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.stats.txt'
+    step2_1_0_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.stats.txt'
     pipeline.add_action(
         'bcftools',
         'generate quality metrics after variant QC',
@@ -396,7 +413,6 @@ def run_all(kwargs, extra, config, daemon):
         '--entrypoint=bash'
     )
 
-    # TODO: broken
     # 2.1.1 Draw individual quality figure:
     pipeline.add_action(
         'stats_quality_pca',
@@ -404,8 +420,9 @@ def run_all(kwargs, extra, config, daemon):
         f'/app/R/avadx/stats_quality_pca.R -f $WD/{step2_1_0_out}'
     )
 
-    # 2.2 Ethnicity check - Annotate ethnicity with EthSEQ R package:
-    # 2.2.1 - OPTIONAL: If the number of individuals exceeds certain number, "memory exhausted" error may occur.
+    # 2.2   Ethnicity check - Annotate ethnicity with EthSEQ R package:
+
+    # 2.2.1 OPTIONAL: If the number of individuals exceeds certain number, "memory exhausted" error may occur.
     #  Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
     splits_cfg = int(pipeline.config.get('avadx', 'optional.split', fallback=0))
     splits = splits_cfg if splits_cfg > 0 else int(10e12)
@@ -423,7 +440,7 @@ def run_all(kwargs, extra, config, daemon):
         outdir=(WD / step2_2_1_outfolder)
     )
 
-    # 2.2.2 - OPTIONAL: Clean VCF format for EthSEQ input for all splits:
+    # 2.2.2 OPTIONAL: Clean VCF format for EthSEQ input for all splits:
     step2_2_2_splits = 'splits_EthSEQ'
     pipeline.add_action(
         'bcftools',
@@ -436,19 +453,22 @@ def run_all(kwargs, extra, config, daemon):
         outdir=(WD / step2_2_2_splits)
     )
 
-    # 2.2.3 - Run EthSEQ:
-    # "export R_MAX_VSIZE=32000000000" can be used to increase memory before running below for larger datasets
+    # 2.2.3 Run EthSEQ:
+    #       Note: "export R_MAX_VSIZE=32000000000" can be used
+    #       to increase memory before running below for larger datasets
     step2_2_3_outfolder = 'EthSEQ_reports'
     pipeline.add_action(
         'ethnicity_EthSEQ',
         'run EthSEQ',
         f'-c \\"mkdir -p $WD/{step2_2_3_outfolder}/$(basename $TASK) && '
-        + f'Rscript /app/R/avadx/ethnicity_EthSEQ.R $WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz $WD/{step2_2_3_outfolder}/$(basename $TASK)\\"',
+        + f'Rscript /app/R/avadx/ethnicity_EthSEQ.R '
+        + f'$WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz '
+        + f'config[DEFAULT.ethseq.models] $WD/{step2_2_3_outfolder}/$(basename $TASK)\\"',
         '--entrypoint=bash --env=R_MAX_VSIZE=32000000000',
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
     )
 
-    # 2.2.4 - Ethnicity prediction summary
+    # 2.2.4 Ethnicity prediction summary
     step2_2_4_outfolder = 'EthSEQ_summary'
     pipeline.add_action(
         'ethnicity_EthSEQ_summary',
@@ -459,7 +479,7 @@ def run_all(kwargs, extra, config, daemon):
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
     )
 
-    # 2.2.4 - Merge ethnicity prediction summaries
+    # 2.2.4 Merge ethnicity prediction summaries
     pipeline.add_action(
         'avadx',
         'merge EthSEQ summaries',
@@ -467,27 +487,28 @@ def run_all(kwargs, extra, config, daemon):
         '--entrypoint=find'
     )
 
-    # 2.3 - Relatedness check:
-    #  Check relatedness within datasets withe the SNPRelate R package.
-    #  A default kinship > 0.3 is considered to be related.
+    # 2.3   Relatedness check:
+    #       Check relatedness within datasets withe the SNPRelate R package.
+    #       A default kinship > 0.3 is considered to be related.
     step2_3_outfolder = 'SNPRelate'
-    step2_3_out = 'source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc.gds'
+    step2_3_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.gds'
     pipeline.add_action(
         'relatedness',
         'check relatedness using SNPRelate',
-        f'/app/R/avadx/relatedness.R -i $WD/{step1_5_out} -g $WD/{step2_3_out} -c 0.3 -o $WD/{step2_3_outfolder}',
+        f'/app/R/avadx/relatedness.R -i $WD/{step1_5_out} -g $WD/{step2_3_out} -c config[avadx.kinship] -o $WD/{step2_3_outfolder}',
         outdir=(WD / step2_3_outfolder)
     )
 
     # TODO: manual intervention?
-    # 2.4 - Remove individual outliers
-    # 2.4.1 Outlier individual IDs should be combined from the above PCA, ethnicity annotation, and relatedness calculation
-    #  to a file outliers.txt (one ID per row).
+    # 2.4   Remove individual outliers
+    # 2.4.1 Outlier individual IDs should be combined from the above PCA,
+    #       ethnicity annotation, and relatedness calculation
+    #       to a file outliers.txt (one ID per row).
     step2_4_1_out = 'outliers.txt'
     step2_4_1_fnpre = lambda: (WD / step2_4_1_out).touch()
 
     # 2.4.2 Then remove individual outliers by:
-    step2_4_2_out = 'source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.vcf.gz'
+    step2_4_2_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.vcf.gz'
     pipeline.add_action(
         'bcftools',
         'summarize outliers',
@@ -495,9 +516,10 @@ def run_all(kwargs, extra, config, daemon):
         fns=(step2_4_1_fnpre, None)
     )
 
-    # 3   Query/Calculate SNAP scores for all variants ------------------------------------------ #
-    # 3.1 Get all variant annotations with ANNOVAR for cleaned VCF:
-    step3_1_out = 'source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput'
+    # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
+    
+    # 3.1   Get all variant annotations with ANNOVAR for cleaned VCF:
+    step3_1_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput'
     pipeline.add_action(
         'annovar',
         'convert VCF file to ANNOVAR input format',
@@ -507,7 +529,7 @@ def run_all(kwargs, extra, config, daemon):
     # 3.2.1 Retrieve gnomad_exome database
     pipeline.add_action(
         'annovar',
-        'download database: hg19_gnomad_exome',
+        'verify database: hg19_gnomad_exome',
         f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/hg19_gnomad_exome.txt ]] || annotate_variation.pl -buildver hg19 -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/\\"',
         '--entrypoint=bash'
     )
@@ -515,20 +537,20 @@ def run_all(kwargs, extra, config, daemon):
     # 3.2.2 Retrieve refGene database
     pipeline.add_action(
         'annovar',
-        'download database: hg19_refGene',
+        'verify database: hg19_refGene',
         f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/hg19_refGene.txt ]] || annotate_variation.pl -buildver hg19 -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/\\"',
         '--entrypoint=bash'
     )
 
     # 3.2.3 Annotate using hg19 RefSeq:
-    step3_2_3_out = 'source_s-selected_v-PASS_snps_site-v-Q30-minavgDP6-maxavgDP150_gt-v-DP4-AB37-GQ15-MR20perc_ind-cleaned.avinput.exonic_variant_function'
+    step3_2_3_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput.exonic_variant_function'
     pipeline.add_action(
         'annovar',
         'annotate using hg19 RefSeq',
         f'annotate_variation.pl -buildver hg19 $WD/{step3_1_out} config[DEFAULT.annovar.humandb]/'
     )
 
-    # 3.3 Make snapfun.db query file for missing SNAPs
+    # 3.3   Make snapfun.db query file for missing SNAPs
     # Then, extract all variants from *.exonic_variant_function to query snap scores from snapfun.db.
     # The db folder already contains a file (Mutations.mutOut) of pre-calculated SNAP scores for variants from previous studies.
     # Below steps will generate query file for variants which are not included in Mutations.mu
@@ -536,10 +558,13 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'exonic_variant_function2snap_query',
         'extract variants to query snapfun.db',
-        f'/app/R/avadx/exonic_variant_function2snap_query.R -f $WD/{step3_2_3_out} -m config[avadx.refseq2uniprot] -M config[avadx.mutations] -o $WD/{step3_3_out}'
+        f'/app/R/avadx/exonic_variant_function2snap_query.R '
+        + f'-f $WD/{step3_2_3_out} -m config[avadx.refseq2uniprot] '
+        + f'-s config[avadx.mutations] -l config[avadx.refseq2uniprot] '
+        + f'-o $WD/{step3_3_out}'
     )
 
-    # 3.4 Make SNAP input files for missing SNAPs
+    # 3.4   Make SNAP input files for missing SNAPs
     step3_4_outfolder = 'check_missing_SNAP'
     pipeline.add_action(
         'check_missing_SNAP',
@@ -548,8 +573,8 @@ def run_all(kwargs, extra, config, daemon):
         outdir=(WD / step3_4_outfolder)
     )
 
-    # 4   Gene score calculation ---------------------------------------------------------------- #
-    # 4.1 - Convert cleaned VCF to individual ANNOVAR annotation files by:
+    # 4     Gene score calculation ---------------------------------------------------------------- #
+    # 4.1   Convert cleaned VCF to individual ANNOVAR annotation files by:
     step4_1_outfolder = 'annovar_annotations'
     step4_1_out = 'annovar_annotations.txt'
     pipeline.add_action(
@@ -612,8 +637,7 @@ def run_all(kwargs, extra, config, daemon):
         outdir=(WD / step5_1_outfolder)
     )
 
-    # ------------------------------------------------------------------------------------------- #
-    # run the pipeline
+    # RUN --------------------------------------------------------------------------------------- #
     main(pipeline, extra)
 
 

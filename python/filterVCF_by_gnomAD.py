@@ -35,8 +35,8 @@ for line in vcf:
 		#fm_list = fm.split(":")
 		#idv = l[9:]
 		#idv_list = [x.split(":") for x in idv]
-		search_res_exome = subprocess.check_output("tabix {} {}:{}-{}".format(gnomad_exome, chrom, pos, int(pos)+1), shell=True)
-		search_res_genome = subprocess.check_output("tabix {} {}:{}-{}".format(gnomad_genome, chrom, pos, int(pos)+1), shell=True)
+		search_res_exome = subprocess.check_output("tabix {} {}:{}-{}".format(gnomad_exome, chrom, pos, int(pos)+1), shell=True).decode('utf-8').strip()
+		search_res_genome = subprocess.check_output("tabix {} {}:{}-{}".format(gnomad_genome, chrom, pos, int(pos)+1), shell=True).decode('utf-8').strip()
 		if (pos in search_res_exome) or (pos in search_res_genome):
 			#print "EXIST pos: {}-{}, ref: {}, alt: {}".format(chrom, pos, ref, alt)
 			line = line if type(line) == bytes else line.encode("utf-8")

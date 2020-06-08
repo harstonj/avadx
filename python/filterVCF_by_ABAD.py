@@ -5,11 +5,11 @@ import re
 # Use:
 #    python filterVCF_by_ABAD.py input.vcf.gz output.vcf.gz
 
-cutoff_AB_low = 0.3   # genotype with (calculated) AB < cutoff_AB_low will be converted into "./."
-cutoff_AB_high = 0.7  # genotype with (calculated) AB > cutoff_AB_high will be converted into "./."
-cutoff_DP = 4          # genotype with DP < cutoff_DP will be converted into "./."
-cutoff_GQ = 15         # genotype with GQ < cutoff_GQ will be converted into "./."
-cutoff_MR = 0.20        # variant sites with Missing Rate
+cutoff_AB_low = float(sys.argv[3]) if len(sys.argv) >= 4 else 0.3   # genotype with (calculated) AB < cutoff_AB_low will be converted into "./."
+cutoff_AB_high = float(sys.argv[4]) if len(sys.argv) >= 5 else 0.7  # genotype with (calculated) AB > cutoff_AB_high will be converted into "./."
+cutoff_DP = int(sys.argv[5]) if len(sys.argv) >= 6 else 4          # genotype with DP < cutoff_DP will be converted into "./."
+cutoff_GQ = int(sys.argv[6]) if len(sys.argv) >= 7 else 15         # genotype with GQ < cutoff_GQ will be converted into "./."
+cutoff_MR = float(sys.argv[7]) if len(sys.argv) >= 8 else 0.20        # variant sites with Missing Rate
 
 xopen = lambda f: (gzip.open if f.endswith(".gz") else open)(f)
 vcf = xopen(sys.argv[1])

@@ -61,7 +61,9 @@ setwd(out_fp)
 
 # Read-in files & Extract individuals from cv_scheme file only:
 cvsch <- fread(cvsch_fp, data.table=F)
-cvsch$sample_id <- paste0("sample.", cvsch$SampleID) # In case the sample IDs starts with numbers
+if (!grepl("sample.", cvsch$SampleID[1])) {
+  cvsch$sample_id <- paste0("sample.", cvsch$SampleID) # In case the sample IDs starts with numbers
+}
 
 # Move features/genes with low variance:
 # Default variance cutoff is 85%-15%; i.e. if over 85% individuals have the same value for the feature/gene, it is removed.

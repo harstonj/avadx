@@ -492,7 +492,7 @@ def run_all(kwargs, extra, config, daemon):
         'ethnicity_EthSEQ_summary',
         'generate EthSEQ summaries',
         f'-c \\"mkdir -p $WD/{step2_2_4_outfolder}/$(basename $TASK) && '
-        + f'Rscript /app/R/avadx/ethnicity_EthSEQ_summary.R $WD/{step2_2_3_outfolder}/$(basename $TASK)/Report.txt $WD/{step2_2_1_out} $WD/{step2_2_4_outfolder}/$(basename $TASK)\\"',
+        + f'Rscript /app/R/avadx/ethnicity_EthSEQ_summary.R $WD/{step2_2_3_outfolder}/$(basename $TASK)/Report.txt $WD/{step2_2_1_outfolder}/$(basename $TASK) $WD/{step2_2_4_outfolder}/$(basename $TASK)\\"',
         '--entrypoint=bash',
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
     )

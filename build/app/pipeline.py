@@ -404,7 +404,6 @@ def run_all(kwargs, extra, config, daemon):
         + f'config[avadx.qc.call.AB_low] config[avadx.qc.call.AB_high] '
         + f'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]'
     )
-    step1_out = step1_5_out
 
     # 1.6   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
     #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
@@ -426,10 +425,12 @@ def run_all(kwargs, extra, config, daemon):
             'filterVCF_by_gnomAD',
             'filter variants missing in gnomAD database',
             f'avadx.filterVCF_by_gnomAD $WD/{step1_6_1_out} $WD/{step1_6_2_out} '
-            + f'config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt '
-            + f'config[DEFAULT.annovar.humandb]/{hgref}_refGene.txt '
+            + f'config[DEFAULT.avadx.data]/{hgref}_config[avadx.gnomadfilter.exome] '
+            + f'config[DEFAULT.avadx.data]/{hgref}_config[avadx.gnomadfilter.genome]'
         )
         step1_out = step1_6_2_out
+    else:
+        step1_out = step1_5_out
 
     # 2     Individual QC ----------------------------------------------------------------------- #
     
@@ -555,13 +556,14 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar',
         'convert VCF file to ANNOVAR input format',
-        f'convert2annovar.pl -format vcf4old $WD/{step2_4_2_out} -outfile $WD/{step3_1_out}'
+        f'convert2annovar.pl -format vcf4old $WD/{step2_4_2_out} -outfile $WD/{step3_1_out}',
+        logs=('convert2annovar.log', None)
     )
 
     # 3.2.1 Retrieve gnomad_exome database
     pipeline.add_action(
         'annovar',
-        'verify database: hgxx_gnomad_exome',
+        f'verify database: {hgref}_gnomad_exome',
         f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt ]] || annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/\\"',
         '--entrypoint=bash'
     )
@@ -569,17 +571,18 @@ def run_all(kwargs, extra, config, daemon):
     # 3.2.2 Retrieve refGene database
     pipeline.add_action(
         'annovar',
-        'verify database: hgxx_refGene',
+        f'verify database: {hgref}_refGene',
         f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_refGene.txt ]] || annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/\\"',
         '--entrypoint=bash'
     )
 
-    # 3.2.3 Annotate using hgxx RefSeq:
+    # 3.2.3 Annotate using <hgref> RefSeq:
     step3_2_3_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput.exonic_variant_function'
     pipeline.add_action(
         'annovar',
-        'annotate using hgxx RefSeq',
-        f'annotate_variation.pl -buildver {hgref} $WD/{step3_1_out} config[DEFAULT.annovar.humandb]/'
+        f'annotate using {hgref} RefSeq',
+        f'annotate_variation.pl -buildver {hgref} $WD/{step3_1_out} config[DEFAULT.annovar.humandb]/',
+        logs=('annotate_variation.log', None)
     )
 
     # 3.3   Make snapfun.db query file for missing SNAPs
@@ -592,7 +595,7 @@ def run_all(kwargs, extra, config, daemon):
         'extract variants to query snapfun.db',
         f'/app/R/avadx/exonic_variant_function2snap_query.R '
         + f'-f $WD/{step3_2_3_out} -m config[avadx.refseq2uniprot] '
-        + f'-s config[avadx.mutations] -l config[avadx.refseq2uniprot] '
+        + f'-s config[avadx.mutations] -l config[avadx.trsprotlengthcleaned] '
         + f'-o $WD/{step3_3_out}'
     )
 

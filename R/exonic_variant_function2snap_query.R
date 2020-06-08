@@ -1,19 +1,29 @@
 #!/usr/bin/env Rscript
 
+library(optparse, quietly=T, warn.conflicts=F)
 library(data.table, quietly=T, warn.conflicts=F)
 library(tidyr, quietly=T, warn.conflicts=F)
 library(dplyr, quietly=T, warn.conflicts=F)
 
+option_list = list(
+  make_option(c("-f", "--exonic_file"), type="character", default=NULL, 
+              help=".exonic_variant_function by ANNOVAR of one individual", metavar="character"),
+  make_option(c("-m", "--mapping"), type="character", default=NULL, 
+              help="refseq2uniprot mapping", metavar="character"),
+  make_option(c("-s", "--snapfun"), type="character", default=NULL, 
+              help="SNAPfun mutations", metavar="character"),
+  make_option(c("-l", "--length"), type="character", default=NULL, 
+              help="protein length info file", metavar="character"),
+  make_option(c("-o", "--out"), type="character", default=NULL, 
+              help="path to the output file.", metavar="character")
+)
 
-f <-
-m <- "/Users/WangYanran/Documents/Bitbucket/repos/avadx-meta/db/GCF_000001405.25_GRCh37.p13_rna.gbff.mRNA_ID-protein_ID.csv"
-s <- "/Users/WangYanran/Documents/Bitbucket/repos/avadx-meta/db/Mutations.mutOut"
-l <- "/Users/WangYanran/Documents/Bitbucket/repos/avadx-meta/db/GCF_000001405.25_GRCh37.p13_protein_ID-lengths.csv"
+opt = parse_args(OptionParser(option_list=option_list))
 
-exonic <- fread(f, header=F, data.table=F)
-map <- fread(m, header=F, data.table=F)
-snap_exist <- fread(s, header=F, data.table=F)
-protein_length <- fread(l, header=T, data.table=F)
+exonic <- fread(opt$exonic_file, header=F, data.table=F)
+map <- fread(opt$mapping, header=F, data.table=F)
+snap_exist <- fread(opt$snapfun, header=F, data.table=F)
+protein_length <- fread(opt$length, header=T, data.table=F)
 
 colnames(map) <- c("Transcript", "ProteinID")
 colnames(snap_exist) <- c("Transcript", "aaMutation", "SNAPscore")
@@ -56,7 +66,7 @@ exonic_flted_nodup <- exonic_flted %>%
 query_1 <- exonic_flted_nodup[, c("UniProt.entry.ID", "aaChange")]
 query_1$aaChange <- gsub("p.", "", query_1$aaChange)
 query_1 <- query_1[!is.na(query_1$UniProt.entry.ID),]
-write.table(query_1, "/Users/WangYanran/Desktop/Rerun_Crohns/Step3/query_UniProt-ID.txt",
+write.table(query_1, opt$out,
             quote=F, sep="\t", row.names=F, col.names=F)
 # (2) by sequence:
 query_2 <- exonic_flted_nodup[, c("UniProt.entry.ID", "aaChange")]

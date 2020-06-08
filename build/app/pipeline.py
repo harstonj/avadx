@@ -56,9 +56,9 @@ class AVADxMeta:
             outdir.mkdir(parents=True, exist_ok=True)
         for tid, task in enumerate(tasklist, 1):
             args_ = list(args)
-            task_info = f' [{tid}/{len(tasklist)}]' if task else ''
+            task_info = f' [{tid}/{len(tasklist)}] ({task})' if task else ''
             self.log.info(f'{name}{task_info}: {description}')
-            self.log.debug(f'{name}{task_info}: processing ({task}). started {datetime.now()}')
+            self.log.debug(f'{name}{task_info}: started {datetime.now()}')
             timer_start = timer()
             if fns_pre:
                 fns_pre()
@@ -220,7 +220,7 @@ class Pipeline():
             for a in args
         ]
         self.config.set('DEFAULT', 'datadir', str(data))
-        config_pattern = r'config\[(.*)\]'
+        config_pattern = r'config\[([^\]]*)\]' #r'config\[(.*)\]'
         args_parsed = [
             re.sub(
                 config_pattern,
@@ -230,7 +230,7 @@ class Pipeline():
             for a in args_parsed
         ]
         self.config.set('DEFAULT', 'datadir', config_datadir_orig)
-        cmd = cmd_base + args_parsed
+        cmd = cmd_base + [_.replace('//', '/') for _ in args_parsed]
         run_command(cmd, logger=self.log)
 
 

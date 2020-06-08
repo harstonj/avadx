@@ -51,26 +51,28 @@ class AVADxMeta:
         outdir = kwargs.get(name + "_outd").pop(0)
         mounts = kwargs.get(name + "_mounts").pop(0)
         fns_pre, fns_post =  kwargs.get(name + "_fns").pop(0)
+        description = kwargs.get(name + "_desc").pop(0)
         if outdir:
             outdir.mkdir(parents=True, exist_ok=True)
         for tid, task in enumerate(tasklist, 1):
+            args_ = list(args)
             task_info = f' [{tid}/{len(tasklist)}]' if task else ''
-            self.log.info(f'{name}{task_info}: {kwargs.get(name + "_desc").pop(0)}')
-            self.log.debug(f'{name}{task_info}: started {datetime.now()}')
+            self.log.info(f'{name}{task_info}: {description}')
+            self.log.debug(f'{name}{task_info}: processing ({task}). started {datetime.now()}')
             timer_start = timer()
             if fns_pre:
                 fns_pre()
             if task:
-                task_idxs = [i for i in range(len(args)) if args[i].find('$TASK') != -1 ]
+                task_idxs = [i for i in range(len(args_)) if args_[i].find('$TASK') != -1 ]
                 for task_idx in task_idxs:
                     update = f'{taskprefix if taskprefix else ""}{task}'
-                    args[task_idx] = update if args[task_idx] == '$TASK' else args[task_idx].replace('$TASK', update)
+                    args_[task_idx] = update if args_[task_idx] == '$TASK' else args_[task_idx].replace('$TASK', update)
                 if taskflag:
                     task_idxs.reverse()
                     for task_idx_r in task_idxs:
-                        args.insert(task_idx_r, taskflag)
+                        args_.insert(task_idx_r, taskflag)
             self.pipeline.run_container(
-                container, args=args, daemon_args=daemon_args, uid=uid,
+                container, args=args_, daemon_args=daemon_args, uid=uid,
                 mounts=mounts,
                 out_folder=kwargs.get('wd')
             )

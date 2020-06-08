@@ -52,6 +52,7 @@ class AVADxMeta:
         mounts = kwargs.get(name + "_mounts").pop(0)
         fns_pre, fns_post =  kwargs.get(name + "_fns").pop(0)
         description = kwargs.get(name + "_desc").pop(0)
+        log_stdout, log_stderr = kwargs.get(name + "_logs").pop(0)
         if outdir:
             outdir.mkdir(parents=True, exist_ok=True)
         for tid, task in enumerate(tasklist, 1):
@@ -71,10 +72,16 @@ class AVADxMeta:
                     task_idxs.reverse()
                     for task_idx_r in task_idxs:
                         args_.insert(task_idx_r, taskflag)
+                if log_stdout:
+                    log_stdout = f'{task}_{log_stdout}'
+                if log_stderr:
+                    log_stderr = f'{task}_{log_stderr}'
             self.pipeline.run_container(
                 container, args=args_, daemon_args=daemon_args, uid=uid,
                 mounts=mounts,
-                out_folder=kwargs.get('wd')
+                out_folder=kwargs.get('wd'),
+                stdout=log_stdout,
+                stderr=log_stderr
             )
             if fns_post:
                 fns_post()
@@ -156,7 +163,10 @@ class Pipeline():
             config.read(str(config_file))
         return config
 
-    def add_action(self, action, description='', args='', daemon_args='', tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[]):
+    def add_action(
+            self, action, description='', args='', daemon_args='',
+            tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], logs=(None, None)
+        ):
         self.actions += [action]
         self.kwargs[action] = self.kwargs.get(action, []) + [args]
         self.kwargs[f'{action}_desc'] = self.kwargs.get(f'{action}_desc', []) + [description]
@@ -165,6 +175,7 @@ class Pipeline():
         self.kwargs[f'{action}_fns'] = self.kwargs.get(f'{action}_fns', []) + [fns]
         self.kwargs[f'{action}_outd'] = self.kwargs.get(f'{action}_outd', []) + [outdir]
         self.kwargs[f'{action}_mounts'] = self.kwargs.get(f'{action}_mounts', []) + [mounts]
+        self.kwargs[f'{action}_logs'] = self.kwargs.get(f'{action}_logs', []) + [logs]
 
     def check_optional(self, name, flag='', is_file=False):
         formatted = ''
@@ -181,7 +192,7 @@ class Pipeline():
                 self.log.warn(f'Ignoring optional argument: {flag} {option_value}. Reason: file not found')
         return formatted
 
-    def run_container(self, container, args=[], daemon_args=[], uid=uuid.uuid1(), mounts=[], out_folder:Path=Path.cwd()):
+    def run_container(self, container, args=[], daemon_args=[], uid=uuid.uuid1(), mounts=[], out_folder:Path=Path.cwd(), stdout=None, stderr=None):
         if out_folder:
             (out_folder / str(uid) / 'out').mkdir(parents=True, exist_ok=True)
         wd_folder = out_folder / str(uid) / 'wd'
@@ -231,7 +242,10 @@ class Pipeline():
         ]
         self.config.set('DEFAULT', 'datadir', config_datadir_orig)
         cmd = cmd_base + [_.replace('//', '/') for _ in args_parsed]
-        run_command(cmd, logger=self.log)
+        out = run_command(cmd, logger=self.log)
+        if stdout:
+            with (wd_folder / stdout).open('w') as fout:
+                fout.writelines([f'{_}\n' for _ in out])
 
 
 get_extra = lambda x, y: [_.split('=')[1] for _ in x if _.startswith(y)]
@@ -324,7 +338,7 @@ def run_all(kwargs, extra, config, daemon):
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
     hgref = pipeline.config.get('avadx', 'hgref')
-    gnomADfilter = True if pipeline.config.get('avadx', 'gnomADfilter', fallback='no') == 'yes' else False
+    gnomADfilter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='no') == 'yes' else False
 
     # 1     Variant QC -------------------------------------------------------------------------- #
     

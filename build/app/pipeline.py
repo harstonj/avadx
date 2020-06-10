@@ -87,6 +87,9 @@ class AVADxMeta:
                 fns_post()
             self.log.info(f'{name}{task_info}: took {(timer() - timer_start):.3f} seconds')
 
+    def about(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-meta', 'about', uid, kwargs)
+
     def bcftools(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-bcftools', 'bcftools', uid, kwargs)
 
@@ -162,6 +165,9 @@ class Pipeline():
         if config_file and config_file.exists():
             config.read(str(config_file))
         return config
+
+    def info(self):
+        print(f'AVA,Dx {__version__} {__releasedate__}')
 
     def add_action(
             self, action, description='', args='', daemon_args='',
@@ -244,8 +250,11 @@ class Pipeline():
         cmd = cmd_base + [_.replace('//', '/') for _ in args_parsed]
         out = run_command(cmd, logger=self.log)
         if stdout:
-            with (wd_folder / stdout).open('w') as fout:
-                fout.writelines([f'{_}\n' for _ in out])
+            if stdout == 'print':
+                print('\n'.join(out))
+            else:
+                with (wd_folder / stdout).open('w') as fout:
+                    fout.writelines([f'{_}\n' for _ in out])
 
 
 get_extra = lambda x, y: [_.split('=')[1] for _ in x if _.startswith(y)]
@@ -281,6 +290,8 @@ def parse_arguments():
                         help="number of threads; default: 1")
     parser.add_argument('-d', '--daemon', type=str, default='docker', choices=['docker', 'singularity'],
                         help="container engine")
+    parser.add_argument('-i', '--info', action='store_true',
+                        help="print pipeline info")
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help="set verbosity level; default: log level INFO")
     parser.add_argument('-L', '--logfile', type=Path, const=Path('pipeline.log'),
@@ -339,6 +350,34 @@ def run_all(kwargs, extra, config, daemon):
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
     hgref = pipeline.config.get('avadx', 'hgref')
     gnomADfilter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='no') == 'yes' else False
+
+    # 0     Downloads & Info -------------------------------------------------------------------- #
+
+    # 0.1   Print Info
+    pipeline.add_action(
+        'about',
+        f'AVA,Dx pipeline info',
+        f'app.pipeline --info',
+        logs=('print', None)
+    )
+
+    # 0.2   Retrieve gnomad_exome database
+    pipeline.add_action(
+        'annovar',
+        f'verify/download database: {hgref}_gnomad_exome',
+        f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
+        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log)\\"',
+        '--entrypoint=bash'
+    )
+
+    # 0.3   Retrieve refGene database
+    pipeline.add_action(
+        'annovar',
+        f'verify/download database: {hgref}_refGene',
+        f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_refGene.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
+        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log)\\"',
+        '--entrypoint=bash'
+    )
 
     # 1     Variant QC -------------------------------------------------------------------------- #
     
@@ -425,8 +464,8 @@ def run_all(kwargs, extra, config, daemon):
             'filterVCF_by_gnomAD',
             'filter variants missing in gnomAD database',
             f'avadx.filterVCF_by_gnomAD $WD/{step1_6_1_out} $WD/{step1_6_2_out} '
-            + f'config[DEFAULT.avadx.data]/{hgref}_config[avadx.gnomadfilter.exome] '
-            + f'config[DEFAULT.avadx.data]/{hgref}_config[avadx.gnomadfilter.genome]'
+            + f'config[DEFAULT.annovar.gnomad]/{hgref}_config[avadx.gnomadfilter.exome] '
+            + f'config[DEFAULT.annovar.gnomad]/{hgref}_config[avadx.gnomadfilter.genome]'
         )
         step1_out = step1_6_2_out
     else:
@@ -548,6 +587,7 @@ def run_all(kwargs, extra, config, daemon):
         f'view -S ^$WD/{step2_4_1_out} $WD/{step1_out} -Oz -o $WD/{step2_4_2_out}',
         fns=(step2_4_1_fnpre, None)
     )
+    step2_out = step2_4_2_out
 
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
     
@@ -556,28 +596,12 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar',
         'convert VCF file to ANNOVAR input format',
-        f'convert2annovar.pl -format vcf4old $WD/{step2_4_2_out} -outfile $WD/{step3_1_out}',
+        f'convert2annovar.pl -format vcf4old $WD/{step2_out} -outfile $WD/{step3_1_out}',
         logs=('convert2annovar.log', None)
     )
 
-    # 3.2.1 Retrieve gnomad_exome database
-    pipeline.add_action(
-        'annovar',
-        f'verify database: {hgref}_gnomad_exome',
-        f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt ]] || annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/\\"',
-        '--entrypoint=bash'
-    )
-
-    # 3.2.2 Retrieve refGene database
-    pipeline.add_action(
-        'annovar',
-        f'verify database: {hgref}_refGene',
-        f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_refGene.txt ]] || annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/\\"',
-        '--entrypoint=bash'
-    )
-
-    # 3.2.3 Annotate using <hgref> RefSeq:
-    step3_2_3_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput.exonic_variant_function'
+    # 3.2   Annotate using <hgref> RefSeq:
+    step3_2_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput.exonic_variant_function'
     pipeline.add_action(
         'annovar',
         f'annotate using {hgref} RefSeq',
@@ -594,7 +618,7 @@ def run_all(kwargs, extra, config, daemon):
         'exonic_variant_function2snap_query',
         'extract variants to query snapfun.db',
         f'/app/R/avadx/exonic_variant_function2snap_query.R '
-        + f'-f $WD/{step3_2_3_out} -m config[avadx.refseq2uniprot] '
+        + f'-f $WD/{step3_2_out} -m config[avadx.refseq2uniprot] '
         + f'-s config[avadx.mutations] -l config[avadx.trsprotlengthcleaned] '
         + f'-o $WD/{step3_3_out}'
     )
@@ -604,7 +628,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'check_missing_SNAP',
         'check missing SNAP predictions',
-        f'/app/R/avadx/check_missing_SNAP.R $WD/{step3_2_3_out} config[DEFAULT.avadx.data] $WD/{step3_4_outfolder}',
+        f'/app/R/avadx/check_missing_SNAP.R $WD/{step3_2_out} config[DEFAULT.avadx.data] $WD/{step3_4_outfolder}',
         outdir=(WD / step3_4_outfolder)
     )
 
@@ -615,7 +639,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar',
         'convert cleaned VCF to single annovar annotation files',
-        f'-c \\"convert2annovar.pl -format vcf4 $WD/{step2_4_2_out} -outfile $WD/{step4_1_outfolder}/sample -allsample; '
+        f'-c \\"convert2annovar.pl -format vcf4 $WD/{step2_out} -outfile $WD/{step4_1_outfolder}/sample -allsample; '
         + f'(cd $WD/{step4_1_outfolder} && ls -f -1 sample.*.avinput) > $WD/{step4_1_out}\\"',
         '--entrypoint=bash',
         outdir=(WD / step4_1_outfolder)
@@ -684,10 +708,12 @@ def init():
     del namespace.action
     del namespace.config
     del namespace.daemon
-    if actions == None:
+    if namespace.info:
+        Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon).info()
+    elif actions == None:
         run_all(vars(namespace), extra, config, daemon)
     else:
-        pipeline = Pipeline(actions, kwargs=vars(namespace), config=config, daemon=daemon)
+        pipeline = Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon)
         main(pipeline, extra)
 
 

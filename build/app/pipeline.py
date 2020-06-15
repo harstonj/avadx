@@ -2,6 +2,7 @@
 
 import argparse
 import re
+import csv
 import uuid
 import shlex
 import subprocess
@@ -37,7 +38,7 @@ class AVADxMeta:
         if func:
             return func(uid, **kwargs)
         else:
-            self.log.warn(f'No method: {func_name}')
+            self.log.warning(f'No method: {func_name}')
 
     def run_method(self, container, name, uid, kwargs):
         args = shlex.split(kwargs.get(name).pop(0))
@@ -87,8 +88,8 @@ class AVADxMeta:
                 fns_post()
             self.log.info(f'{name}{task_info}: took {(timer() - timer_start):.3f} seconds')
 
-    def about(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-meta', 'about', uid, kwargs)
+    def run_preprocess(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-meta', 'run_preprocess', uid, kwargs)
 
     def bcftools(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-bcftools', 'bcftools', uid, kwargs)
@@ -129,7 +130,7 @@ class AVADxMeta:
     def FS_CVperf_kfold(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-rscript', 'FS_CVperf_kfold', uid, kwargs)
 
-class Pipeline():
+class Pipeline:
 
     REGISTRY = {
         'singularity': {
@@ -169,6 +170,8 @@ class Pipeline():
     def info(self):
         print(f'AVA,Dx {__version__} {__releasedate__}')
 
+    def preprocess(self):
+        pass
     def add_action(
             self, action, description='', args='', daemon_args='',
             tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], logs=(None, None)
@@ -183,19 +186,32 @@ class Pipeline():
         self.kwargs[f'{action}_mounts'] = self.kwargs.get(f'{action}_mounts', []) + [mounts]
         self.kwargs[f'{action}_logs'] = self.kwargs.get(f'{action}_logs', []) + [logs]
 
-    def check_optional(self, name, flag='', is_file=False):
+    def check_config(self, name, section='avadx', flag='', is_file=False, default=None, quiet=False):
         formatted = ''
-        if self.config.has_option('avadx', f'optional.{name}'):
+        skip = ''
+        if self.config.has_option(section, f'{name}'):
             config_datadir_orig = self.config.get('DEFAULT', 'datadir', fallback=None)
             self.config.set('DEFAULT', 'datadir', str(DOCKER_MNT / 'data'))
-            option_value = self.config.get('avadx', f'optional.{name}')
+            option_value = self.config.get(section, f'{name}')
             self.config.set('DEFAULT', 'datadir', config_datadir_orig)
             if not is_file:
                 formatted = f'{flag} {option_value}'
             elif Path(option_value).exists():
                 formatted = f'{flag} /in/{option_value}'
             elif is_file and not Path(option_value).exists():
-                self.log.warn(f'Ignoring optional argument: {flag} {option_value}. Reason: file not found')
+                skip = 'file not found'
+        else:
+            skip = 'optional argument not specified'
+        if not formatted and default:
+            if not is_file:
+                formatted = f'{flag} {default}'
+            else:
+                formatted = f'{flag} $WD/{default}'
+        if skip and not quiet:
+            if not default:
+                self.log.warning(f'Ignoring optional argument: {flag} {option_value}: {skip}')
+            else:
+                self.log.debug(f'Using optional argument defaults: {flag} {option_value}: {skip}')
         return formatted
 
     def run_container(self, container, args=[], daemon_args=[], uid=uuid.uuid1(), mounts=[], out_folder:Path=Path.cwd(), stdout=None, stderr=None):
@@ -292,6 +308,8 @@ def parse_arguments():
                         help="container engine")
     parser.add_argument('-i', '--info', action='store_true',
                         help="print pipeline info")
+    parser.add_argument('-p', '--preprocess', action='store_true',
+                        help="run input preprocessing")
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help="set verbosity level; default: log level INFO")
     parser.add_argument('-L', '--logfile', type=Path, const=Path('pipeline.log'),
@@ -338,7 +356,7 @@ def get_mounts(pipeline, *config):
             if cfg_path.exists():
                 mounts += [(cfg_path.absolute(), Path('/in', cfg_path))]
             else:
-                pipeline.log.warn(f'Could not mount {cfg_path}. Path not found.')
+                pipeline.log.debug(f'Could not mount {cfg_path}. Path not found.')
     return mounts
 
 def run_all(kwargs, extra, config, daemon):
@@ -355,9 +373,9 @@ def run_all(kwargs, extra, config, daemon):
 
     # 0.1   Print Info
     pipeline.add_action(
-        'about',
-        f'AVA,Dx pipeline info',
-        f'app.pipeline --info',
+        'run_preprocess',
+        f'AVA,Dx pipeline preprocess',
+        f'app.pipeline --preprocess',
         logs=('print', None)
     )
 
@@ -384,12 +402,12 @@ def run_all(kwargs, extra, config, daemon):
     # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
     step1_1_in = 'config[avadx.vcf]'
     step1_1_out = 'source_samp.vcf.gz'
-    mounts = get_mounts(pipeline, ('avadx', 'vcf'), ('avadx', 'optional.sampleids'))
+    mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'))
     pipeline.add_action(
         'bcftools',
         'filter for individuals of interest ',
-        f'view {pipeline.check_optional("sampleids", flag="-S", is_file=True)} /in/{step1_1_in} -Oz -o $WD/{step1_1_out}',
-        mounts=mounts
+        f'view -S $WD/sampleids.txt /in/{step1_1_in} -Oz -o $WD/{step1_1_out}',
+        mounts=mounts_step1_1
     )
 
     # 1.2   Remove variant sites which did not pass the VQSR standard.
@@ -690,7 +708,7 @@ def run_all(kwargs, extra, config, daemon):
         'FS_CVperf_kfold',
         'perform model cross-validation',
         f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
-        + f'-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s config[avadx.cv.scheme] '
+        + f'-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/cv-scheme.csv '
         + f'-k config[avadx.cv.folds] -l config[avadx.trsprotlengthcleaned] -t config[avadx.cv.steps] '
         + f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $WD/{step5_1_outfolder}',
         outdir=(WD / step5_1_outfolder)
@@ -710,6 +728,12 @@ def init():
     del namespace.daemon
     if namespace.info:
         Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon).info()
+    elif namespace.preprocess:
+        pipeline = Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon)
+        uid = get_extra(extra, '--uid')
+        if uid:
+            pipeline.uid = uid[0]
+        pipeline.preprocess()
     elif actions == None:
         run_all(vars(namespace), extra, config, daemon)
     else:

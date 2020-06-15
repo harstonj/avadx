@@ -6,14 +6,13 @@ import csv
 import uuid
 import shlex
 import random
-import subprocess
 import configparser
 import multiprocessing
 from pathlib import Path
 from datetime import datetime
 from timeit import default_timer as timer
 from .logger import Logger
-from .helper import run_command, flatten
+from .helper import run_command, flatten, runningInDocker
 from . import __version__, __releasedate__
 
 
@@ -52,7 +51,7 @@ class AVADxMeta:
             tasklist = [None]
         outdir = kwargs.get(name + "_outd").pop(0)
         mounts = kwargs.get(name + "_mounts").pop(0)
-        fns_pre, fns_post =  kwargs.get(name + "_fns").pop(0)
+        fns_pre, fns_post = kwargs.get(name + "_fns").pop(0)
         description = kwargs.get(name + "_desc").pop(0)
         log_stdout, log_stderr = kwargs.get(name + "_logs").pop(0)
         if outdir:
@@ -66,7 +65,7 @@ class AVADxMeta:
             if fns_pre:
                 fns_pre()
             if task:
-                task_idxs = [i for i in range(len(args_)) if args_[i].find('$TASK') != -1 ]
+                task_idxs = [i for i in range(len(args_)) if args_[i].find('$TASK') != -1]
                 for task_idx in task_idxs:
                     update = f'{taskprefix if taskprefix else ""}{task}'
                     args_[task_idx] = update if args_[task_idx] == '$TASK' else args_[task_idx].replace('$TASK', update)
@@ -131,6 +130,7 @@ class AVADxMeta:
     def FS_CVperf_kfold(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-rscript', 'FS_CVperf_kfold', uid, kwargs)
 
+
 class Pipeline:
 
     REGISTRY = {
@@ -147,8 +147,10 @@ class Pipeline:
         self.actions = actions
         self.kwargs = kwargs
         self.uid = uid
-        self.config = self.load_config(config_file)
+        self.config_file = config_file
+        self.config = self.load_config()
         self.daemon = daemon
+        self.is_docker_vm = runningInDocker()
         self.init_daemon()
 
     def get_logger(self):
@@ -162,30 +164,40 @@ class Pipeline:
             # import docker
             pass
 
-    def load_config(self, config_file):
+    def load_config(self):
         config = configparser.ConfigParser()
-        if config_file and config_file.exists():
-            config.read(str(config_file))
+        if self.config_file and self.config_file.exists():
+            config.read(str(self.config_file))
+        else:
+            config_file_mnt = Path('/') / 'in' / self.config_file.name
+            if config_file_mnt and config_file_mnt.exists():
+                config.read(str(config_file_mnt))
         return config
 
     def info(self):
         print(f'AVA,Dx {__version__} {__releasedate__}')
 
     def preprocess(self):
-        wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
-        wd_folder.mkdir(parents=True, exist_ok=True)
-        samples = self.check_config('samples', is_file=True, quiet=True)
-        if not samples:
-            self.log.warning('Required input missing')
-            return
-        samples_path = Path(self.config.get('avadx', 'samples'))
-        samplesids_path = wd_folder / 'sampleids.txt'
-        cvscheme_path = wd_folder / 'cv-scheme.csv'
-        if not samples_path.exists():
-            self.log.warning(f'Could not read required input: {samples_path}')
-            return
+        if self.is_docker_vm:
+            wd_folder = self.kwargs.get('wd')
+            samples_path = Path('/') / 'in' / self.config.get('avadx', 'samples')
+            samplesids_path = wd_folder / 'sampleids.txt'
+            cvscheme_path = wd_folder / 'cv-scheme.csv'
+        else:
+            wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
+            wd_folder.mkdir(parents=True, exist_ok=True)
+            samples = self.check_config('samples', is_file=True, quiet=False)
+            if not samples:
+                self.log.warning('Required input missing - sample annotation file')
+                return
+            samples_path = Path(self.config.get('avadx', 'samples'))
+            samplesids_path = wd_folder / 'sampleids.txt'
+            cvscheme_path = wd_folder / 'cv-scheme.csv'
+            if not samples_path.exists():
+                self.log.warning(f'Could not read required input: {samples_path}')
+                return
         indices = lambda labels, search: [i for i, x in enumerate(labels) if x == search]
-        folds = lambda samples, foldcnt: [samples[i * foldcnt:(i + 1) * foldcnt] for i in range((len(samples) + foldcnt - 1) // foldcnt )]
+        folds = lambda samples, foldcnt: [samples[i * foldcnt:(i + 1) * foldcnt] for i in range((len(samples) + foldcnt - 1) // foldcnt)]
         with samples_path.open() as fin, samplesids_path.open('w') as fout_ids, cvscheme_path.open('w') as fout_cv:
             samples, labels, col3 = [], [], []
             reader = csv.reader(fin)
@@ -221,14 +233,14 @@ class Pipeline:
                     for sidx in fold:
                         fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
                 split_type = 'auto-generated group'
-                split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else f'leave-one-out splits'
+                split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
             elif has_folds:
                 folds = col3
                 for sidx, fold in enumerate(folds):
                     fout_cv.write(f'{samples[sidx]},{fold},{labels[sidx]}\n')
                 cv_folds = len(set(folds))
                 split_type = 'user-specified fold'
-                split_description = f'{cv_folds}-fold split' if cv_folds < len(folds) else f'leave-one-out splits'
+                split_description = f'{cv_folds}-fold split' if cv_folds < len(folds) else 'leave-one-out splits'
             else:
                 cv_folds_max = len(samples)
                 cv_folds = min(cv_folds_config, cv_folds_max) if cv_folds_config > 1 else cv_folds_max
@@ -246,13 +258,13 @@ class Pipeline:
                     for sidx in fold:
                         fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
                 split_type = 'auto-generated sample'
-                split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else f'leave-one-out splits'
+                split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
             self.log.info(f'Using {split_type} based cross-validation scheme for {split_description}')
 
     def add_action(
             self, action, description='', args='', daemon_args='',
             tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], logs=(None, None)
-        ):
+            ):
         self.actions += [action]
         self.kwargs[action] = self.kwargs.get(action, []) + [args]
         self.kwargs[f'{action}_desc'] = self.kwargs.get(f'{action}_desc', []) + [description]
@@ -264,21 +276,22 @@ class Pipeline:
         self.kwargs[f'{action}_logs'] = self.kwargs.get(f'{action}_logs', []) + [logs]
 
     def check_config(self, name, section='avadx', flag='', is_file=False, default=None, quiet=False):
+        option_value = 'NA'
         formatted = ''
         skip = ''
-        if self.config.has_option(section, f'{name}'):
+        if self.config.has_option(section, name):
             config_datadir_orig = self.config.get('DEFAULT', 'datadir', fallback=None)
             self.config.set('DEFAULT', 'datadir', str(DOCKER_MNT / 'data'))
             option_value = self.config.get(section, f'{name}')
             self.config.set('DEFAULT', 'datadir', config_datadir_orig)
             if not is_file:
                 formatted = f'{flag} {option_value}'
-            elif Path(option_value).exists():
+            elif Path(option_value).exists() or (Path('/') / 'in' / option_value).is_file():
                 formatted = f'{flag} /in/{option_value}'
-            elif is_file and not Path(option_value).exists():
+            elif is_file and not (Path(option_value).exists() or (Path('/') / 'in' / option_value).is_file()):
                 skip = 'file not found'
         else:
-            skip = 'optional argument not specified'
+            skip = 'argument not defined in config'
         if not formatted and default:
             if not is_file:
                 formatted = f'{flag} {default}'
@@ -286,9 +299,9 @@ class Pipeline:
                 formatted = f'{flag} $WD/{default}'
         if skip and not quiet:
             if not default:
-                self.log.warning(f'Ignoring optional argument: {flag} {option_value}: {skip}')
+                self.log.warning(f'Ignoring optional argument: {flag} {option_value} -> {skip}')
             else:
-                self.log.debug(f'Using optional argument defaults: {flag} {option_value}: {skip}')
+                self.log.debug(f'Using optional argument defaults: {flag} {option_value} -> {skip}')
         return formatted
 
     def run_container(self, container, args=[], daemon_args=[], uid=uuid.uuid1(), mounts=[], out_folder:Path=Path.cwd(), stdout=None, stderr=None):
@@ -417,7 +430,7 @@ def parse_arguments():
             parser.add_argument(f'--{action}',  action='append', default=[])
             parser_actions += [action]
     namespace, extra = parser.parse_known_args()
-    namespace.verbose = 40 - (10*namespace.verbose) if namespace.verbose > 0 else 0
+    namespace.verbose = 40 - min(10*namespace.verbose, 40) if namespace.verbose >= 0 else 0
     global LOG_LEVEL, LOG_FILE
     LOG_LEVEL = namespace.verbose
     LOG_FILE = namespace.logfile
@@ -452,6 +465,7 @@ def get_mounts(pipeline, *config):
                 pipeline.log.debug(f'Could not mount {cfg_path}. Path not found.')
     return mounts
 
+
 def run_all(kwargs, extra, config, daemon):
     pipeline = Pipeline(kwargs=kwargs, config_file=config, daemon=daemon)
     uid = get_extra(extra, '--uid')
@@ -465,10 +479,12 @@ def run_all(kwargs, extra, config, daemon):
     # 0     Downloads & Info -------------------------------------------------------------------- #
 
     # 0.1   Print Info
+    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), Path('/') / 'in' / 'pipeline.ini')]
     pipeline.add_action(
         'run_preprocess',
         f'AVA,Dx pipeline preprocess',
-        f'app.pipeline --preprocess',
+        f'app.pipeline --preprocess --wd $WD {"-v "*(LOG_LEVEL//10)}',
+        mounts=mounts_preprocess,
         logs=('print', None)
     )
 

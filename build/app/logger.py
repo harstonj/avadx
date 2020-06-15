@@ -12,8 +12,8 @@ class Logger():
     def addConsoleHandler(self, level=None, formatted=True):
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level if level else self.level)
-        if formatted:
-            if console_handler.level == 20:
+        if formatted and console_handler.level > 0:
+            if console_handler.level >= 20:
                 formatter = logging.Formatter(
                     "[ %(levelname)8s ] --- %(message)s"
                 )
@@ -27,7 +27,7 @@ class Logger():
     def addFileHandler(self, filename, level=None):
         file_handler = logging.FileHandler(filename)
         file_handler.setLevel(level if level else self.level)
-        if file_handler.level == 20:
+        if file_handler.level >= 20:
             formatter = logging.Formatter(
                 "[ %(levelname)8s ] --- %(message)s"
             )
@@ -49,4 +49,4 @@ class Logger():
 
 
 def getLevelName(level):
-        return logging.getLevelName(level)
+    return logging.getLevelName(level)

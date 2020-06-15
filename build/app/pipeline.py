@@ -5,6 +5,7 @@ import re
 import csv
 import uuid
 import shlex
+import random
 import subprocess
 import configparser
 import multiprocessing
@@ -12,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 from timeit import default_timer as timer
 from .logger import Logger
-from .helper import run_command
+from .helper import run_command, flatten
 from . import __version__, __releasedate__
 
 
@@ -171,7 +172,83 @@ class Pipeline:
         print(f'AVA,Dx {__version__} {__releasedate__}')
 
     def preprocess(self):
-        pass
+        wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
+        wd_folder.mkdir(parents=True, exist_ok=True)
+        samples = self.check_config('samples', is_file=True, quiet=True)
+        if not samples:
+            self.log.warning('Required input missing')
+            return
+        samples_path = Path(self.config.get('avadx', 'samples'))
+        samplesids_path = wd_folder / 'sampleids.txt'
+        cvscheme_path = wd_folder / 'cv-scheme.csv'
+        if not samples_path.exists():
+            self.log.warning(f'Could not read required input: {samples_path}')
+            return
+        indices = lambda labels, search: [i for i, x in enumerate(labels) if x == search]
+        folds = lambda samples, foldcnt: [samples[i * foldcnt:(i + 1) * foldcnt] for i in range((len(samples) + foldcnt - 1) // foldcnt )]
+        with samples_path.open() as fin, samplesids_path.open('w') as fout_ids, cvscheme_path.open('w') as fout_cv:
+            samples, labels, col3 = [], [], []
+            reader = csv.reader(fin)
+            header = next(reader)
+            has_groups = len(header) == 3 and header[2] == 'group'
+            has_folds = len(header) == 3 and header[2] == 'fold'
+            for row in reader:
+                samples += [row[0]]
+                labels += [row[1]]
+                if has_groups or has_folds:
+                    col3 += [row[2]]
+            fout_ids.writelines([f'{_}\n' for _ in samples])
+            cv_folds_config = int(self.config.get('avadx', 'cv.folds'))
+            if has_groups:
+                auto_folds = []
+                groups = col3
+                grouped_samples = {g: indices(groups, g) for g in set(groups)}
+                cv_folds_max = len(grouped_samples)
+                cv_folds = min(cv_folds_config, cv_folds_max) if cv_folds_config > 1 else cv_folds_max
+                if cv_folds_config > cv_folds_max:
+                    self.log.warning(
+                        f'Too few groups ({cv_folds_max}) for specified {cv_folds_config}-fold cross-validation'
+                        + f' - proceeding with {cv_folds}-fold split')
+                grouped_samples_shuffled = list(grouped_samples)
+                random.shuffle(grouped_samples_shuffled)
+                group_folds = folds(grouped_samples_shuffled, len(grouped_samples_shuffled)//cv_folds)
+                for gfold in group_folds:
+                    auto_folds += [flatten([grouped_samples.get(g) for g in gfold])]
+                auto_folds = adjust_splits(auto_folds, cv_folds)
+                if len(auto_folds) != cv_folds:
+                    self.log.warn(f'Auto-generated cross-validation folds ({len(auto_folds)}) differ from specified folds ({cv_folds})')
+                for idx, fold in enumerate(auto_folds, 1):
+                    for sidx in fold:
+                        fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
+                split_type = 'auto-generated group'
+                split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else f'leave-one-out splits'
+            elif has_folds:
+                folds = col3
+                for sidx, fold in enumerate(folds):
+                    fout_cv.write(f'{samples[sidx]},{fold},{labels[sidx]}\n')
+                cv_folds = len(set(folds))
+                split_type = 'user-specified fold'
+                split_description = f'{cv_folds}-fold split' if cv_folds < len(folds) else f'leave-one-out splits'
+            else:
+                cv_folds_max = len(samples)
+                cv_folds = min(cv_folds_config, cv_folds_max) if cv_folds_config > 1 else cv_folds_max
+                if cv_folds_config > cv_folds_max:
+                    self.log.warning(
+                        f'Too few samples ({cv_folds_max}) for specified {cv_folds_config}-fold cross-validation'
+                        + f' - proceeding with {cv_folds}-fold split')
+                samples_indices = [_ for _ in range(6)]
+                random.shuffle(samples_indices)
+                auto_folds = folds(samples_indices, len(samples_indices)//cv_folds)
+                auto_folds = adjust_splits(auto_folds, cv_folds)
+                if len(auto_folds) != cv_folds:
+                    self.log.warn(f'Auto-generated cross-validation folds ({len(auto_folds)}) differ from specified folds ({cv_folds})')
+                for idx, fold in enumerate(auto_folds, 1):
+                    for sidx in fold:
+                        fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
+                split_type = 'auto-generated sample'
+                split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else f'leave-one-out splits'
+            self.log.info(f'Using {split_type} based cross-validation scheme for {split_description}')
+
     def add_action(
             self, action, description='', args='', daemon_args='',
             tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], logs=(None, None)
@@ -274,6 +351,22 @@ class Pipeline:
 
 
 get_extra = lambda x, y: [_.split('=')[1] for _ in x if _.startswith(y)]
+
+
+def adjust_splits(auto_folds, cv_folds):
+    last_elem = -1
+    while len(auto_folds) > cv_folds:
+        tmp = []
+        for idx, elem in enumerate(auto_folds):
+            if idx == last_elem:
+                tmp += [elem]
+            elif idx == last_elem + 1 and idx + 1 < len(auto_folds):
+                tmp += [elem + auto_folds[idx + 1]]
+            elif idx > last_elem + 2:
+                tmp += [elem]
+        last_elem += 1
+        auto_folds = tmp
+    return auto_folds
 
 
 def parse_arguments():

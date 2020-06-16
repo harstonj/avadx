@@ -10,7 +10,7 @@ outputfolder <- args[3]
 
 setwd(dbfolder)
 df_len <- read.csv("Transcript-ProtLength.csv", stringsAsFactors=F, header=T)
-mutOut <- read.table("Mutations.mutOut", stringsAsFactors=F, header=F, sep="\t")
+# mutOut <- read.table("Mutations.mutOut", stringsAsFactors=F, header=F, sep="\t")
 
 exonic <- data.table::fread(exonic.file, header=F, data.table=F)
 exonic <- exonic[exonic$V3!="UNKNOWN",]
@@ -45,16 +45,21 @@ if(any(is.na(gene_mRNA$prot_length))){
   setwd(outputfolder)
   write.table(unique(as.character(gene_mRNA$Transcript[is.na(gene_mRNA$prot_length)])), 
               file="missing_mRNA_accession.txt", quote=F, col.names=F, row.names=F)
-  stop("Transcript-ProtLength.csv lacks protein length info. Please check and run this script again.")
+  print(
+    paste0("Transcript-ProtLength.csv lacks protein length info for ",
+    length(which(is.na(gene_mRNA$prot_length))), " instances (",
+    round(length(which(is.na(gene_mRNA$prot_length)))/nrow(gene_mRNA)*100), "%). "
+    ,"Please check and run this script again.")
+  )
 }
 
 # check if Mutations.mutOut already contains the variants:
-gene_mRNA$Exist <- ifelse(paste0(gene_mRNA$Transcript, "-", gene_mRNA$aaMut) %in% paste0(mutOut$V1, "-", mutOut$V2), T, F)
-print(paste0(sum(gene_mRNA$Exist), " mutations (", round(sum(gene_mRNA$Exist)/nrow(gene_mRNA)*100),"%) already have SNAP scores in Mutations.mutOut. Another ", sum(!gene_mRNA$Exist), " new mutations need to run with SNAP."))
-print("Generating SNAP input files...")
+#gene_mRNA$Exist <- ifelse(paste0(gene_mRNA$Transcript, "-", gene_mRNA$aaMut) %in% paste0(mutOut$V1, "-", mutOut$V2), T, F)
+#print(paste0(sum(gene_mRNA$Exist), " mutations (", round(sum(gene_mRNA$Exist)/nrow(gene_mRNA)*100),"%) already have SNAP scores in Mutations.mutOut. Another ", sum(!gene_mRNA$Exist), " new mutations need to run with SNAP."))
+#print("Generating SNAP input files...")
 
 # For the same line, keep only the mutation in the longest protein:
-gene_mRNA <- gene_mRNA[gene_mRNA$Exist==F, ]
+#gene_mRNA <- gene_mRNA[gene_mRNA$Exist==F, ]
 gene_mRNA_nodup <- gene_mRNA %>%
   group_by(line) %>%
   filter(prot_length == max(prot_length))
@@ -72,7 +77,7 @@ missing_prot_seq <- setdiff(unique(as.character(gene_mRNA$Transcript)), fas_mRNA
 if(length(missing_prot_seq)>0){
   setwd(outputfolder)
   write.table(missing_prot_seq, "TranscriptAccess_missing_prot_seq.txt", quote=F, col.names=F, row.names=F)
-  stop(paste0(length(missing_prot_seq), " transcripts do not have protein sequences in the db folder. Please append the protein sequence into the prot_seqs.txt file! mRNA transcript accession numbers were output to the output folder and is named: TranscriptAccess_missing_prot_seq.txt. Please use NCBI batch entrez query to obtain protein sequences (https://www.ncbi.nlm.nih.gov/sites/batchentrez)."))
+  print(paste0(length(missing_prot_seq), " transcripts do not have protein sequences in the db folder. Please append the protein sequence into the prot_seqs.txt file! mRNA transcript accession numbers were output to the output folder and is named: TranscriptAccess_missing_prot_seq.txt. Please use NCBI batch entrez query to obtain protein sequences (https://www.ncbi.nlm.nih.gov/sites/batchentrez)."))
 }
 
 # 2. make SNAP input:
@@ -93,4 +98,3 @@ for(i in 1:nrow(gene_mRNA_nodup)){
     write.fasta(aaSeq, fas_names[match(trans, fas_mRNA)], file.out=paste0(trans, ".fasta"))
   }
 }
-

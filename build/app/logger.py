@@ -2,12 +2,18 @@ from os import environ
 import logging
 import inspect
 
-class Logger():
 
-    def __init__(self, name, level=logging.INFO):
-        self.level = level if type(level) == str else getLevelName(level)
+LOG_LEVEL = logging.INFO
+LOG_FILE = None
+
+
+class Logger:
+
+    def __init__(self, name, level=None):
+        level_checked = environ.get("LOGLEVEL", LOG_LEVEL) if level is None else level
+        self.level = level_checked if type(level_checked) == str else getLevelName(level_checked)
         self.log = logging.getLogger(name)
-        self.log.setLevel(level if level else environ.get("LOGLEVEL", logging.INFO))
+        self.log.setLevel(self.level)
 
     def addConsoleHandler(self, level=None, formatted=True):
         console_handler = logging.StreamHandler()
@@ -38,6 +44,13 @@ class Logger():
         file_handler.setFormatter(formatter)
         self.log.addHandler(file_handler)
     
+    def addLoggers(self):
+        if LOG_FILE:
+            self.addConsoleHandler(logging.ERROR)
+            self.addFileHandler(LOG_FILE)
+        else:
+            self.addConsoleHandler()
+
     def getFrame(self):
         return inspect.currentframe().f_back.f_code
 
@@ -46,6 +59,12 @@ class Logger():
 
     def getRootLogger(self):
         return logging.getLogger()
+
+
+def update_logger(log_level, log_file):
+    global LOG_LEVEL, LOG_FILE
+    LOG_LEVEL = log_level
+    LOG_FILE = log_file
 
 
 def getLevelName(level):

@@ -123,9 +123,9 @@ if(length(missing_prot_seq_nodup)>0){
   print(paste0(length(missing_prot_seq_nodup), " QUERY transcripts do not have protein sequences in the db folder"))
 }
 
-# 2. Generate snapcachedb input
+# 2. Generate varidb input
 setwd(outputfolder)
 matched = match(unique(gene_mRNA_nodup$Transcript), fas_mRNA)
-write.fasta(fas[matched], fas_mRNA[matched], file.out='snapfun_query.fa')
-write.table(gene_mRNA_nodup[c('Transcript', 'aaMut')], "snapfun_query.ids", quote=F, col.names=F, row.names=F)
-write.table(gene_mRNA_nodup, "snapfun_gene_mRNA_nodup.tsv", quote=F, col.names=T, row.names=T)
+write.fasta(fas[matched], fas_mRNA[matched], file.out='varidb_query.fa')
+write.table(gene_mRNA_nodup[c('Transcript', 'aaMut')], "varidb_query.ids", quote=F, col.names=F, row.names=F)
+write.table(gene_mRNA_nodup, "varidb_gene_mRNA_nodup.tsv", quote=F, col.names=T, row.names=T)

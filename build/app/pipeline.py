@@ -759,16 +759,19 @@ def run_all(kwargs, extra, config, daemon):
     )
 
     # 3.4   Query varidb for SNAP mutations
-    step3_4_out = 'varidb_query_result.tsv'
+    step3_4_out = 'varidb_query_result.csv'
     pipeline.add_action(
         'varidb', 3.40,
         'query SNAP variants from varidb',
         f'-D config[DEFAULT.avadx.data]/varidb.db '
         + f'-l $WD/{step3_3_outfolder}/varidb_query.ids '
         + f'-f $WD/{step3_3_outfolder}/varidb_query.fa '
-        + f'-o $WD/{step3_4_out}'
-        + f'-s Ro $WD/varidb_query_report.txt'
+        + f'-o $WD/{step3_4_out} '
+        + f'-s -R $WD/varidb_query_report.txt'
     )
+
+    # 3.5   Reformat varidb results to Mutations.mutOut file
+    # TODO
 
     # 4     Gene score calculation ---------------------------------------------------------------- #
     

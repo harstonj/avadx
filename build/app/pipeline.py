@@ -119,14 +119,17 @@ class AVADxMeta:
     def annovar(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-annovar', 'annovar', uid, kwargs)
 
-    def exonic_variant_function2snap_query(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'exonic_variant_function2snap_query', uid, kwargs)
-
     def check_missing_SNAP(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-rscript', 'check_missing_SNAP', uid, kwargs)
 
+    def varidb(self, uid, **kwargs):
+        self.run_method('bromberglab/varidb', 'varidb', uid, kwargs)
+
     def cal_genescore_make_genescore(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-rscript', 'cal_genescore_make_genescore', uid, kwargs)
+
+    def merge_genescore(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-rscript', 'merge_genescore', uid, kwargs)
 
     def FS_CVperf_kfold(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-rscript', 'FS_CVperf_kfold', uid, kwargs)
@@ -411,23 +414,25 @@ def parse_arguments():
     parser.add_argument('config', nargs='?', type=Path, default=Path('pipeline.ini'))
     parser.add_argument('-a', '--action', action='append')
     parser.add_argument('-w', '--wd', type=Path, default=Path.cwd(),
-                        help="working directory")
+                        help='working directory')
     parser.add_argument('-c', '--cpu', type=int, default=multiprocessing.cpu_count(),
-                        help="max cpus per thread; default: all available cores")
+                        help='max cpus per thread; default: all available cores')
     parser.add_argument('-t', '--threads', type=int, default=1,
-                        help="number of threads; default: 1")
+                        help='number of threads; default: 1')
     parser.add_argument('-d', '--daemon', type=str, default='docker', choices=['docker', 'singularity'],
-                        help="container engine")
+                        help='container engine')
     parser.add_argument('-i', '--info', action='store_true',
-                        help="print pipeline info")
+                        help='print pipeline info')
     parser.add_argument('-p', '--preprocess', action='store_true',
-                        help="run input preprocessing")
+                        help='run input preprocessing')
+    parser.add_argument('-e', '--entrypoint', type=float, default=0.0,
+                        help='(re)start pipeline at specified entrypoint')
     parser.add_argument('-v', '--verbose', action='count', default=0,
-                        help="set verbosity level; default: log level INFO")
+                        help='set verbosity level; default: log level INFO')
     parser.add_argument('-L', '--logfile', type=Path, const=Path('pipeline.log'),
                         nargs='?', help='redirect logs to file')
     parser.add_argument('-q', '--quiet', action='store_true',
-                        help="if flag is set console output is logged to file")
+                        help='if flag is set console output is logged to file')
 
     namespace, extra = parser.parse_known_args()
     parser_actions = []
@@ -483,10 +488,9 @@ def run_all(kwargs, extra, config, daemon):
     gnomADfilter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='no') == 'yes' else False
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
-    if outliers_available:
-        pipeline.entrypoint = 2.40
-    else:
-        pipeline.entrypoint = 0
+    pipeline.entrypoint = 2.40 if outliers_available else 0
+    if kwargs['entrypoint']:
+        pipeline.entrypoint = kwargs['entrypoint']
     if outliers_break and not outliers_available:
         pipeline.exitpoint = 2.40
 
@@ -745,27 +749,25 @@ def run_all(kwargs, extra, config, daemon):
         logs=('annotate_variation.log', None)
     )
 
-    # 3.3   Make snapfun.db query file for missing SNAPs
-    # Then, extract all variants from *.exonic_variant_function to query snap scores from snapfun.db.
-    # The db folder already contains a file (Mutations.mutOut) of pre-calculated SNAP scores for variants from previous studies.
-    # Below steps will generate query file for variants which are not included in Mutations.mu
-    step3_3_out = 'query_result.txt'
+    # 3.3   Create varidb query
+    step3_3_outfolder = 'check_missing_SNAP'
     pipeline.add_action(
-        'exonic_variant_function2snap_query', 3.30,
-        'extract variants to query snapfun.db',
-        f'/app/R/avadx/exonic_variant_function2snap_query.R '
-        + f'-f $WD/{step3_2_out} -m config[avadx.refseq2uniprot] '
-        + f'-s config[avadx.mutations] -l config[avadx.trsprotlengthcleaned] '
-        + f'-o $WD/{step3_3_out}'
+        'check_missing_SNAP', 3.30,
+        'check missing SNAP predictions',
+        f'/app/R/avadx/check_missing_SNAP.R $WD/{step3_2_out} config[DEFAULT.avadx.data] $WD/{step3_3_outfolder}',
+        outdir=(WD / step3_3_outfolder)
     )
 
-    # 3.4   Make SNAP input files for missing SNAPs
-    step3_4_outfolder = 'check_missing_SNAP'
+    # 3.4   Query varidb for SNAP mutations
+    step3_4_out = 'varidb_query_result.tsv'
     pipeline.add_action(
-        'check_missing_SNAP', 3.40,
-        'check missing SNAP predictions',
-        f'/app/R/avadx/check_missing_SNAP.R $WD/{step3_2_out} config[DEFAULT.avadx.data] $WD/{step3_4_outfolder}',
-        outdir=(WD / step3_4_outfolder)
+        'varidb', 3.40,
+        'query SNAP variants from varidb',
+        f'-D config[DEFAULT.avadx.data]/varidb.db '
+        + f'-l $WD/{step3_3_outfolder}/varidb_query.ids '
+        + f'-f $WD/{step3_3_outfolder}/varidb_query.fa '
+        + f'-o $WD/{step3_4_out}'
+        + f'-s Ro $WD/varidb_query_report.txt'
     )
 
     # 4     Gene score calculation ---------------------------------------------------------------- #
@@ -796,7 +798,7 @@ def run_all(kwargs, extra, config, daemon):
         'cal_genescore_make_genescore', 4.30,
         'calculate gene score',
         f'/app/R/avadx/cal_genescore_make_genescore.R -f $TASK.exonic_variant_function '
-        + f'-s config[avadx.mutations] -l config[avadx.trsprotlengthcleaned] '
+        + f'-s $WD/{step3_4_out} -l config[avadx.trsprotlengthcleaned] '
         + f'-m config[avadx.gscoremethod] -n config[avadx.normalizeby] -o $WD/{step4_3_outfolder}',
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/'),
         outdir=(WD / step4_3_outfolder)
@@ -807,8 +809,8 @@ def run_all(kwargs, extra, config, daemon):
     #  Merge them into a data frame where a row is an individual and a column is a gene (protein):
     step4_4_outfolder = 'genescores'
     pipeline.add_action(
-        'exonic_variant_function2snap_query', 4.40,
-        'extract variants to query snapfun.db',
+        'merge_genescore', 4.40,
+        'merge single gene score result files',
         f'/app/R/avadx/merge_genescore.R -f $WD/{step4_3_outfolder} -o $OUT/{step4_4_outfolder}',
         outdir=(OUT / step4_4_outfolder)
     )

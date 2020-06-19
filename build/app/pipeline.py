@@ -767,7 +767,8 @@ def run_all(kwargs, extra, config, daemon):
         + f'-l $WD/{step3_3_outfolder}/varidb_query.ids '
         + f'-f $WD/{step3_3_outfolder}/varidb_query.fa '
         + f'-o $WD/{step3_4_out} '
-        + f'-s -R $WD/varidb_query_report.txt'
+        + f'-R $WD/varidb_query_report.txt '
+        + f'-C query variant score -S"\t" -H -s'
     )
 
     # 3.5   Reformat varidb results to Mutations.mutOut file

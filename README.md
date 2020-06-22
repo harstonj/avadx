@@ -35,9 +35,9 @@
   $> R -e 'if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")'
   $> R -e 'BiocManager::install(c("SNPRelate"))'
   ```
-  * Dependencies (optparse, data.table, tidyverse, seqinr, stringr, EthSEQ, SNPRelate, e1071, caret, ggfortify, R.utils, PRROC, xlsx)
+  * Dependencies (optparse, data.table, tidyverse, seqinr, stringr, EthSEQ, SNPRelate, e1071, caret, ggfortify, R.utils, PRROC, xlsx, ranger)
   ```bash
-  $> R -e "install.packages(c('optparse', 'data.table', 'tidyverse', 'seqinr', 'stringr', 'EthSEQ', 'e1071', 'caret', 'ggfortify', 'R.utils', 'PRROC', 'xlsx'), repos = 'http://cran.us.r-project.org')"
+  $> R -e "install.packages(c('optparse', 'data.table', 'tidyverse', 'seqinr', 'stringr', 'EthSEQ', 'e1071', 'caret', 'ggfortify', 'R.utils', 'PRROC', 'xlsx', 'ranger'), repos = 'http://cran.us.r-project.org')"
   ```
 * [samtools/tabix](https://github.com/samtools/tabix)
 * [bcftools](https://samtools.github.io/bcftools/)

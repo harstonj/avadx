@@ -764,11 +764,11 @@ def run_all(kwargs, extra, config, daemon):
         'varidb', 3.40,
         'query SNAP variants from varidb',
         f'-D config[DEFAULT.avadx.data]/varidb.db '
-        + f'-l $WD/{step3_3_outfolder}/varidb_query.ids '
+        + f'-Q $WD/{step3_3_outfolder}/varidb_query.ids '
         + f'-f $WD/{step3_3_outfolder}/varidb_query.fa '
         + f'-o $WD/{step3_4_out} '
         + f'-R $WD/varidb_query_report.txt '
-        + f'-C query variant score -S"\t" -H -s'
+        + f'-C query variant score -S tab -H -s'
     )
 
     # 3.5   Reformat varidb results to Mutations.mutOut file

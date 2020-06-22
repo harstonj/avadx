@@ -13,7 +13,7 @@ RUN ln -s /usr/lib/jvm/java-11-openjdk-amd64 /usr/lib/jvm/default-java
 
 RUN R -e 'if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")'
 RUN R -e 'BiocManager::install(c("SNPRelate"))'
-RUN R -e "install.packages(c('optparse', 'data.table', 'tidyverse', 'seqinr', 'stringr', 'EthSEQ', 'e1071', 'caret', 'ggfortify', 'R.utils', 'PRROC', 'xlsx'), repos = 'http://cran.us.r-project.org', lib = '/usr/local/lib/R/site-library')"
+RUN R -e "install.packages(c('optparse', 'data.table', 'tidyverse', 'seqinr', 'stringr', 'EthSEQ', 'e1071', 'caret', 'ggfortify', 'R.utils', 'PRROC', 'xlsx', 'ranger'), repos = 'http://cran.us.r-project.org', lib = '/usr/local/lib/R/site-library')"
 
 COPY ./R /app/R/avadx
 

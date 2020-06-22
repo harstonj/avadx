@@ -834,7 +834,7 @@ def run_all(kwargs, extra, config, daemon):
         'perform model cross-validation',
         f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
         + f'-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/cv-scheme.csv '
-        + f'-k config[avadx.cv.folds] -l config[avadx.trsprotlengthcleaned] -t config[avadx.cv.steps] '
+        + f'-l config[avadx.trsprotlengthcleaned] -t config[avadx.cv.steps] '
         + f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $WD/{step5_1_outfolder}',
         outdir=(WD / step5_1_outfolder)
     )

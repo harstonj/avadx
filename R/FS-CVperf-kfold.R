@@ -61,8 +61,16 @@ setwd(out_fp)
 
 # Read-in files & Extract individuals from cv_scheme file only:
 cvsch <- fread(cvsch_fp, data.table=F)
+setnames(cvsch, c('SampleID', 'fold', 'Phenotype'))
 if (!grepl("sample.", cvsch$SampleID[1])) {
   cvsch$sample_id <- paste0("sample.", cvsch$SampleID) # In case the sample IDs starts with numbers
+} else {
+  cvsch$sample_id <- cvsch$SampleID
+}
+
+# get folds from cv-scheme.txt
+if (is.null(k)) {
+  k = length(unique(cvsch$fold))
 }
 
 # Move features/genes with low variance:

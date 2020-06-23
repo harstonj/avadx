@@ -100,11 +100,22 @@ for(i in 1:(ncol(fs)-1)){
 
 cpdb_overrep_pathway <- as.data.frame(table(unlist(lapply(cpdb_overrep, function(x) x[, "pathway"]))))
 
-colnames(cpdb_overrep_pathway) <- c("PathwayName", "Freq") 
+if (nrow(cpdb_overrep_pathway) > 0) {
+  colnames(cpdb_overrep_pathway) <- c("PathwayName", "Freq")
+} else {
+  cpdb_overrep_pathway = data.frame(PathwayName=NA, Freq=NA)
+}
 
 # Output k-fold details:
 for(i in 1:(ncol(fs)-1)){
-  write.xlsx(cpdb_overrep[[i]], 
+  cpdb_overrep_df_i = data.frame(cpdb_overrep[[1]])
+  if (nrow(cpdb_overrep_df_i) == 0) {
+    cpdb_overrep_i = cpdb_overrep_df_i
+    cpdb_overrep_i[nrow(cpdb_overrep_i)+1,] = NA
+  } else {
+    cpdb_overrep_i = cpdb_overrep[[i]]
+  }
+  write.xlsx(cpdb_overrep_i, 
              paste0("PahtwayOverRepresentation_GeneN-", opt$number_of_top_genes, "_", gsub("-selectedGenes.xlsx", "",basename(opt$input_file)), ".xlsx"), 
              sheetName=paste0("Fold", i, "out"), append=T)
 }

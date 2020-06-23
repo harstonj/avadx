@@ -301,4 +301,7 @@ colnames(cv_performance_results.df)[1] <- "AUC"
 
 write.xlsx(cv_performance_results.df, paste0(k, "F-CV-", ml_method, "-performance.xlsx"), sheetName=fs_method, append=T)
 
+file.copy(paste0(k, "F-CV-", ml_method, "-performance.xlsx"), "performance.xlsx")
+file.copy(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"), "selectedGenes.csv")
+
 print("Done.")

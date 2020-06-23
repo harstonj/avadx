@@ -134,6 +134,9 @@ class AVADxMeta:
     def FS_CVperf_kfold(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-rscript', 'FS_CVperf_kfold', uid, kwargs)
 
+    def FS_CVgeneOverRep_kfold(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-rscript', 'FS_CVgeneOverRep_kfold', uid, kwargs)
+
 
 class Pipeline:
 
@@ -608,8 +611,7 @@ def run_all(kwargs, extra, config, daemon):
             'filterVCF_by_gnomAD', 1.62,
             'filter variants missing in gnomAD database',
             f'avadx.filterVCF_by_gnomAD $WD/{step1_6_1_out} $WD/{step1_6_out} '
-            + f'config[DEFAULT.annovar.gnomad]/{hgref}_config[avadx.gnomadfilter.exome] '
-            + f'config[DEFAULT.annovar.gnomad]/{hgref}_config[avadx.gnomadfilter.genome]'
+            + f'config[avadx.gnomadfilter.exome] config[avadx.gnomadfilter.genome]'
         )
     step1_out = step1_6_out if gnomADfilter else step1_5_out
 
@@ -627,11 +629,13 @@ def run_all(kwargs, extra, config, daemon):
     )
 
     # 2.1.1 Draw individual quality figure:
+    step2_1_1_outfolder = 'qualitycontrol'
     step2_1_1_out = 'source_samp_pass_snps_site-v_gt-v_stats.PSC.PCA.pdf'
     pipeline.add_action(
         'stats_quality_pca', 2.11,
         'draw individual quality figures',
-        f'/app/R/avadx/stats_quality_pca.R -f $WD/{step2_1_0_out} -o $OUT/{step2_1_1_out}'
+        f'/app/R/avadx/stats_quality_pca.R -f $WD/{step2_1_0_out} -o $OUT/{step2_1_1_outfolder}/{step2_1_1_out}',
+        outdir=(OUT / step2_1_1_outfolder)
     )
 
     # 2.2   Ethnicity check - Annotate ethnicity with EthSEQ R package:
@@ -835,8 +839,20 @@ def run_all(kwargs, extra, config, daemon):
         f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
         + f'-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/cv-scheme.csv '
         + f'-l config[avadx.trsprotlengthcleaned] -t config[avadx.cv.steps] '
-        + f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $WD/{step5_1_outfolder}',
-        outdir=(WD / step5_1_outfolder)
+        + f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $OUT/{step5_1_outfolder}',
+        outdir=(OUT / step5_1_outfolder)
+    )
+
+    # 5.2 - Check pathway over-representation:
+    step5_2_outfolder = 'pathways'
+    pipeline.add_action(
+        'FS_CVgeneOverRep_kfold', 5.20,
+        'check pathway over-representation',
+        f'/app/R/avadx/FS-CVgeneOverRep-kfold.R -f $OUT/{step5_1_outfolder}/selectedGenes.csv '
+        + f'-b $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
+        + f'-n config[avadx.pathways.topgenes] -d config[avadx.pathways.cpdb.genesymbols] '
+        + f'-a config[avadx.pathways.ascending] -o $OUT/{step5_2_outfolder}',
+        outdir=(OUT / step5_2_outfolder)
     )
 
     # RUN --------------------------------------------------------------------------------------- #

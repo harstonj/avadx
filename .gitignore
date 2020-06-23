@@ -2,7 +2,8 @@
 *.py[co]
 
 # Data
-data/
+data/*
+!data/**/*.md
 db/
 
 # Testing

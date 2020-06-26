@@ -6,6 +6,7 @@ import csv
 import uuid
 import shlex
 import random
+import requests
 import configparser
 import multiprocessing
 from pathlib import Path
@@ -270,6 +271,24 @@ class Pipeline:
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
             self.log.info(f'|0.10| Using {split_type} based cross-validation scheme for {split_description}')
 
+    def retrieve(self, target, outfolder=None, outfile=None):
+        if self.is_docker_vm:
+            config_datadir_orig = self.config.get('DEFAULT', 'datadir', fallback=None)
+            wd_folder = outfolder if outfolder else self.kwargs.get('wd')
+            self.config.set('DEFAULT', 'datadir', str(DOCKER_MNT / 'data'))
+        else:
+            wd_folder = outfolder if outfolder else self.kwargs.get('wd') / str(self.uid) / 'wd'
+            wd_folder.mkdir(parents=True, exist_ok=True)
+
+        if target == 'cpdb':
+            save_as = outfile if outfile else self.config.get('avadx', 'pathways.cpdb.genesymbols')
+            url = 'http://cpdb.molgen.mpg.de/CPDB/getPathwayGenes?idtype=hgnc-symbol'
+            r = requests.get(url, allow_redirects=True)
+            open(save_as, 'wb').write(r.content)
+
+        if self.is_docker_vm:
+            self.config.set('DEFAULT', 'datadir', config_datadir_orig)
+
     def add_action(
             self, action, level=None, description='', args='', daemon_args='',
             tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], logs=(None, None)
@@ -428,6 +447,8 @@ def parse_arguments():
                         help='print pipeline info')
     parser.add_argument('-p', '--preprocess', action='store_true',
                         help='run input preprocessing')
+    parser.add_argument('-r', '--retrieve', type=str,
+                        help='retrieve data source')
     parser.add_argument('-e', '--entrypoint', type=float, default=0.0,
                         help='(re)start pipeline at specified entrypoint')
     parser.add_argument('-v', '--verbose', action='count', default=0,
@@ -518,9 +539,18 @@ def run_all(kwargs, extra, config, daemon):
         '--entrypoint=bash'
     )
 
-    # 0.3   Retrieve refGene database
+    # 0.3   Retrieve gnomad_genome database
     pipeline.add_action(
         'annovar', 0.30,
+        f'verify/download database: {hgref}_gnomad_genome',
+        f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_gnomad_genome.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
+        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log)\\"',
+        '--entrypoint=bash'
+    )
+
+    # 0.4   Retrieve refGene database
+    pipeline.add_action(
+        'annovar', 0.40,
         f'verify/download database: {hgref}_refGene',
         f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_refGene.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
         + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log)\\"',
@@ -875,6 +905,12 @@ def init():
         if uid:
             pipeline.uid = uid[0]
         pipeline.preprocess()
+    elif namespace.retrieve:
+        pipeline = Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon)
+        uid = get_extra(extra, '--uid')
+        if uid:
+            pipeline.uid = uid[0]
+        pipeline.retrieve(namespace.retrieve)
     elif actions == None:
         run_all(vars(namespace), extra, config, daemon)
     else:

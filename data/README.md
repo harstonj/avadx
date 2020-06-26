@@ -3,6 +3,7 @@
 ## Sources available online - downloaded automatically:
 - ethseq / Exonic.All.Model.gds
 - annovar / humandb / <hg19>_gnomad_exome
+- annovar / humandb / <hg19>_gnomad_genome
 - annovar / humandb / <hg19>_refGene
 - avadx / CPDB_pathways_genesymbol.tab
 - avadx / varidb.db

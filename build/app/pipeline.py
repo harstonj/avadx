@@ -384,7 +384,7 @@ class Pipeline:
             for a in args_parsed
         ]
         self.config.set('DEFAULT', 'datadir', config_datadir_orig)
-        cmd = cmd_base + [_.replace('//', '/') for _ in args_parsed]
+        cmd = cmd_base + [_.replace('//', '/') if _.startswith('/') else _ for _ in args_parsed]
         out = run_command(cmd, logger=self.log)
         if stdout:
             if stdout == 'print':
@@ -520,7 +520,7 @@ def run_all(kwargs, extra, config, daemon):
 
     # 0     Downloads & Info -------------------------------------------------------------------- #
 
-    # 0.1   Print Info
+    # 0.1   Preprocess
     mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')]
     pipeline.add_action(
         'run_preprocess', 0.10,
@@ -530,31 +530,47 @@ def run_all(kwargs, extra, config, daemon):
         logs=('print', None)
     )
 
-    # 0.2   Retrieve gnomad_exome database
+    # 0.21  Retrieve gnomad_exome database
     pipeline.add_action(
-        'annovar', 0.20,
+        'annovar', 0.21,
         f'verify/download database: {hgref}_gnomad_exome',
         f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
         + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log)\\"',
         '--entrypoint=bash'
     )
 
-    # 0.3   Retrieve gnomad_genome database
+    # 0.22  Retrieve gnomad_genome database
     pipeline.add_action(
-        'annovar', 0.30,
+        'annovar', 0.22,
         f'verify/download database: {hgref}_gnomad_genome',
         f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_gnomad_genome.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
         + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log)\\"',
         '--entrypoint=bash'
     )
 
-    # 0.4   Retrieve refGene database
+    # 0.23  Retrieve refGene database
     pipeline.add_action(
-        'annovar', 0.40,
+        'annovar', 0.23,
         f'verify/download database: {hgref}_refGene',
         f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_refGene.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
         + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log)\\"',
         '--entrypoint=bash'
+    )
+
+    # 0.24  Retrieve varidb database
+
+    # 0.25  Retrieve CPDB pathway mapping
+
+    # 0.26  Retrieve EthSEQ Model
+    ethseq_model_name = 'Exonic.All.Model.gds'
+    ethseq_model_baseurl = 'https://github.com/cibiobcg/EthSEQ_Data/raw/master/EthSEQ_Models/'
+    models_base_path = Path(pipeline.config.get("DEFAULT", "ethseq.models", fallback=WD)).absolute()
+    pipeline.add_action(
+        'avadx', 0.26,
+        f'verify/download EthSEQ Model: {ethseq_model_name}',
+        f'-c \\"[[ -f config[DEFAULT.ethseq.models]/{ethseq_model_name} ]] || wget -O config[DEFAULT.ethseq.models]/{ethseq_model_name} {ethseq_model_baseurl}{ethseq_model_name}\\"',
+        '--entrypoint=bash',
+        outdir=(models_base_path)
     )
 
     # 1     Variant QC -------------------------------------------------------------------------- #

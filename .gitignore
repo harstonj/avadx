@@ -2,11 +2,15 @@
 *.py[co]
 
 # Data
-data/*
-!data/**/*.md
-db/
+data/annovar/*/*
+data/ethseq/models/*
+data/avadx/*
+!data/**/.gitkeep
 
 # Testing
 test*/
 build/Rscript/R
 build/tabix/python
+
+# Documentation
+!README.md

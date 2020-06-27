@@ -2,9 +2,11 @@
 
 import argparse
 import re
+import os
 import csv
 import uuid
 import shlex
+import shutil
 import random
 import requests
 import configparser
@@ -93,6 +95,9 @@ class AVADxMeta:
     def run_preprocess(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-meta', 'run_preprocess', uid, kwargs)
 
+    def run_retrieve(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-meta', 'run_retrieve', uid, kwargs)
+
     def bcftools(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-bcftools', 'bcftools', uid, kwargs)
 
@@ -168,6 +173,9 @@ class Pipeline:
         logger.addConsoleHandler()
         log = logger.getLogger()
         return log
+
+    def get_wd(self):
+        return self.kwargs['wd'] / str(self.uid)
 
     def init_daemon(self):
         if self.daemon == 'docker':
@@ -269,7 +277,7 @@ class Pipeline:
                         fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
                 split_type = 'auto-generated sample'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
-            self.log.info(f'|0.10| Using {split_type} based cross-validation scheme for {split_description}')
+            self.log.info(f'|0.20| Using {split_type} based cross-validation scheme for {split_description}')
 
     def retrieve(self, target, outfolder=None, outfile=None):
         if self.is_docker_vm:
@@ -281,10 +289,28 @@ class Pipeline:
             wd_folder.mkdir(parents=True, exist_ok=True)
 
         if target == 'cpdb':
-            save_as = outfile if outfile else self.config.get('avadx', 'pathways.cpdb.genesymbols')
+            save_as = Path(outfile) if outfile else Path(self.config.get('avadx', 'pathways.cpdb.genesymbols'))
             url = 'http://cpdb.molgen.mpg.de/CPDB/getPathwayGenes?idtype=hgnc-symbol'
             r = requests.get(url, allow_redirects=True)
-            open(save_as, 'wb').write(r.content)
+            open(str(save_as.absolute()), 'wb').write(r.content)
+        elif target == 'varidb':
+            avadx_data_path = Path(self.config.get('DEFAULT', 'avadx.data', fallback=self.kwargs.get('wd'))).absolute()
+            save_as = Path(wd_folder) / 'master.zip'
+            url = 'https://bitbucket.org/bromberglab/avadx-lfs/get/master.zip'
+            r = requests.get(url, allow_redirects=True)
+            open(str(save_as), 'wb').write(r.content)
+            run_command(['unzip', '-o', '-j', str(save_as), '-d', str(avadx_data_path)])
+            run_command(['7z', 'e', str(avadx_data_path / 'varidb.db.7z'), '-aoa', f'-o{avadx_data_path}'])
+            md5sum_downloaded = run_command(['md5sum', str(avadx_data_path / 'varidb.db')])
+            md5sum_varidb = md5sum_downloaded[0].split()[0] if md5sum_downloaded else ''
+            with (avadx_data_path / 'varidb.md5').open() as fin:
+                md5_check = fin.readline().strip()
+                if md5sum_varidb != md5_check:
+                    self.log.warning(f'|0.14| md5 hash not identical - is: {md5sum_varidb} reference: {md5_check}')
+            os.remove(str(save_as))
+            os.remove(str(avadx_data_path / 'varidb.db.7z'))
+        else:
+            self.log.warning(f'|0.14| Could not retrieve {target} - target unknown')
 
         if self.is_docker_vm:
             self.config.set('DEFAULT', 'datadir', config_datadir_orig)
@@ -445,12 +471,16 @@ def parse_arguments():
                         help='container engine')
     parser.add_argument('-i', '--info', action='store_true',
                         help='print pipeline info')
+    parser.add_argument('-I', '--init', action='store_true',
+                        help='init pipeline - retrieve all required databases/datasources')
     parser.add_argument('-p', '--preprocess', action='store_true',
                         help='run input preprocessing')
     parser.add_argument('-r', '--retrieve', type=str,
                         help='retrieve data source')
-    parser.add_argument('-e', '--entrypoint', type=float, default=0.0,
+    parser.add_argument('-e', '--entrypoint', type=float,
                         help='(re)start pipeline at specified entrypoint')
+    parser.add_argument('-E', '--exitpoint', type=float,
+                        help='stop pipeline before specified exitpoint')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='set verbosity level; default: log level INFO')
     parser.add_argument('-L', '--logfile', type=Path, const=Path('pipeline.log'),
@@ -512,65 +542,81 @@ def run_all(kwargs, extra, config, daemon):
     gnomADfilter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='no') == 'yes' else False
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
-    pipeline.entrypoint = 2.40 if outliers_available else 0
+    pipeline.entrypoint = 2.40 if outliers_available else pipeline.entrypoint
     if kwargs['entrypoint']:
         pipeline.entrypoint = kwargs['entrypoint']
     if outliers_break and not outliers_available:
         pipeline.exitpoint = 2.40
+    if kwargs['exitpoint']:
+        pipeline.exitpoint = kwargs['exitpoint']
 
     # 0     Downloads & Info -------------------------------------------------------------------- #
 
-    # 0.1   Preprocess
-    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')]
+    # 0.11  Retrieve gnomad_exome database
     pipeline.add_action(
-        'run_preprocess', 0.10,
-        f'AVA,Dx pipeline preprocess',
-        f'app.pipeline --preprocess --wd $WD {"-v "*(LOG_LEVEL//10)}',
-        mounts=mounts_preprocess,
-        logs=('print', None)
-    )
-
-    # 0.21  Retrieve gnomad_exome database
-    pipeline.add_action(
-        'annovar', 0.21,
+        'annovar', 0.11,
         f'verify/download database: {hgref}_gnomad_exome',
         f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
         + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log)\\"',
         '--entrypoint=bash'
     )
 
-    # 0.22  Retrieve gnomad_genome database
+    # 0.12  Retrieve gnomad_genome database
     pipeline.add_action(
-        'annovar', 0.22,
+        'annovar', 0.12,
         f'verify/download database: {hgref}_gnomad_genome',
         f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_gnomad_genome.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
         + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log)\\"',
         '--entrypoint=bash'
     )
 
-    # 0.23  Retrieve refGene database
+    # 0.13  Retrieve refGene database
     pipeline.add_action(
-        'annovar', 0.23,
+        'annovar', 0.13,
         f'verify/download database: {hgref}_refGene',
         f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_refGene.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
         + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log)\\"',
         '--entrypoint=bash'
     )
 
-    # 0.24  Retrieve varidb database
+    # 0.14  Retrieve varidb database
+    pipeline.add_action(
+        'run_retrieve', 0.14,
+        f'verify/download database: varidb',
+        f'app.pipeline --retrieve varidb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        mounts=[(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')],
+        logs=('print', None)
+    )
 
-    # 0.25  Retrieve CPDB pathway mapping
+    # 0.15  Retrieve CPDB pathway mapping
+    pipeline.add_action(
+        'run_retrieve', 0.15,
+        f'verify/download database: CPDB pathway mapping',
+        f'app.pipeline --retrieve cpdb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        mounts=[(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')],
+        logs=('print', None)
+    )
 
-    # 0.26  Retrieve EthSEQ Model
+    # 0.16  Retrieve EthSEQ Model
     ethseq_model_name = 'Exonic.All.Model.gds'
     ethseq_model_baseurl = 'https://github.com/cibiobcg/EthSEQ_Data/raw/master/EthSEQ_Models/'
     models_base_path = Path(pipeline.config.get("DEFAULT", "ethseq.models", fallback=WD)).absolute()
     pipeline.add_action(
-        'avadx', 0.26,
+        'avadx', 0.16,
         f'verify/download EthSEQ Model: {ethseq_model_name}',
         f'-c \\"[[ -f config[DEFAULT.ethseq.models]/{ethseq_model_name} ]] || wget -O config[DEFAULT.ethseq.models]/{ethseq_model_name} {ethseq_model_baseurl}{ethseq_model_name}\\"',
         '--entrypoint=bash',
         outdir=(models_base_path)
+    )
+
+    # 0.20  Preprocess
+    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')]
+    pipeline.add_action(
+        'run_preprocess', 0.20,
+        f'AVA,Dx pipeline preprocess',
+        f'app.pipeline --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        mounts=mounts_preprocess,
+        logs=('print', None)
     )
 
     # 1     Variant QC -------------------------------------------------------------------------- #
@@ -903,6 +949,8 @@ def run_all(kwargs, extra, config, daemon):
 
     # RUN --------------------------------------------------------------------------------------- #
     main(pipeline, extra)
+    
+    return pipeline
 
 
 def init():
@@ -915,6 +963,11 @@ def init():
     del namespace.daemon
     if namespace.info:
         Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon).info()
+    elif namespace.init:
+        namespace.entrypoint = 0.1
+        namespace.exitpoint = 0.2
+        pipeline = run_all(vars(namespace), extra, config, daemon)
+        shutil.rmtree(pipeline.get_wd())
     elif namespace.preprocess:
         pipeline = Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon)
         uid = get_extra(extra, '--uid')

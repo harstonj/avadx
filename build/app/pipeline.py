@@ -155,6 +155,13 @@ class Pipeline:
         }
     }
 
+    ASSEMBLY_DEFAULT = 'hg19'
+
+    ASSEMBLY_MAPPING = {
+        'hg19': ('GRCh37', 'p13', 'GCF_000001405', '25'),
+        'hg38': ('GRCh38', 'p13', 'GCF_000001405', '39')
+    }
+
     def __init__(self, actions=[], kwargs={}, uid=uuid.uuid1(), config_file=None, daemon='docker'):
         self.log = self.get_logger()
         self.actions = actions
@@ -289,7 +296,7 @@ class Pipeline:
             wd_folder.mkdir(parents=True, exist_ok=True)
 
         if target == 'cpdb':
-            save_as = Path(outfile) if outfile else Path(self.config.get('avadx', 'pathways.cpdb.genesymbols'))
+            save_as = Path(outfile) if outfile else Path(self.config.get('DEFAULT', 'avadx.data')) / 'CPDB_pathways_genesymbol.tab'
             url = 'http://cpdb.molgen.mpg.de/CPDB/getPathwayGenes?idtype=hgnc-symbol'
             r = requests.get(url, allow_redirects=True)
             open(str(save_as.absolute()), 'wb').write(r.content)
@@ -309,6 +316,25 @@ class Pipeline:
                     self.log.warning(f'|0.14| md5 hash not identical - is: {md5sum_varidb} reference: {md5_check}')
             os.remove(str(save_as))
             os.remove(str(avadx_data_path / 'varidb.db.7z'))
+        elif target == 'refseq':
+            hgref = self.config.get('avadx', 'hgref')
+            hgref_mapped = self.ASSEMBLY_MAPPING.get(hgref, None)
+            if not hgref_mapped:
+                hgref_mapped = self.ASSEMBLY_MAPPING.get(ASSEMBLY_DEFAULT)
+                self.log.warning(f'|0.17| could not map hgref {hgref} - falling back to {ASSEMBLY_DEFAULT}')
+            refseq_data_path = Path(self.config.get('DEFAULT', 'refseq.data', fallback=self.kwargs.get('wd'))).absolute()
+            url = 'https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/'
+            assembly_base = f'{hgref_mapped[2]}.{hgref_mapped[3]}_{hgref_mapped[0]}.{hgref_mapped[1]}'
+            url_sequences = f'{url}/{assembly_base}/{assembly_base}_protein.faa.gz'
+            sequences_save_as = Path(outfile).with_suffix('.sequences' + Path(outfile).suffix) if outfile else refseq_data_path / f'{hgref_mapped[0]}.{hgref_mapped[1]}_protein.faa.gz'
+            url_stats = f'{url}/{assembly_base}/{assembly_base}_feature_table.txt.gz'
+            stats_save_as = Path(outfile).with_suffix('.stats' + Path(outfile).suffix) if outfile else refseq_data_path / f'{hgref_mapped[0]}.{hgref_mapped[1]}_feature_table.txt.gz'
+            r = requests.get(url_sequences, allow_redirects=True)
+            open(str(sequences_save_as), 'wb').write(r.content)
+            run_command(['gunzip', str(sequences_save_as)])
+            r = requests.get(url_stats, allow_redirects=True)
+            open(str(stats_save_as), 'wb').write(r.content)
+            run_command(['gunzip', str(stats_save_as)])
         else:
             self.log.warning(f'|0.14| Could not retrieve {target} - target unknown')
 
@@ -609,6 +635,18 @@ def run_all(kwargs, extra, config, daemon):
         outdir=(models_base_path)
     )
 
+    # 0.17  Retrieve prot_seqs.fa
+    pipeline.add_action(
+        'run_retrieve', 0.17,
+        f'verify/download reference sequences/stats: refseq',
+        f'app.pipeline --retrieve refseq --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        mounts=[(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')],
+        logs=('print', None)
+    )
+
+    # 0.18  Generate Transcript-ProtLength.csv
+    # TODO generate_refseq_stats.R
+
     # 0.20  Preprocess
     mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')]
     pipeline.add_action(
@@ -695,7 +733,7 @@ def run_all(kwargs, extra, config, daemon):
         pipeline.add_action(
             'bcftools', 1.61,
             'convert the chromosome annotations',
-            f'annotate --rename-chrs config[avadx.chr2number] $WD/{step1_5_out} -Oz -o $WD/{step1_6_1_out}'
+            f'annotate --rename-chrs config[DEFAULT.avadx.data]/chr_to_number.txt $WD/{step1_5_out} -Oz -o $WD/{step1_6_1_out}'
         )
 
         # 1.6.2 Then remove variants that are not in gnomAD database:
@@ -703,7 +741,8 @@ def run_all(kwargs, extra, config, daemon):
             'filterVCF_by_gnomAD', 1.62,
             'filter variants missing in gnomAD database',
             f'avadx.filterVCF_by_gnomAD $WD/{step1_6_1_out} $WD/{step1_6_out} '
-            + f'config[avadx.gnomadfilter.exome] config[avadx.gnomadfilter.genome]'
+            + f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
+            + f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
         )
     step1_out = step1_6_out if gnomADfilter else step1_5_out
 
@@ -898,7 +937,7 @@ def run_all(kwargs, extra, config, daemon):
         'cal_genescore_make_genescore', 4.30,
         'calculate gene score',
         f'/app/R/avadx/cal_genescore_make_genescore.R -f $TASK.exonic_variant_function '
-        + f'-s $WD/{step3_4_out} -l config[avadx.trsprotlengthcleaned] '
+        + f'-s $WD/{step3_4_out} -l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
         + f'-m config[avadx.gscoremethod] -n config[avadx.normalizeby] -o $WD/{step4_3_outfolder}',
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/'),
         outdir=(WD / step4_3_outfolder)
@@ -930,7 +969,7 @@ def run_all(kwargs, extra, config, daemon):
         'perform model cross-validation',
         f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
         + f'-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/cv-scheme.csv '
-        + f'-l config[avadx.trsprotlengthcleaned] -t config[avadx.cv.steps] '
+        + f'-l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -t config[avadx.cv.steps] '
         + f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $OUT/{step5_1_outfolder}',
         outdir=(OUT / step5_1_outfolder)
     )
@@ -942,7 +981,7 @@ def run_all(kwargs, extra, config, daemon):
         'check pathway over-representation',
         f'/app/R/avadx/FS-CVgeneOverRep-kfold.R -f $OUT/{step5_1_outfolder}/selectedGenes.csv '
         + f'-b $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
-        + f'-n config[avadx.pathways.topgenes] -d config[avadx.pathways.cpdb.genesymbols] '
+        + f'-n config[avadx.pathways.topgenes] -d config[DEFAULT.avadx.data]/CPDB_pathways_genesymbol.tab '
         + f'-a config[avadx.pathways.ascending] -o $OUT/{step5_2_outfolder}',
         outdir=(OUT / step5_2_outfolder)
     )

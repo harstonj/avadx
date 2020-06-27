@@ -5,6 +5,7 @@
 data/annovar/*/*
 data/ethseq/models/*
 data/avadx/*
+data/refseq/*
 !data/**/.gitkeep
 
 # Testing

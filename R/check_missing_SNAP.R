@@ -81,10 +81,12 @@ if(any(is.na(gene_mRNA_nodup$prot_length))){
 
 # Read in fasta files:
 setwd(dbfolder)
-fas <- read.fasta("prot_seqs.txt", as.string=T, seqtype="AA", set.attributes=F)
+fas <- read.fasta("prot_seqs.fa", as.string=T, seqtype="AA", set.attributes=F)
 fas_names <- names(fas)
-fas_mRNA <- strsplit(fas_names, "\\.|\\|")
-fas_mRNA <- unlist(lapply(fas_mRNA, function(x) x[2]))
+# fas_mRNA <- strsplit(fas_names, "\\.|\\|")
+# fas_mRNA <- unlist(lapply(fas_mRNA, function(x) x[2]))
+fas_mRNA <- strsplit(fas_names, "\\.")
+fas_mRNA <- unlist(lapply(fas_mRNA, function(x) x[1]))
 
 # 1. check if the prot_seq.txt contains the protein sequence:
 missing_prot_seq <- setdiff(unique(as.character(gene_mRNA$Transcript)), fas_mRNA)
@@ -92,7 +94,7 @@ missing_prot_seq <- setdiff(unique(as.character(gene_mRNA$Transcript)), fas_mRNA
 if(length(missing_prot_seq)>0){
   setwd(outputfolder)
   write.table(missing_prot_seq, "TranscriptAccess_missing_prot_seq_global.txt", quote=F, col.names=F, row.names=F)
-  print(paste0(length(missing_prot_seq), " GLOBAL transcripts do not have protein sequences in the db folder. Please append the protein sequence into the prot_seqs.txt file! mRNA transcript accession numbers were output to the output folder and is named: TranscriptAccess_missing_prot_seq.txt. Please use NCBI batch entrez query to obtain protein sequences (https://www.ncbi.nlm.nih.gov/sites/batchentrez)."))
+  print(paste0(length(missing_prot_seq), " GLOBAL transcripts do not have protein sequences in the db folder. Please append the protein sequence into the prot_seqs.fa file! mRNA transcript accession numbers were output to the output folder and is named: TranscriptAccess_missing_prot_seq.txt. Please use NCBI batch entrez query to obtain protein sequences (https://www.ncbi.nlm.nih.gov/sites/batchentrez)."))
 }
 
 # # 2. make SNAP input:

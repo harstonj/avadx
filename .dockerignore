@@ -1,9 +1,11 @@
 # Compiled python modules.
 *.py[co]
 
+# Git
+.git
+
 # Data
 data/
-db/
 
 # Testing
 test*/

@@ -8,20 +8,18 @@ FROM base as builder
 # setup system
 RUN mkdir /install
 WORKDIR /install
-# RUN apk update && apk add git && rm -rf /var/cache/apk/*
 
 # setup app
 COPY ./build/app /app/python/app
 COPY ./python /app/python/avadx
-# RUN pip install --upgrade pip && pip install --prefix=/install -r /app/requirements.txt
-# RUN (chmod a+x /app/setup.sh; /app/setup.sh)
+RUN pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install -r /app/python/app/requirements.txt
 
 FROM base
 
 COPY --from=builder /install /usr/local
 COPY --from=builder /app /app
 
-RUN apk --no-cache add bash
+RUN apk --no-cache add bash zip p7zip outils-md5
 
 # setup bio-node
 LABEL bio-node=v1.0

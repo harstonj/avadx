@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
 USER biodocker
 
 COPY ./python /app/python/avadx
+COPY ./bash /app/bash/avadx
 
 # setup bio-node
 LABEL bio-node=v1.0
@@ -19,4 +20,4 @@ ENV PYTHONPATH=/app/python
 ENTRYPOINT ["python3", "-m"]
 
 # set app CMD
-CMD ["app.pipeline", "--help"]
+CMD ["avadx.filterVCF_by_gnomAD.py"]

@@ -596,6 +596,11 @@ def run_all(kwargs, extra, config, daemon):
         '--entrypoint=bash'
     )
 
+    # TODO Generate gnomad_exome_allAFabove0 / Generate gnomad_exome_allAFabove0
+    # tabix: gnomad_ALLabove0_preprocess.sh
+    # Rscript: generate_gnomad_above0.R
+    # tabix: gnomad_ALLabove0_postprocess.sh
+
     # 0.13  Retrieve refGene database
     pipeline.add_action(
         'annovar', 0.13,

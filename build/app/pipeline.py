@@ -98,6 +98,9 @@ class AVADxMeta:
     def run_retrieve(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-meta', 'run_retrieve', uid, kwargs)
 
+    def generate_transcripts_protlength(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-rscript', 'generate_transcripts_protlength', uid, kwargs)
+
     def bcftools(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-bcftools', 'bcftools', uid, kwargs)
 
@@ -565,6 +568,7 @@ def run_all(kwargs, extra, config, daemon):
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
     hgref = pipeline.config.get('avadx', 'hgref')
+    hgref_mapped = pipeline.ASSEMBLY_MAPPING[hgref]
     gnomADfilter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='no') == 'yes' else False
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
@@ -650,7 +654,12 @@ def run_all(kwargs, extra, config, daemon):
     )
 
     # 0.18  Generate Transcript-ProtLength.csv
-    # TODO generate_refseq_stats.R
+    pipeline.add_action(
+        'generate_transcripts_protlength', 0.18,
+        'generate reference proteins (refseq) stats',
+        f'/app/R/avadx/generate_refseq_stats.R config[DEFAULT.refseq.data]/{hgref_mapped[0]}.{hgref_mapped[1]}_feature_table.txt '
+        + f'config[DEFAULT.refseq.data]/{hgref_mapped[0]}.{hgref_mapped[1]}_protein.faa config[DEFAULT.avadx.data]'
+    )
 
     # 0.20  Preprocess
     mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')]

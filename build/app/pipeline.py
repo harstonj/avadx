@@ -225,7 +225,7 @@ class Pipeline:
     def preprocess(self):
         if self.is_vm:
             wd_folder = self.kwargs.get('wd')
-            samples_path = VM_MOUNT / 'in' / self.config.get('avadx', 'samples').name
+            samples_path = VM_MOUNT / 'in' / Path(self.config.get('avadx', 'samples')).name
             samplesids_path = wd_folder / 'sampleids.txt'
             cvscheme_path = wd_folder / 'cv-scheme.csv'
         else:

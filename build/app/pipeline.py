@@ -14,12 +14,13 @@ from pathlib import Path
 from datetime import datetime
 from timeit import default_timer as timer
 from .logger import Logger
-from .helper import run_command, flatten, runningInDocker
+from .helper import run_command, flatten, runningInDocker, runningInSingularity
 from . import __version__, __releasedate__
 
 
 QUIET = False
-DOCKER_MNT = Path('/mnt')
+VM_MOUNT = Path('/mnt')
+SINGULARITY_LIB = Path(os.getenv('SINGULARITY_LIB', str(Path.cwd())))
 LOG_LEVEL = 'INFO'
 LOG_FILE = None
 
@@ -181,7 +182,7 @@ class Pipeline:
         self.config_file = config_file
         self.config = self.load_config()
         self.daemon = daemon
-        self.is_docker_vm = runningInDocker()
+        self.is_vm = self.check_vm()
         self.init_daemon()
         self.entrypoint = kwargs.get('entrypoint') if kwargs.get('entrypoint', None) is not None else 1
         self.exitpoint = kwargs.get('exitpoint', None)
@@ -200,12 +201,20 @@ class Pipeline:
             # import docker
             pass
 
+    def check_vm(self):
+        if runningInDocker():
+            return 'docker'
+        elif runningInSingularity():
+            return 'singularity'
+        else:
+            return None
+
     def load_config(self):
         config = configparser.ConfigParser()
         if self.config_file and self.config_file.exists():
             config.read(str(self.config_file))
         else:
-            config_file_mnt = DOCKER_MNT / 'in' / self.config_file.name
+            config_file_mnt = VM_MOUNT / 'in' / self.config_file.name
             if config_file_mnt and config_file_mnt.exists():
                 config.read(str(config_file_mnt))
         return config
@@ -214,9 +223,9 @@ class Pipeline:
         print(f'AVA,Dx {__version__} {__releasedate__}')
 
     def preprocess(self):
-        if self.is_docker_vm:
+        if self.is_vm:
             wd_folder = self.kwargs.get('wd')
-            samples_path = DOCKER_MNT / 'in' / self.config.get('avadx', 'samples')
+            samples_path = VM_MOUNT / 'in' / self.config.get('avadx', 'samples')
             samplesids_path = wd_folder / 'sampleids.txt'
             cvscheme_path = wd_folder / 'cv-scheme.csv'
         else:
@@ -299,10 +308,10 @@ class Pipeline:
 
     def retrieve(self, target, outfolder=None, outfile=None):
         import requests
-        if self.is_docker_vm:
+        if self.is_vm:
             config_datadir_orig = self.config.get('DEFAULT', 'datadir', fallback=None)
             wd_folder = outfolder if outfolder else self.kwargs.get('wd')
-            self.config.set('DEFAULT', 'datadir', str(DOCKER_MNT / 'data'))
+            self.config.set('DEFAULT', 'datadir', str(VM_MOUNT / 'data'))
         else:
             wd_folder = outfolder if outfolder else self.kwargs.get('wd') / str(self.uid) / 'wd'
             wd_folder.mkdir(parents=True, exist_ok=True)
@@ -350,7 +359,7 @@ class Pipeline:
         else:
             self.log.warning(f'|0.14| Could not retrieve {target} - target unknown')
 
-        if self.is_docker_vm:
+        if self.is_vm:
             self.config.set('DEFAULT', 'datadir', config_datadir_orig)
 
     def add_action(
@@ -376,14 +385,14 @@ class Pipeline:
         flag_checked = f'{flag} ' if flag else flag
         if self.config.has_option(section, name):
             config_datadir_orig = self.config.get('DEFAULT', 'datadir', fallback=None)
-            self.config.set('DEFAULT', 'datadir', str(DOCKER_MNT / 'data'))
+            self.config.set('DEFAULT', 'datadir', str(VM_MOUNT / 'data'))
             option_value = self.config.get(section, f'{name}')
             self.config.set('DEFAULT', 'datadir', config_datadir_orig)
             if not is_file:
                 formatted = f'{flag_checked}{option_value}'
-            elif Path(option_value).exists() or (DOCKER_MNT / 'in' / option_value).is_file():
-                formatted = f'{flag_checked}{str(DOCKER_MNT / "in")}/{option_value}'
-            elif is_file and not (Path(option_value).exists() or (DOCKER_MNT / 'in' / option_value).is_file()):
+            elif Path(option_value).exists() or (VM_MOUNT / 'in' / option_value).is_file():
+                formatted = f'{flag_checked}{str(VM_MOUNT / "in")}/{option_value}'
+            elif is_file and not (Path(option_value).exists() or (VM_MOUNT / 'in' / option_value).is_file()):
                 skip = 'file not found'
         else:
             skip = 'argument not defined in config'
@@ -407,30 +416,56 @@ class Pipeline:
         data_folder = Path(self.config.get("DEFAULT", "datadir", fallback=wd_folder)).absolute()
         config_datadir_orig = self.config.get('DEFAULT', 'datadir')
         self.config.set('DEFAULT', 'datadir', str(data_folder))
+        if self.daemon_args not in ['docker', 'singularity']:
+            self.log.warning(f'Unknown daemon: {self.daemon}')
         if self.daemon == 'docker':
-            wd = DOCKER_MNT / 'out' / str(uid) / 'wd'
-            out = DOCKER_MNT / 'out' / str(uid) / 'out'
-            data = DOCKER_MNT / 'data'
+            wd = VM_MOUNT / 'out' / str(uid) / 'wd'
+            out = VM_MOUNT / 'out' / str(uid) / 'out'
+            data = VM_MOUNT / 'data'
+        if self.daemon == 'singularity':
+            wd = VM_MOUNT / 'out' / str(uid) / 'wd'
+            out = VM_MOUNT / 'out' / str(uid) / 'out'
+            data = VM_MOUNT / 'data'
         else:
             wd = out_folder / str(uid) / 'wd'
             out = out_folder / str(uid) / 'out'
+            data = data_folder
 
         cmd_base = [
             self.daemon,
             self.REGISTRY[self.daemon]['CMD_RUN']
         ]
+        
         if self.daemon == "docker":
             bind_mounts = []
             for m in mounts:
                 bind_mounts += ['-v', f'{m[0]}:{m[1]}']
             cmd_base += [
                 '--rm',
-                '-v', f'{out_folder.absolute()}:{DOCKER_MNT / "out"}',
+                '-v', f'{out_folder.absolute()}:{VM_MOUNT / "out"}',
                 '-v', f'{data_folder}:{data}',
             ] + bind_mounts + daemon_args
-        cmd_base += [
-            container,
-        ]
+            cmd_base += [
+                container,
+            ]
+        if self.daemon == "singularity":
+            bind_mounts = []
+            for m in mounts:
+                bind_mounts += ['-B', f'{m[0]}:{m[1]}']
+            cmd_base += [
+                '-B', f'{out_folder.absolute()}:{VM_MOUNT / "out"}',
+                '-B', f'{data_folder}:{data}',
+            ] + bind_mounts + daemon_args
+            cmd_base += [
+                '--containall',
+                '--pwd', '/app',
+                str(SINGULARITY_LIB / f'{container.split("/")[1]}_latest.sif'),
+            ]
+        else:
+            cmd_base += [
+                container,
+            ]
+
         args_parsed = [
             a
              .replace('$WD', str(wd))
@@ -563,7 +598,7 @@ def get_mounts(pipeline, *config):
         if cfg:
             cfg_path = Path(cfg)
             if cfg_path.exists():
-                mounts += [(cfg_path.absolute(), DOCKER_MNT / 'in' / cfg_path)]
+                mounts += [(cfg_path.absolute(), VM_MOUNT / 'in' / cfg_path)]
             else:
                 pipeline.log.debug(f'Could not mount {cfg_path}. Path not found.')
     return mounts
@@ -648,7 +683,7 @@ def run_all(kwargs, extra, config, daemon):
         'run_retrieve', 0.14,
         f'verify/download database: varidb',
         f'app.pipeline --retrieve varidb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
-        mounts=[(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')],
+        mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
         logs=('print', None)
     )
 
@@ -657,7 +692,7 @@ def run_all(kwargs, extra, config, daemon):
         'run_retrieve', 0.15,
         f'verify/download database: CPDB pathway mapping',
         f'app.pipeline --retrieve cpdb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
-        mounts=[(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')],
+        mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
         logs=('print', None)
     )
 
@@ -678,7 +713,7 @@ def run_all(kwargs, extra, config, daemon):
         'run_retrieve', 0.17,
         f'verify/download reference sequences/stats: refseq',
         f'app.pipeline --retrieve refseq --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
-        mounts=[(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')],
+        mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
         logs=('print', None)
     )
 
@@ -691,7 +726,7 @@ def run_all(kwargs, extra, config, daemon):
     )
 
     # 1   Preprocess -------------------------------------------------------------------------- #
-    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')]
+    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')]
     pipeline.add_action(
         'run_preprocess', 1.00,
         f'AVA,Dx pipeline preprocess',

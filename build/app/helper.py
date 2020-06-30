@@ -224,6 +224,12 @@ def runningInDocker():
     return False
 
 
+def runningInSingularity():
+    if os.getenv('SINGULARITY_NAME') is not None:
+        return True
+    return False
+
+
 def create_markdown(src_files=['README.md'], other_files=['files/css/stylesheet.css'], out_file='README.pdf', src='markdown', to='pdf', api_url='http://c.docverter.com/convert'):
     if not isinstance(src_files, (list, tuple)):
         src_files = [src_files]

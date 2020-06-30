@@ -5,7 +5,6 @@ import re
 import os
 import csv
 import uuid
-import shlex
 import shutil
 import random
 import configparser
@@ -44,8 +43,8 @@ class AVADxMeta:
             self.log.warning(f'No method: {func_name}')
 
     def run_method(self, container, name, uid, kwargs):
-        args = shlex.split(kwargs.get(name).pop(0))
-        daemon_args = shlex.split(kwargs.get(name + "_darg").pop(0))
+        args = kwargs.get(name).pop(0).split()
+        daemon_args = kwargs.get(name + "_darg").pop(0).split()
         taskflag, taskfile, taskprefix = kwargs.get(name + "_tasks").pop(0)
         if taskfile:
             with (taskfile).open() as fin:
@@ -780,9 +779,9 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 1.40,
         'filter variant sites by site-wise quality',
-        f'view -i \\"QUAL>config[avadx.qc.site.quality] & '
-        + f'AVG(FMT/DP)<=config[avadx.qc.site.mean_dp_upper] & '
-        + f'AVG(FMT/DP)>=config[avadx.qc.site.mean_dp_lower]\\" '
+        f'view -i \'QUAL>config[avadx.qc.site.quality]&'
+        + f'AVG(FMT/DP)<=config[avadx.qc.site.mean_dp_upper]&'
+        + f'AVG(FMT/DP)>=config[avadx.qc.site.mean_dp_lower]\' '
         + f'$WD/{step1_3_1_out} -Oz -o $WD/{step1_4_out}'
     )
 

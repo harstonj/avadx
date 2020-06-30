@@ -225,7 +225,7 @@ class Pipeline:
     def preprocess(self):
         if self.is_vm:
             wd_folder = self.kwargs.get('wd')
-            samples_path = VM_MOUNT / 'in' / self.config.get('avadx', 'samples')
+            samples_path = VM_MOUNT / 'in' / self.config.get('avadx', 'samples').name
             samplesids_path = wd_folder / 'sampleids.txt'
             cvscheme_path = wd_folder / 'cv-scheme.csv'
         else:
@@ -416,7 +416,7 @@ class Pipeline:
         data_folder = Path(self.config.get("DEFAULT", "datadir", fallback=wd_folder)).absolute()
         config_datadir_orig = self.config.get('DEFAULT', 'datadir')
         self.config.set('DEFAULT', 'datadir', str(data_folder))
-        if self.daemon_args not in ['docker', 'singularity']:
+        if self.daemon not in ['docker', 'singularity']:
             self.log.warning(f'Unknown daemon: {self.daemon}')
         if self.daemon == 'docker':
             wd = VM_MOUNT / 'out' / str(uid) / 'wd'
@@ -598,7 +598,7 @@ def get_mounts(pipeline, *config):
         if cfg:
             cfg_path = Path(cfg)
             if cfg_path.exists():
-                mounts += [(cfg_path.absolute(), VM_MOUNT / 'in' / cfg_path)]
+                mounts += [(cfg_path.absolute(), VM_MOUNT / 'in' / cfg_path.name)]
             else:
                 pipeline.log.debug(f'Could not mount {cfg_path}. Path not found.')
     return mounts

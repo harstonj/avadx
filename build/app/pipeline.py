@@ -422,7 +422,7 @@ class Pipeline:
             wd = VM_MOUNT / 'out' / str(uid) / 'wd'
             out = VM_MOUNT / 'out' / str(uid) / 'out'
             data = VM_MOUNT / 'data'
-        if self.daemon == 'singularity':
+        elif self.daemon == 'singularity':
             wd = VM_MOUNT / 'out' / str(uid) / 'wd'
             out = VM_MOUNT / 'out' / str(uid) / 'out'
             data = VM_MOUNT / 'data'
@@ -448,7 +448,7 @@ class Pipeline:
             cmd_base += [
                 container,
             ]
-        if self.daemon == "singularity":
+        elif self.daemon == "singularity":
             bind_mounts = []
             for m in mounts:
                 bind_mounts += ['-B', f'{m[0]}:{m[1]}']

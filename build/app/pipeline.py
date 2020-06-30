@@ -367,7 +367,7 @@ class Pipeline:
             ):
         if level is None or (level >= self.entrypoint and (self.exitpoint is None or level < self.exitpoint)):
             self.actions += [action]
-            self.kwargs[action] = self.kwargs.get(action, []) + [args]
+            self.kwargs[action] = self.kwargs.get(action, []) + [args.replace('"', r'\"') if self.daemon == 'singularity' else args]
             self.kwargs[f'{action}_lvl'] = self.kwargs.get(f'{action}_lvl', []) + [level]
             self.kwargs[f'{action}_desc'] = self.kwargs.get(f'{action}_desc', []) + [description]
             self.kwargs[f'{action}_darg'] = self.kwargs.get(f'{action}_darg', []) + [daemon_args]
@@ -752,7 +752,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 1.20,
         'filter variant sites < VQSR standard',
-        f'filter -i \'FILTER=\\"PASS\\"\' $WD/{step1_1_out} -Oz -o $WD/{step1_2_out}'
+        f'filter -i \'FILTER="PASS"\' $WD/{step1_1_out} -Oz -o $WD/{step1_2_out}'
     )
 
     # 1.3   Split SNV and InDel calls to separated files because they use different QC thresholds.

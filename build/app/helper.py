@@ -159,11 +159,14 @@ def fasta_header_count(fname):
     return header_count
 
 
-def run_command(command, shell=False, print_output=False, env_exports={}, wait=True, logger=None):
+def run_command(command, shell=False, print_output=False, env_exports={}, wait=True, logger=None, auto_escape=True):
     print_ = logger.info if logger else print
     current_env = os.environ.copy()
     merged_env = {**current_env, **env_exports}
-    cmd = shlex.split(command) if type(command) == str else shlex.split(" ".join(command))
+    if auto_escape:
+        cmd = shlex.split(command) if type(command) == str else shlex.split(" ".join(command))
+    else:
+        cmd = command.split() if type(command) == str else command
     if logger:
         logger.debug(f'Executing: {shlex.join(cmd)}')
     process = subprocess.Popen(

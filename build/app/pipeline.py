@@ -8,7 +8,6 @@ import uuid
 import shlex
 import shutil
 import random
-import requests
 import configparser
 import multiprocessing
 from pathlib import Path
@@ -299,6 +298,7 @@ class Pipeline:
             self.log.info(f'|1.00| Using {split_type} based cross-validation scheme for {split_description}')
 
     def retrieve(self, target, outfolder=None, outfile=None):
+        import requests
         if self.is_docker_vm:
             config_datadir_orig = self.config.get('DEFAULT', 'datadir', fallback=None)
             wd_folder = outfolder if outfolder else self.kwargs.get('wd')

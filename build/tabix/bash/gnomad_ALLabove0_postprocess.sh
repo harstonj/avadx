@@ -1,8 +1,8 @@
 #/bin/bash
 
-data_folder=$1
-exome_file=$2
-genome_file=$3
+exome_file=$1
+genome_file=$2
+data_folder=$3
 
 rm -rf ${data_folder}/gnomad_exome_allAFabove0.tmp_splits
 rm -rf ${data_folder}/gnomad_genome_allAFabove0.tmp_splits

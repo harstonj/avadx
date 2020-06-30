@@ -110,6 +110,15 @@ class AVADxMeta:
     def filterVCF_by_ABAD(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-meta', 'filterVCF_by_ABAD', uid, kwargs)
 
+    def gnomad_ALLabove0_preprocess(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-tabix', 'gnomad_ALLabove0_preprocess', uid, kwargs)
+
+    def generate_gnomad_above0(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-rscript', 'generate_gnomad_above0', uid, kwargs)
+
+    def gnomad_ALLabove0_postprocess(self, uid, **kwargs):
+        self.run_method('bromberglab/avadx-tabix', 'gnomad_ALLabove0_postprocess', uid, kwargs)
+
     def filterVCF_by_gnomAD(self, uid, **kwargs):
         self.run_method('bromberglab/avadx-tabix', 'filterVCF_by_gnomAD', uid, kwargs)
 
@@ -175,8 +184,8 @@ class Pipeline:
         self.daemon = daemon
         self.is_docker_vm = runningInDocker()
         self.init_daemon()
-        self.entrypoint = 0
-        self.exitpoint = None
+        self.entrypoint = kwargs.get('entrypoint') if kwargs.get('entrypoint', None) is not None else 1
+        self.exitpoint = kwargs.get('exitpoint', None)
 
     def get_logger(self):
         logger = Logger(self.__class__.__name__, level=LOG_LEVEL)
@@ -287,7 +296,7 @@ class Pipeline:
                         fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
                 split_type = 'auto-generated sample'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
-            self.log.info(f'|0.20| Using {split_type} based cross-validation scheme for {split_description}')
+            self.log.info(f'|1.00| Using {split_type} based cross-validation scheme for {split_description}')
 
     def retrieve(self, target, outfolder=None, outfile=None):
         if self.is_docker_vm:
@@ -302,9 +311,9 @@ class Pipeline:
             save_as = Path(outfile) if outfile else Path(self.config.get('DEFAULT', 'avadx.data')) / 'CPDB_pathways_genesymbol.tab'
             url = 'http://cpdb.molgen.mpg.de/CPDB/getPathwayGenes?idtype=hgnc-symbol'
             r = requests.get(url, allow_redirects=True)
-            open(str(save_as.absolute()), 'wb').write(r.content)
+            open(str(save_as), 'wb').write(r.content)
         elif target == 'varidb':
-            avadx_data_path = Path(self.config.get('DEFAULT', 'avadx.data', fallback=self.kwargs.get('wd'))).absolute()
+            avadx_data_path = Path(self.config.get('DEFAULT', 'avadx.data', fallback=self.kwargs.get('wd')))
             save_as = Path(wd_folder) / 'master.zip'
             url = 'https://bitbucket.org/bromberglab/avadx-lfs/get/master.zip'
             r = requests.get(url, allow_redirects=True)
@@ -325,7 +334,7 @@ class Pipeline:
             if not hgref_mapped:
                 hgref_mapped = self.ASSEMBLY_MAPPING.get(ASSEMBLY_DEFAULT)
                 self.log.warning(f'|0.17| could not map hgref {hgref} - falling back to {ASSEMBLY_DEFAULT}')
-            refseq_data_path = Path(self.config.get('DEFAULT', 'refseq.data', fallback=self.kwargs.get('wd'))).absolute()
+            refseq_data_path = Path(self.config.get('DEFAULT', 'refseq.data', fallback=self.kwargs.get('wd')))
             url = 'https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/'
             assembly_base = f'{hgref_mapped[2]}.{hgref_mapped[3]}_{hgref_mapped[0]}.{hgref_mapped[1]}'
             url_sequences = f'{url}/{assembly_base}/{assembly_base}_protein.faa.gz'
@@ -334,10 +343,10 @@ class Pipeline:
             stats_save_as = Path(outfile).with_suffix('.stats' + Path(outfile).suffix) if outfile else refseq_data_path / f'{hgref_mapped[0]}.{hgref_mapped[1]}_feature_table.txt.gz'
             r = requests.get(url_sequences, allow_redirects=True)
             open(str(sequences_save_as), 'wb').write(r.content)
-            run_command(['gunzip', str(sequences_save_as)])
+            run_command(['gunzip', '-f', str(sequences_save_as)])
             r = requests.get(url_stats, allow_redirects=True)
             open(str(stats_save_as), 'wb').write(r.content)
-            run_command(['gunzip', str(stats_save_as)])
+            run_command(['gunzip', '-f', str(stats_save_as)])
         else:
             self.log.warning(f'|0.14| Could not retrieve {target} - target unknown')
 
@@ -580,14 +589,14 @@ def run_all(kwargs, extra, config, daemon):
     if kwargs['exitpoint']:
         pipeline.exitpoint = kwargs['exitpoint']
 
-    # 0     Downloads & Info -------------------------------------------------------------------- #
+    # 0     Init (downloads & data source preprocessing)  -------------------------------------------------------------------- #
 
     # 0.11  Retrieve gnomad_exome database
     pipeline.add_action(
         'annovar', 0.11,
         f'verify/download database: {hgref}_gnomad_exome',
-        f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
-        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log)\\"',
+        f'-c \\"annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
+        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log\\"',
         '--entrypoint=bash'
     )
 
@@ -595,22 +604,42 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar', 0.12,
         f'verify/download database: {hgref}_gnomad_genome',
-        f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_gnomad_genome.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
-        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log)\\"',
+        f'-c \\"annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
+        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log\\"',
         '--entrypoint=bash'
     )
 
-    # TODO Generate gnomad_exome_allAFabove0 / Generate gnomad_exome_allAFabove0
-    # tabix: gnomad_ALLabove0_preprocess.sh
-    # Rscript: generate_gnomad_above0.R
-    # tabix: gnomad_ALLabove0_postprocess.sh
+    # 0.121 preprocess: Generate gnomad_exome_allAFabove0 / Generate gnomad_exome_allAFabove0
+    pipeline.add_action(
+        'gnomad_ALLabove0_preprocess', 0.121,
+        'preprocess: split gnomad database files',
+        f'-c \\"/app/bash/avadx/gnomad_ALLabove0_preprocess.sh config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt '
+        + f'config[DEFAULT.annovar.humandb]/{hgref}_gnomad_genome.txt config[DEFAULT.avadx.data]\\"',
+        '--entrypoint=bash'
+    )
+
+    # 0.122 main: Generate gnomad_exome_allAFabove0 / Generate gnomad_exome_allAFabove0
+    pipeline.add_action(
+        'generate_gnomad_above0', 0.122,
+        'filter gnomad database above0 (exome & genome)',
+        f'/app/R/avadx/generate_gnomad_above0.R config[DEFAULT.avadx.data] {hgref}'
+    )
+
+    # 0.123 postprocess: Generate gnomad_exome_allAFabove0 / Generate gnomad_exome_allAFabove0
+    pipeline.add_action(
+        'gnomad_ALLabove0_postprocess', 0.123,
+        'postprocess: bgzip and tabix for above0 gnomad database files',
+        f'-c \\"/app/bash/avadx/gnomad_ALLabove0_postprocess.sh config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt '
+        + f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt config[DEFAULT.avadx.data]\\"',
+        '--entrypoint=bash'
+    )
 
     # 0.13  Retrieve refGene database
     pipeline.add_action(
         'annovar', 0.13,
         f'verify/download database: {hgref}_refGene',
-        f'-c \\"[[ -f config[DEFAULT.annovar.humandb]/{hgref}_refGene.txt ]] || (annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
-        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log)\\"',
+        f'-c \\"annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
+        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log\\"',
         '--entrypoint=bash'
     )
 
@@ -635,7 +664,7 @@ def run_all(kwargs, extra, config, daemon):
     # 0.16  Retrieve EthSEQ Model
     ethseq_model_name = 'Exonic.All.Model.gds'
     ethseq_model_baseurl = 'https://github.com/cibiobcg/EthSEQ_Data/raw/master/EthSEQ_Models/'
-    models_base_path = Path(pipeline.config.get("DEFAULT", "ethseq.models", fallback=WD)).absolute()
+    models_base_path = Path(pipeline.config.get("DEFAULT", "ethseq.models", fallback=WD))
     pipeline.add_action(
         'avadx', 0.16,
         f'verify/download EthSEQ Model: {ethseq_model_name}',
@@ -661,17 +690,17 @@ def run_all(kwargs, extra, config, daemon):
         + f'config[DEFAULT.refseq.data]/{hgref_mapped[0]}.{hgref_mapped[1]}_protein.faa config[DEFAULT.avadx.data]'
     )
 
-    # 0.20  Preprocess
+    # 1   Preprocess -------------------------------------------------------------------------- #
     mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), DOCKER_MNT / 'in' / 'pipeline.ini')]
     pipeline.add_action(
-        'run_preprocess', 0.20,
+        'run_preprocess', 1.00,
         f'AVA,Dx pipeline preprocess',
         f'app.pipeline --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=mounts_preprocess,
         logs=('print', None)
     )
 
-    # 1     Variant QC -------------------------------------------------------------------------- #
+    # 1.1-6 Variant QC -------------------------------------------------------------------------- #
     
     # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
     step1_1_in = 'config[avadx.vcf]'
@@ -1017,8 +1046,8 @@ def init():
     if namespace.info:
         Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon).info()
     elif namespace.init:
-        namespace.entrypoint = 0.1
-        namespace.exitpoint = 0.2
+        namespace.entrypoint = 0
+        namespace.exitpoint = 1
         pipeline = run_all(vars(namespace), extra, config, daemon)
         shutil.rmtree(pipeline.get_wd())
     elif namespace.preprocess:

@@ -36,5 +36,5 @@ df_flted <- stats_dt_sub %>%
   group_by(Gene) %>% filter(row_number()==1)
 
 if(any(duplicated(df_flted$Gene))==F){
-  fwrite(df_flted, file = paste0(data.folder, "/Transcript-ProtLength.csv"))
+  fwrite(df_flted, file = paste0(data.folder, "/Transcript-ProtLength_cleaned.csv"))
 }

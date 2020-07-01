@@ -218,6 +218,10 @@ class Pipeline:
             config_file_mnt = VM_MOUNT / 'in' / self.config_file.name
             if config_file_mnt and config_file_mnt.exists():
                 config.read(str(config_file_mnt))
+        data_base_path = config.get('DEFAULT', 'datadir', fallback=None)
+        if data_base_path is not None:
+            if not Path(data_base_path).is_absolute():
+                config.set('DEFAULT', 'datadir', self.config_file.parent / data_base_path)
         return config
 
     def info(self):
@@ -414,7 +418,7 @@ class Pipeline:
             (out_folder / str(uid) / 'out').mkdir(parents=True, exist_ok=True)
         wd_folder = out_folder / str(uid) / 'wd'
         wd_folder.mkdir(parents=True, exist_ok=True)
-        data_folder = Path(self.config.get("DEFAULT", "datadir", fallback=wd_folder)).absolute()
+        data_folder = Path(self.config.get('DEFAULT', 'datadir', fallback=wd_folder)).absolute()
         config_datadir_orig = self.config.get('DEFAULT', 'datadir')
         self.config.set('DEFAULT', 'datadir', str(data_folder))
         if self.daemon not in ['docker', 'singularity']:

@@ -44,7 +44,7 @@ class AVADxMeta:
 
     def run_method(self, container, name, uid, kwargs):
         args = kwargs.get(name).pop(0).split()
-        daemon_args = kwargs.get(name + "_darg").pop(0).split()
+        daemon_args = kwargs.get(name + "_darg").pop(0)
         taskflag, taskfile, taskprefix = kwargs.get(name + "_tasks").pop(0)
         if taskfile:
             with (taskfile).open() as fin:
@@ -159,10 +159,12 @@ class Pipeline:
 
     REGISTRY = {
         'singularity': {
-            'CMD_RUN': 'run'
+            'CMD_RUN': 'run',
+            'CMD_EXEC': 'exec'
         },
         'docker': {
-            'CMD_RUN': 'run'
+            'CMD_RUN': 'run',
+            'CMD_EXEC': 'exec'
         }
     }
 
@@ -362,12 +364,12 @@ class Pipeline:
             self.config.set('DEFAULT', 'datadir', config_datadir_orig)
 
     def add_action(
-            self, action, level=None, description='', args='', daemon_args='',
+            self, action, level=None, description='', args='', daemon_args={},
             tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], logs=(None, None)
             ):
         if level is None or (level >= self.entrypoint and (self.exitpoint is None or level < self.exitpoint)):
             self.actions += [action]
-            self.kwargs[action] = self.kwargs.get(action, []) + [args.replace('"', r'\"') if self.daemon == 'singularity' else args]
+            self.kwargs[action] = self.kwargs.get(action, []) + [args]
             self.kwargs[f'{action}_lvl'] = self.kwargs.get(f'{action}_lvl', []) + [level]
             self.kwargs[f'{action}_desc'] = self.kwargs.get(f'{action}_desc', []) + [description]
             self.kwargs[f'{action}_darg'] = self.kwargs.get(f'{action}_darg', []) + [daemon_args]
@@ -407,7 +409,7 @@ class Pipeline:
                 self.log.debug(f'Using optional argument defaults: {flag_checked}{option_value} -> {skip}')
         return formatted
 
-    def run_container(self, container, args=[], daemon_args=[], uid=uuid.uuid1(), mounts=[], out_folder:Path=Path.cwd(), stdout=None, stderr=None):
+    def run_container(self, container, args=[], daemon_args={}, uid=uuid.uuid1(), mounts=[], out_folder:Path=Path.cwd(), stdout=None, stderr=None):
         if out_folder:
             (out_folder / str(uid) / 'out').mkdir(parents=True, exist_ok=True)
         wd_folder = out_folder / str(uid) / 'wd'
@@ -430,10 +432,7 @@ class Pipeline:
             out = out_folder / str(uid) / 'out'
             data = data_folder
 
-        cmd_base = [
-            self.daemon,
-            self.REGISTRY[self.daemon]['CMD_RUN']
-        ]
+        cmd_base, cmd_suffix, args_parsed, daemon_args_parsed, env_exports_parsed = self.parse_args(args, daemon_args)
         
         if self.daemon == "docker":
             bind_mounts = []
@@ -443,10 +442,10 @@ class Pipeline:
                 '--rm',
                 '-v', f'{out_folder.absolute()}:{VM_MOUNT / "out"}',
                 '-v', f'{data_folder}:{data}',
-            ] + bind_mounts + daemon_args
+            ] + bind_mounts + daemon_args_parsed
             cmd_base += [
                 container,
-            ]
+            ] + cmd_suffix
         elif self.daemon == "singularity":
             bind_mounts = []
             for m in mounts:
@@ -454,22 +453,22 @@ class Pipeline:
             cmd_base += [
                 '-B', f'{out_folder.absolute()}:{VM_MOUNT / "out"}',
                 '-B', f'{data_folder}:{data}',
-            ] + bind_mounts + daemon_args
+            ] + bind_mounts + daemon_args_parsed
             cmd_base += [
                 '--containall',
                 '--pwd', '/app',
                 str(SINGULARITY_LIB / f'{container.split("/")[1]}_latest.sif'),
-            ]
+            ] + cmd_suffix
         else:
             cmd_base += [
                 container,
-            ]
+            ] + cmd_suffix
 
         args_parsed = [
             a
              .replace('$WD', str(wd))
              .replace('$OUT', str(out))
-            for a in args
+            for a in args_parsed
         ]
         self.config.set('DEFAULT', 'datadir', str(data))
         config_pattern = r'config\[([^\]]*)\]' #r'config\[(.*)\]'
@@ -483,13 +482,40 @@ class Pipeline:
         ]
         self.config.set('DEFAULT', 'datadir', config_datadir_orig)
         cmd = cmd_base + [_.replace('//', '/') if _.startswith('/') else _ for _ in args_parsed]
-        out = run_command(cmd, logger=self.log)
+        out = run_command(cmd, env_exports=env_exports_parsed, logger=self.log)
         if stdout:
             if stdout == 'print':
                 print('\n'.join(out))
             else:
                 with (wd_folder / stdout).open('w') as fout:
                     fout.writelines([f'{_}\n' for _ in out])
+
+    def parse_args(self, args, daemon_args):
+        if self.daemon == 'docker':
+            cmd_base = [
+                self.daemon,
+                self.REGISTRY[self.daemon]['CMD_RUN']
+            ]
+            return cmd_base, cmd_suffix, args, [arg for arg in daemon_args.get('docker', [])], {}
+        elif self.daemon == "singularity":
+            parsed_daemon_args, cmd_suffix, env_exports = [], [], {}
+            cmd_base = [
+                self.daemon,
+                self.REGISTRY[self.daemon]['CMD_RUN']
+            ]
+            escape_args = True
+            for arg in daemon_args.get('singularity', []):
+                if arg.startswith('exec:'):
+                    cmd_base[-1] = self.REGISTRY[self.daemon]['CMD_EXEC']
+                    cmd_suffix += [arg[5:]]
+                    escape_args = False
+                elif arg.startswith('env:'):
+                    key, val = arg[4:].split('=')
+                    env_exports[f'SINGULARITYENV_{key}'] = val
+                else:
+                    pass
+            parsed_args = [_.replace('"', r'\"') for _ in args] if escape_args else args
+            return cmd_base, cmd_suffix, parsed_args, parsed_daemon_args, env_exports
 
 
 get_extra = lambda x, y: [_.split('=')[1] for _ in x if _.startswith(y)]
@@ -629,27 +655,27 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar', 0.11,
         f'verify/download database: {hgref}_gnomad_exome',
-        f'-c \\"annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
-        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log\\"',
-        '--entrypoint=bash'
+        f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
+        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log\'',
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
     # 0.12  Retrieve gnomad_genome database
     pipeline.add_action(
         'annovar', 0.12,
         f'verify/download database: {hgref}_gnomad_genome',
-        f'-c \\"annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
-        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log\\"',
-        '--entrypoint=bash'
+        f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
+        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log\'',
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
     # 0.121 preprocess: Generate gnomad_exome_allAFabove0 / Generate gnomad_exome_allAFabove0
     pipeline.add_action(
         'gnomad_ALLabove0_preprocess', 0.121,
         'preprocess: split gnomad database files',
-        f'-c \\"/app/bash/avadx/gnomad_ALLabove0_preprocess.sh config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt '
-        + f'config[DEFAULT.annovar.humandb]/{hgref}_gnomad_genome.txt config[DEFAULT.avadx.data]\\"',
-        '--entrypoint=bash'
+        f'-c \'/app/bash/avadx/gnomad_ALLabove0_preprocess.sh config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt '
+        + f'config[DEFAULT.annovar.humandb]/{hgref}_gnomad_genome.txt config[DEFAULT.avadx.data]\'',
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
     # 0.122 main: Generate gnomad_exome_allAFabove0 / Generate gnomad_exome_allAFabove0
@@ -663,18 +689,18 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'gnomad_ALLabove0_postprocess', 0.123,
         'postprocess: bgzip and tabix for above0 gnomad database files',
-        f'-c \\"/app/bash/avadx/gnomad_ALLabove0_postprocess.sh config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt '
-        + f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt config[DEFAULT.avadx.data]\\"',
-        '--entrypoint=bash'
+        f'-c \'/app/bash/avadx/gnomad_ALLabove0_postprocess.sh config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt '
+        + f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt config[DEFAULT.avadx.data]\'',
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
     # 0.13  Retrieve refGene database
     pipeline.add_action(
         'annovar', 0.13,
         f'verify/download database: {hgref}_refGene',
-        f'-c \\"annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
-        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log\\"',
-        '--entrypoint=bash'
+        f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
+        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log\'',
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
     # 0.14  Retrieve varidb database
@@ -702,8 +728,8 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'avadx', 0.16,
         f'verify/download EthSEQ Model: {ethseq_model_name}',
-        f'-c \\"[[ -f config[DEFAULT.ethseq.models]/{ethseq_model_name} ]] || wget -O config[DEFAULT.ethseq.models]/{ethseq_model_name} {ethseq_model_baseurl}{ethseq_model_name}\\"',
-        '--entrypoint=bash',
+        f'-c \'[[ -f config[DEFAULT.ethseq.models]/{ethseq_model_name} ]] || wget -O config[DEFAULT.ethseq.models]/{ethseq_model_name} {ethseq_model_baseurl}{ethseq_model_name}\'',
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(models_base_path)
     )
 
@@ -832,8 +858,8 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 2.10,
         'generate quality metrics after variant QC',
-        f'-c \\"bcftools stats -v -s - $WD/{step1_out} > $WD/{step2_1_0_out}\\"',
-        '--entrypoint=bash'
+        f'-c \'bcftools stats -v -s - $WD/{step1_out} > $WD/{step2_1_0_out}\'',
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
     # 2.1.1 Draw individual quality figure:
@@ -858,11 +884,11 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 2.21,
         'extract sample list',
-        f'-c \\"bcftools query -l $WD/{step1_out} > $WD/{step2_2_1_out}; '
+        f'-c \'bcftools query -l $WD/{step1_out} > $WD/{step2_2_1_out}; '
         + f'SPLIT=$(SAMPLES=$(wc -l < $WD/{step2_2_1_out}); echo $((SAMPLES <= {splits} ? 0 : {splits}))); '
         + f'[[ $SPLIT -gt 0 ]] && split -d -l $SPLIT $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/xx || cp -f $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/xx00; '
-        + f'(cd $WD/{step2_2_1_outfolder} && ls -f -1 xx*) > $WD/{step2_2_1_splits}\\"',
-        '--entrypoint=bash',
+        + f'(cd $WD/{step2_2_1_outfolder} && ls -f -1 xx*) > $WD/{step2_2_1_splits}\'',
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(WD / step2_2_1_outfolder)
     )
 
@@ -871,10 +897,10 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 2.22,
         'EthSEQ preprocessing (VCF cleanup)',
-        f'-c \\"bcftools view -S $TASK $WD/{step1_out} | '
-        + f'bcftools annotate --remove \\"ID,INFO,FORMAT\\" | '
-        + f'bcftools view --no-header -Oz -o $WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz\\"',
-        '--entrypoint=bash',
+        f'-c \'bcftools view -S $TASK $WD/{step1_out} | '
+        + f'bcftools annotate --remove "ID,INFO,FORMAT" | '
+        + f'bcftools view --no-header -Oz -o $WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz\'',
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/'),
         outdir=(WD / step2_2_2_splits)
     )
@@ -886,11 +912,11 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'ethnicity_EthSEQ', 2.23,
         'run EthSEQ',
-        f'-c \\"mkdir -p $WD/{step2_2_3_outfolder}/$(basename $TASK) && '
+        f'-c \'mkdir -p $WD/{step2_2_3_outfolder}/$(basename $TASK) && '
         + f'Rscript /app/R/avadx/ethnicity_EthSEQ.R '
         + f'$WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz '
-        + f'config[DEFAULT.ethseq.models] $WD/{step2_2_3_outfolder}/$(basename $TASK)\\"',
-        '--entrypoint=bash --env=R_MAX_VSIZE=32000000000',
+        + f'config[DEFAULT.ethseq.models] $WD/{step2_2_3_outfolder}/$(basename $TASK)\'',
+        daemon_args={'docker': ['--entrypoint=bash', '--env=R_MAX_VSIZE=32000000000'], 'singularity': ['exec:/bin/bash', 'env:R_MAX_VSIZE=32000000000']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
     )
 
@@ -899,9 +925,9 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'ethnicity_EthSEQ_summary', 2.24,
         'generate EthSEQ summaries',
-        f'-c \\"mkdir -p $WD/{step2_2_4_outfolder}/$(basename $TASK) && '
-        + f'Rscript /app/R/avadx/ethnicity_EthSEQ_summary.R $WD/{step2_2_3_outfolder}/$(basename $TASK)/Report.txt $WD/{step2_2_1_outfolder}/$(basename $TASK) $WD/{step2_2_4_outfolder}/$(basename $TASK)\\"',
-        '--entrypoint=bash',
+        f'-c \'mkdir -p $WD/{step2_2_4_outfolder}/$(basename $TASK) && '
+        + f'Rscript /app/R/avadx/ethnicity_EthSEQ_summary.R $WD/{step2_2_3_outfolder}/$(basename $TASK)/Report.txt $WD/{step2_2_1_outfolder}/$(basename $TASK) $WD/{step2_2_4_outfolder}/$(basename $TASK)\'',
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
     )
 
@@ -909,8 +935,8 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'avadx', 2.25,
         'merge EthSEQ summaries',
-        f'$WD/{step2_2_4_outfolder} -mindepth 2 -name "sampleID_*" -exec bash -c \\"cat $1 >> $WD/{step2_2_4_outfolder}/$(basename $1)\\" _ {{}} \;',
-        '--entrypoint=find'
+        f'$WD/{step2_2_4_outfolder} -mindepth 2 -name "sampleID_*" -exec bash -c \'cat $1 >> $WD/{step2_2_4_outfolder}/$(basename $1)\' _ {{}} \;',
+        daemon_args={'docker': ['--entrypoint=find'], 'singularity': ['exec:find']}
     )
 
     # 2.3   Relatedness check:
@@ -994,9 +1020,9 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar', 4.10,
         'convert cleaned VCF to single annovar annotation files',
-        f'-c \\"convert2annovar.pl -format vcf4 $WD/{step2_out} -outfile $WD/{step4_1_outfolder}/sample -allsample; '
-        + f'(cd $WD/{step4_1_outfolder} && ls -f -1 sample.*.avinput) > $WD/{step4_1_out}\\"',
-        '--entrypoint=bash',
+        f'-c \'convert2annovar.pl -format vcf4 $WD/{step2_out} -outfile $WD/{step4_1_outfolder}/sample -allsample; '
+        + f'(cd $WD/{step4_1_outfolder} && ls -f -1 sample.*.avinput) > $WD/{step4_1_out}\'',
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(WD / step4_1_outfolder)
     )
 

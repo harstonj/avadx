@@ -638,6 +638,7 @@ def run_all(kwargs, extra, config, daemon):
     uid = get_extra(extra, '--uid')
     if uid:
         pipeline.uid = uid[0]
+    CFG = VM_MOUNT / 'in' / 'pipeline.ini'
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
     hgref = pipeline.config.get('avadx', 'hgref')
@@ -711,7 +712,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.14,
         f'verify/download database: varidb',
-        f'app.pipeline --retrieve varidb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'app.pipeline {CFG} --retrieve varidb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
         logs=('print', None)
     )
@@ -720,7 +721,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.15,
         f'verify/download database: CPDB pathway mapping',
-        f'app.pipeline --retrieve cpdb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'app.pipeline {CFG} --retrieve cpdb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
         logs=('print', None)
     )
@@ -741,7 +742,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.17,
         f'verify/download reference sequences/stats: refseq',
-        f'app.pipeline --retrieve refseq --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'app.pipeline {CFG} --retrieve refseq --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
         logs=('print', None)
     )
@@ -759,7 +760,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_preprocess', 1.00,
         f'AVA,Dx pipeline preprocess',
-        f'app.pipeline --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'app.pipeline {CFG} --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=mounts_preprocess,
         logs=('print', None)
     )

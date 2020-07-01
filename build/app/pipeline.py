@@ -342,8 +342,8 @@ class Pipeline:
             hgref = self.config.get('avadx', 'hgref')
             hgref_mapped = self.ASSEMBLY_MAPPING.get(hgref, None)
             if not hgref_mapped:
-                hgref_mapped = self.ASSEMBLY_MAPPING.get(ASSEMBLY_DEFAULT)
-                self.log.warning(f'|0.17| could not map hgref {hgref} - falling back to {ASSEMBLY_DEFAULT}')
+                hgref_mapped = self.ASSEMBLY_MAPPING.get(self.ASSEMBLY_DEFAULT)
+                self.log.warning(f'|0.17| could not map hgref {hgref} - falling back to {self.ASSEMBLY_DEFAULT}')
             refseq_data_path = Path(self.config.get('DEFAULT', 'refseq.data', fallback=self.kwargs.get('wd')))
             url = 'https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/'
             assembly_base = f'{hgref_mapped[2]}.{hgref_mapped[3]}_{hgref_mapped[0]}.{hgref_mapped[1]}'
@@ -409,7 +409,7 @@ class Pipeline:
                 self.log.debug(f'Using optional argument defaults: {flag_checked}{option_value} -> {skip}')
         return formatted
 
-    def run_container(self, container, args=[], daemon_args={}, uid=uuid.uuid1(), mounts=[], out_folder:Path=Path.cwd(), stdout=None, stderr=None):
+    def run_container(self, container, args=[], daemon_args={}, uid=uuid.uuid1(), mounts=[], out_folder: Path = Path.cwd(), stdout=None, stderr=None):
         if out_folder:
             (out_folder / str(uid) / 'out').mkdir(parents=True, exist_ok=True)
         wd_folder = out_folder / str(uid) / 'wd'
@@ -433,7 +433,7 @@ class Pipeline:
             data = data_folder
 
         cmd_base, cmd_suffix, args_parsed, daemon_args_parsed, env_exports_parsed = self.parse_args(args, daemon_args)
-        
+
         if self.daemon == "docker":
             bind_mounts = []
             for m in mounts:
@@ -466,12 +466,12 @@ class Pipeline:
 
         args_parsed = [
             a
-             .replace('$WD', str(wd))
-             .replace('$OUT', str(out))
+            .replace('$WD', str(wd))
+            .replace('$OUT', str(out))
             for a in args_parsed
         ]
         self.config.set('DEFAULT', 'datadir', str(data))
-        config_pattern = r'config\[([^\]]*)\]' #r'config\[(.*)\]'
+        config_pattern = r'config\[([^\]]*)\]'
         args_parsed = [
             re.sub(
                 config_pattern,
@@ -496,7 +496,7 @@ class Pipeline:
                 self.daemon,
                 self.REGISTRY[self.daemon]['CMD_RUN']
             ]
-            return cmd_base, cmd_suffix, args, [arg for arg in daemon_args.get('docker', [])], {}
+            return cmd_base, [], args, [arg for arg in daemon_args.get('docker', [])], {}
         elif self.daemon == "singularity":
             parsed_daemon_args, cmd_suffix, env_exports = [], [], {}
             cmd_base = [

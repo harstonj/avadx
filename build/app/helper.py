@@ -1,9 +1,5 @@
 import os
 import sys
-import shutil
-import gzip
-import csv
-import threading
 import time
 import re
 import subprocess
@@ -13,8 +9,6 @@ import argparse
 import shlex
 from pathlib import Path
 from functools import wraps
-from concurrent.futures import ThreadPoolExecutor
-from collections import OrderedDict
 
 
 FLAGS = []
@@ -150,8 +144,8 @@ def fasta_header_count(fname):
                         return int(zgrep_count_val)
         else:
             with open(fname) as f_:
-                for l in f_:
-                    if l and l[0] == '>':
+                for line in f_:
+                    if line and line[0] == '>':
                         header_count += 1
                         next(f_, None)
     elif is_fastq:
@@ -401,96 +395,11 @@ def download_url(url, file_name=None, out_folder=None):
         if hasattr(e, 'reason'):
             print(f'ERROR: We failed to reach the server; Reason: {e.reason}')
         connection_error = True
-    
+
     if connection_error:
         return None
 
     return file_name_path
-
-
-def download_inputfiles(inputfiles, download_folder=None, env_exports={}):
-    inputfiles_downloaded = []
-    has_download_folder = True if download_folder else False
-    if not has_download_folder:
-        download_folder = os.getcwd()
-    if inputfiles and len(inputfiles) == 1:
-        inputfile = inputfiles[0]
-        if inputfile.startswith(VALID_URLS):
-            url = inputfile
-            download_file_name = None
-            url_in = inputfile.split(",")
-            if len(url_in) == 2:
-                url = url_in[0]
-                download_file_name = url_in[1]
-            downloaded_file = download_url(url, file_name=download_file_name, out_folder=download_folder)
-            if not downloaded_file:
-                sys.exit(f"ERROR - Could not download file from url: {inputfile}")
-            else:
-                inputfiles_downloaded = [os.path.abspath(downloaded_file)]
-        elif inputfile.startswith("sra:"):
-            sra_acc = inputfile[4:]
-            sra_downloaded = sra_downloader(sra_acc, os.path.abspath(download_folder), env_exports)
-            if len(sra_downloaded) == 1:
-                inputfiles_downloaded = [os.path.abspath(sra_downloaded[0])]
-            else:
-                print(f"Got SRA with 2-lane format: {sra_acc}")
-                for sra_ in sra_downloaded:
-                    inputfiles_downloaded+=[os.path.abspath(sra_)]
-        for inputfile_ in inputfiles_downloaded:
-            if not os.path.exists(inputfile_):
-                found = False
-                if has_download_folder:
-                    inputfile_at_download_folder = os.path.join(download_folder, os.path.basename(inputfile_))
-                    if os.path.exists(inputfile_at_download_folder):
-                        inputfile_ = inputfile_at_download_folder
-                        found = True
-                if not found:
-                    sys.exit(f"ERROR - Could not read input file: {inputfile_}")
-    elif inputfiles:
-        if len(inputfiles) != 2:
-            sys.exit(f"ERROR - Could not identify 2-lane input files: {inputfiles}")
-        lanes_checked = []
-        for lane_file in inputfiles:
-            if lane_file.startswith(VALID_URLS):
-                url = lane_file
-                download_file_name = None
-                url_in = lane_file.split(",")
-                if len(url_in) == 2:
-                    url = url_in[0]
-                    download_file_name = url_in[1]
-                downloaded_file = download_url(url, file_name=download_file_name, out_folder=download_folder)
-                if not downloaded_file:
-                    sys.exit(f"ERROR - Could not download file from url: {lane_file}")
-                else:
-                    lanes_checked.append(downloaded_file)
-            elif lane_file.startswith("sra:"):
-                sra_acc = lane_file[4:]
-                sra_downloaded = sra_downloader(sra_acc, os.path.abspath(download_folder))
-
-                if len(sra_downloaded) == 1:
-                    lanes_checked.extend(sra_downloaded)
-                else:
-                    sys.exit(f"ERROR - Got SRA with 2-lane format ({sra_acc}) while processing 2-lane input: {inputfiles}")
-            else:
-                lanes_checked.append(lane_file)
-        r1_ = os.path.abspath(lanes_checked[0])
-        r2_ = os.path.abspath(lanes_checked[1])
-        if not os.path.exists(r1_) or not os.path.exists(r2_):
-            found_r1, found_r2 = (False, False)
-            if has_download_folder:
-                r1_at_download_folder = os.path.join(download_folder, os.path.basename(r1_))
-                if os.path.exists(r1_at_download_folder):
-                    r1_ = r1_at_download_folder
-                    found_r1 = True
-                r2_at_download_folder = os.path.join(download_folder, os.path.basename(r2_))
-                if os.path.exists(r2_at_download_folder):
-                    r2_ = r2_at_download_folder
-                    found_r2 = True
-            if not (found_r1 and found_r2):
-                sys.exit(f"ERROR - Could not read all input file: {r1_},{r2_}")
-        inputfiles_downloaded = [r1_, r2_]
-
-    return inputfiles_downloaded
 
 
 def pre_execution(method):
@@ -554,7 +463,7 @@ def retry(exceptions, tries=4, delay=3, backoff=2, logger=None, verbose=False, c
                     return f(*args, **kwargs)
                 except all_exception_types as e:
                     if (not any(x for x in exception_types if isinstance(e, x))
-                        and not any(x for x in exception_instances if type(x) == type(e) and x.args == e.args)):
+                       and not any(x for x in exception_instances if type(x) == type(e) and x.args == e.args)):
                         raise
                     msg = f'{str(e) if str(e) != "" else repr(e)}, Retrying in {mdelay} seconds...'
                     if verbose:

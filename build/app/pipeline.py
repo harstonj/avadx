@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 from timeit import default_timer as timer
 from .logger import Logger
-from .helper import run_command, flatten, runningInDocker, runningInSingularity
+from .helper import check_config_ini, run_command, flatten, runningInDocker, runningInSingularity
 from . import __version__, __releasedate__
 
 
@@ -557,7 +557,7 @@ def parse_arguments():
             + "Test: XXX\n \n",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument('config', nargs='?', type=Path, default=Path('pipeline.ini'))
+    parser.add_argument('config', nargs='?', type=Path, default=Path('pipeline.ini'), action=check_config_ini())
     parser.add_argument('-a', '--action', action='append')
     parser.add_argument('-w', '--wd', type=Path, default=Path.cwd(),
                         help='working directory')
@@ -1008,9 +1008,6 @@ def run_all(kwargs, extra, config, daemon):
         + f'-R $WD/varidb_query_report.txt '
         + f'-C query variant score -S tab -H -s'
     )
-
-    # 3.5   Reformat varidb results to Mutations.mutOut file
-    # TODO
 
     # 4     Gene score calculation ---------------------------------------------------------------- #
     

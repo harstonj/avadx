@@ -11,6 +11,7 @@ import errno
 import signal
 import argparse
 import shlex
+from pathlib import Path
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
@@ -109,6 +110,18 @@ def is_int(x):
         return True
     except ValueError:
         return False
+
+
+def check_config_ini(*additional_args):
+    class customAction(argparse.Action):
+        def __call__(self, parser, args, values, option_string=None):
+            if not Path(values).exists():
+                raise argparse.ArgumentError(
+                    self,
+                    f'\n\nConfig file not found: {values}\n'
+                )
+            setattr(args, self.dest, values)
+    return customAction
 
 
 def fasta_header_count(fname):

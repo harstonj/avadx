@@ -221,7 +221,7 @@ class Pipeline:
         data_base_path = config.get('DEFAULT', 'datadir', fallback=None)
         if data_base_path is not None:
             if not Path(data_base_path).is_absolute():
-                config.set('DEFAULT', 'datadir', self.config_file.parent / data_base_path)
+                config.set('DEFAULT', 'datadir', str(self.config_file.parent / data_base_path))
         return config
 
     def info(self):

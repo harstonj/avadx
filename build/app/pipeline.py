@@ -626,7 +626,7 @@ def parse_arguments():
     parser.add_argument('-E', '--exitpoint', type=float,
                         help='stop pipeline before specified exitpoint')
     parser.add_argument('-v', '--verbose', action='count', default=0,
-                        help='set verbosity level; default: log level INFO')
+                        help='set verbosity level (v: ERROR, vv: WARNING, vvv: info, vvvv: debug); default: log level INFO')
     parser.add_argument('-L', '--logfile', type=Path, const=Path('pipeline.log'),
                         nargs='?', help='redirect logs to file')
     parser.add_argument('-q', '--quiet', action='store_true',
@@ -639,10 +639,15 @@ def parse_arguments():
             parser.add_argument(f'--{action}', action='append', default=[])
             parser_actions += [action]
     namespace, extra = parser.parse_known_args()
-    namespace.verbose = 40 - min(10 * namespace.verbose, 40) if namespace.verbose >= 0 else 0
-    global LOG_LEVEL, LOG_FILE
+    if namespace.verbose == 0:
+        namespace.verbose = 20
+    else:
+        namespace.verbose =- 1
+        namespace.verbose = max(10, 40 - min(10 * namespace.verbose, 40)) if namespace.verbose >= 0 else 0
+    global LOG_LEVEL, LOG_FILE, QUIET
     LOG_LEVEL = namespace.verbose
     LOG_FILE = namespace.logfile
+    QUIET = namespace.quiet
     del namespace.verbose
     del namespace.logfile
 

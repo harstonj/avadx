@@ -518,7 +518,7 @@ class Pipeline:
         cmd = cmd_base + [_.replace('//', '/') if _.startswith('/') else _ for _ in args_parsed]
         out = run_command(cmd, env_exports=env_exports_parsed, logger=self.log)
         if stdout:
-            if stdout == 'print':
+            if stdout == 'print' and out:
                 print('\n'.join(out))
             else:
                 with (wd_folder / stdout).open('w') as fout:

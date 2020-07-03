@@ -602,6 +602,7 @@ def parse_arguments():
     )
     parser.add_argument('config', nargs='?', type=Path, default=Path('pipeline.ini'), action=check_config_ini())
     parser.add_argument('-a', '--action', action='append')
+    parser.add_argument('-u', '--uid', type=str)
     parser.add_argument('-w', '--wd', type=Path, default=Path.cwd(),
                         help='working directory')
     parser.add_argument('-c', '--cpu', type=int, default=multiprocessing.cpu_count(),
@@ -650,9 +651,6 @@ def parse_arguments():
 
 def main(pipeline, extra):
     app = AVADxMeta(pipeline=pipeline)
-    uid = get_extra(extra, '--uid')
-    if uid:
-        pipeline.uid = uid[0]
     if pipeline.kwargs.get('wd'):
         pipeline.kwargs.get('wd').mkdir(parents=True, exist_ok=True)
     timer_start = timer()
@@ -676,8 +674,8 @@ def get_mounts(pipeline, *config):
     return mounts
 
 
-def run_all(kwargs, extra, config, daemon):
-    pipeline = Pipeline(kwargs=kwargs, uid=get_extra(extra, '--uid'), config_file=config, daemon=daemon)
+def run_all(uid, kwargs, extra, config, daemon):
+    pipeline = Pipeline(kwargs=kwargs, uid=uid, config_file=config, daemon=daemon)
     CFG = VM_MOUNT / 'in' / 'pipeline.ini'
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
@@ -1140,26 +1138,28 @@ def init():
     actions = namespace.action
     config = namespace.config
     daemon = namespace.daemon
+    uid = namespace.uid
     del namespace.action
     del namespace.config
     del namespace.daemon
+    del namespace.uid
     if namespace.info:
         Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon).info()
     elif namespace.init:
         namespace.entrypoint = 0
         namespace.exitpoint = 1
-        pipeline = run_all(vars(namespace), extra, config, daemon)
+        pipeline = run_all(uid, vars(namespace), extra, config, daemon)
         shutil.rmtree(pipeline.get_wd())
     elif namespace.preprocess:
-        pipeline = Pipeline(actions, kwargs=vars(namespace), uid=get_extra(extra, '--uid'), config_file=config, daemon=daemon)
+        pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
         pipeline.preprocess()
     elif namespace.retrieve:
-        pipeline = Pipeline(actions, kwargs=vars(namespace), uid=get_extra(extra, '--uid'), config_file=config, daemon=daemon)
+        pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
         pipeline.retrieve(namespace.retrieve)
     elif actions is None:
-        run_all(vars(namespace), extra, config, daemon)
+        run_all(uid, vars(namespace), extra, config, daemon)
     else:
-        pipeline = Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon)
+        pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
         main(pipeline, extra)
 
 

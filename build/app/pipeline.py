@@ -112,7 +112,7 @@ class AVADxMeta:
         self.run_method(self.IMAGES['R'], 'generate_transcripts_protlength', uid, kwargs)
 
     def bcftools(self, uid, **kwargs):
-        self.run_method(self.IAMGES['bcftools'], 'bcftools', uid, kwargs)
+        self.run_method(self.IMAGES['bcftools'], 'bcftools', uid, kwargs)
 
     def avadx(self, uid, **kwargs):
         self.run_method(self.IMAGES['avadx'], 'avadx', uid, kwargs)

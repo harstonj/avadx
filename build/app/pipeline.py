@@ -320,7 +320,7 @@ class Pipeline:
                     self.log.warning(
                         f'Too few samples ({cv_folds_max}) for specified {cv_folds_config}-fold cross-validation'
                         f' - proceeding with {cv_folds}-fold split')
-                samples_indices = [_ for _ in range(6)]
+                samples_indices = [_ for _ in range(cv_folds_max)]
                 random.shuffle(samples_indices)
                 auto_folds = folds(samples_indices, len(samples_indices) // cv_folds)
                 auto_folds = adjust_splits(auto_folds, cv_folds)

@@ -10,7 +10,7 @@ RUN mkdir /install
 WORKDIR /install
 
 # setup app
-COPY ./build/app /app/python/app
+COPY ./app /app/python/app
 COPY ./python /app/python/avadx
 RUN pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install -r requirements.txt
 

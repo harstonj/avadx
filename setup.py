@@ -1,6 +1,6 @@
 import pathlib
 from setuptools import setup, find_packages
-from build.app import __version__, name
+from app import __version__, name
 
 HERE = pathlib.Path(__file__).parent
 README = (HERE / "README.md").read_text()
@@ -22,7 +22,7 @@ setup(
     install_requires=[
     ],
     entry_points = {
-        'console_scripts': ['avadx-meta=build.app.__main__:main'],
+        'console_scripts': ['avadx-meta=app.__main__:main'],
     },
     classifiers=[
         "Development Status :: 5 - Production/Stable",

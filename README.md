@@ -32,21 +32,28 @@ A inital version version of the AVA,Dx pipeline and its documentation can found 
 6. Run the pipeline by providing at minimum the path to the user configuration file.
 
 ### Install AVA,Dx python package
+```bash
+pip install git+https://bitbucket.org/bromberglab/avadx-meta.git#egg=avadx-meta
+```
 
 ### Update VM images
 ```bash
 avadx-meta --update vm
 ```
+
 ### Update Databases
 ```bash
 avadx-meta --update data
 ```
+
 ### Create pipeline.ini config from template
 Copy the provided configuration file template (`pipeline.ini`) and update the paths to the two input files (vcf file and samples info file); change any default parameters as required.
+
 ### Run the pipeline
 ```bash
 avadx-meta --wd <PATH_TO_OUTPUT_DIRECTORY> --uid <MY_PIPELINE_RUN_ID> <PATH_TO_CONFIG_FILE>
 ```
+
 ## Notes
 
 * The pipeline defaults to hg19. For hg18, we recommend lifting over to hg19 first. For hg38, we recommend changeing the reference databases to hg38.

@@ -1,6 +1,14 @@
 # Compiled python modules.
 *.py[co]
 
+# Setuptools distribution and build folder.
+/dist/
+/build/
+
+# Python egg metadata, regenerated from source files by setuptools.
+/*.egg-info
+/*.egg
+
 # Data
 data/annovar/*/*
 data/ethseq/models/*
@@ -11,8 +19,8 @@ data/refseq/*
 
 # Testing
 test_*/
-build/Rscript/R
-build/tabix/python
+docker/Rscript/R
+docker/tabix/python
 
 # Documentation
 !README.md

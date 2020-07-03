@@ -12,7 +12,7 @@ WORKDIR /install
 # setup app
 COPY ./build/app /app/python/app
 COPY ./python /app/python/avadx
-RUN pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install -r /app/python/app/requirements.txt
+RUN pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install -r requirements.txt
 
 FROM base
 

@@ -1,0 +1,9 @@
+include *.md
+global-exclude \
+  *.py[co] \
+  .DS_Store \
+  .*
+prune data
+prune test
+prune R
+prune python

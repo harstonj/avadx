@@ -10,7 +10,7 @@ data/refseq/*
 !data/**/.gitkeep
 
 # Testing
-test*/
+test_*/
 build/Rscript/R
 build/tabix/python
 

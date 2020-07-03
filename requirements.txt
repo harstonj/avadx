@@ -1,2 +1,2 @@
 requests==2.24.0
-#docker==4.2.0
+docker==4.2.2

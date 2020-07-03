@@ -40,6 +40,29 @@ class AVADxMeta:
         self.log = self.get_logger()
         self.pipeline = pipeline
 
+    @staticmethod
+    def init_vm(daemon):
+        _ = AVADxMeta(None)
+        if daemon not in ['docker', 'singularity']:
+            _.log.warning(f'Unknown daemon: {daemon}')
+        if daemon == 'docker':
+            try:
+                import docker
+            except ImportError:
+                _.log.error('Docker SDK for Python not installed. Please install with: "pip install docker"')
+                sys.exit()
+            _.log.info('Checking Docker images ...')
+            client = docker.from_env()
+            for image in AVADxMeta.IMAGES.values():
+                _.log.info(f'Processing {image} ...')
+                client.images.pull(image)
+            _.log.info('Done.')
+        elif daemon == 'singularity':
+            for image in AVADxMeta.IMAGES.values():
+                _.log.info(f'Processing {image} ...')
+                run_command(f'singularity pull docker://{image}')
+            _.log.info('Done.')
+
     def get_logger(self):
         logger = Logger(self.__class__.__name__, level=LOG_LEVEL)
         logger.addConsoleHandler()
@@ -206,19 +229,6 @@ class Pipeline:
 
     def get_wd(self):
         return self.kwargs['wd'] / str(self.uid)
-
-    def init_vm(self):
-        if self.daemon == 'docker':
-            try:
-                import docker
-            except ImportError:
-                self.log.error('Docker SDK for Python not installed. Please install with: "pip install docker"')
-                sys.exit()
-            self.log.info('Retrieving/updating Docker images ...')
-            client = docker.from_env()
-            for image in AVADxMeta.IMAGES.values():
-                client.images.pull(image)
-            self.log.info('Done.')
 
     def check_vm(self):
         if runningInDocker():
@@ -615,7 +625,7 @@ def parse_arguments():
                         help='print pipeline info')
     parser.add_argument('-I', '--init', action='store_true',
                         help='init pipeline - retrieve all required databases/datasources')
-    parser.add_argument('-U', '--update', type=str, action='append', choices=['all', 'data', 'docker', 'singularity'],
+    parser.add_argument('-U', '--update', type=str, action='append', choices=['all', 'data', 'vm'],
                         help='init pipeline - retrieve all required databases/datasources')
     parser.add_argument('-p', '--preprocess', action='store_true',
                         help='run input preprocessing')
@@ -1155,6 +1165,8 @@ def init():
         namespace.exitpoint = 1
         pipeline = run_all(uid, vars(namespace), extra, config, daemon)
         shutil.rmtree(pipeline.get_wd())
+    elif namespace.update:
+        AVADxMeta.init_vm(daemon)
     elif namespace.preprocess:
         pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
         pipeline.preprocess()

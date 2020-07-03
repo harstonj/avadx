@@ -19,7 +19,8 @@ VALID_ARCHIVETYPES = ["zip", "bzip2", "xz", "tar", "tar.gz", "gz", "bz2"]
 VALID_URLS = ("http://", "https://", "ftp://", "ftps://")
 
 
-flatten = lambda l: [item for sublist in l for item in sublist]
+def flatten(list):
+    return [item for sublist in list for item in sublist]
 
 
 # noinspection
@@ -161,7 +162,7 @@ def fasta_header_count(fname):
             if cat_count:
                 cat_count_val = cat_count[0]
                 if is_int(cat_count_val):
-                    return int(cat_count_val)/4
+                    return int(cat_count_val) / 4
 
     return header_count
 
@@ -260,7 +261,7 @@ def create_markdown(src_files=['README.md'], other_files=['files/css/stylesheet.
 def parse_fasta(fasta_in):
     records = {}
     with open(fasta_in, 'r') as fin:
-        header, sequence = None,  ''
+        header, sequence = None, ''
         for line in fin:
             line = line.strip()
             if line:
@@ -462,8 +463,7 @@ def retry(exceptions, tries=4, delay=3, backoff=2, logger=None, verbose=False, c
                 try:
                     return f(*args, **kwargs)
                 except all_exception_types as e:
-                    if (not any(x for x in exception_types if isinstance(e, x))
-                       and not any(x for x in exception_instances if type(x) == type(e) and x.args == e.args)):
+                    if (not any(x for x in exception_types if isinstance(e, x)) and not any(x for x in exception_instances if type(x) == type(e) and x.args == e.args)):
                         raise
                     msg = f'{str(e) if str(e) != "" else repr(e)}, Retrying in {mdelay} seconds...'
                     if verbose:

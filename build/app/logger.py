@@ -43,7 +43,7 @@ class Logger:
             )
         file_handler.setFormatter(formatter)
         self.log.addHandler(file_handler)
-    
+
     def addLoggers(self):
         if LOG_FILE:
             self.addConsoleHandler(logging.ERROR)

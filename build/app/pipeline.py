@@ -3,6 +3,7 @@
 import argparse
 import re
 import os
+import sys
 import csv
 import uuid
 import shutil
@@ -25,6 +26,16 @@ LOG_FILE = None
 
 
 class AVADxMeta:
+
+    IMAGES = {
+        'avadx': 'bromberglab/avadx-meta',
+        'R': 'bromberglab/avadx-rscript',
+        'bcftools': 'bromberglab/avadx-bcftools',
+        'tabix': 'bromberglab/avadx-tabix',
+        'annovar': 'bromberglab/avadx-annovar',
+        'varidb': 'bromberglab/varidb'
+    }
+
     def __init__(self, pipeline):
         self.log = self.get_logger()
         self.pipeline = pipeline
@@ -92,67 +103,67 @@ class AVADxMeta:
             self.log.info(f'|{level:.2f}| {name}{task_info}: took {(timer() - timer_start):.3f} seconds')
 
     def run_preprocess(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-meta', 'run_preprocess', uid, kwargs)
+        self.run_method(self.IMAGES['avadx'], 'run_preprocess', uid, kwargs)
 
     def run_retrieve(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-meta', 'run_retrieve', uid, kwargs)
+        self.run_method(self.IMAGES['avadx'], 'run_retrieve', uid, kwargs)
 
     def generate_transcripts_protlength(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'generate_transcripts_protlength', uid, kwargs)
+        self.run_method(self.IMAGES['R'], 'generate_transcripts_protlength', uid, kwargs)
 
     def bcftools(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-bcftools', 'bcftools', uid, kwargs)
+        self.run_method(self.IAMGES['bcftools'], 'bcftools', uid, kwargs)
 
     def avadx(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-meta', 'avadx', uid, kwargs)
+        self.run_method(self.IMAGES['avadx'], 'avadx', uid, kwargs)
 
     def filterVCF_by_ABAD(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-meta', 'filterVCF_by_ABAD', uid, kwargs)
+        self.run_method(self.IMAGES['avadx'], 'filterVCF_by_ABAD', uid, kwargs)
 
     def gnomad_ALLabove0_preprocess(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-tabix', 'gnomad_ALLabove0_preprocess', uid, kwargs)
+        self.run_method(self.IMAGES['tabix'], 'gnomad_ALLabove0_preprocess', uid, kwargs)
 
     def generate_gnomad_above0(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'generate_gnomad_above0', uid, kwargs)
+        self.run_method(self.IMAGES['R'], 'generate_gnomad_above0', uid, kwargs)
 
     def gnomad_ALLabove0_postprocess(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-tabix', 'gnomad_ALLabove0_postprocess', uid, kwargs)
+        self.run_method(self.IMAGES['tabix'], 'gnomad_ALLabove0_postprocess', uid, kwargs)
 
     def filterVCF_by_gnomAD(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-tabix', 'filterVCF_by_gnomAD', uid, kwargs)
+        self.run_method(self.IMAGES['tabix'], 'filterVCF_by_gnomAD', uid, kwargs)
 
     def stats_quality_pca(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'stats_quality_pca', uid, kwargs)
+        self.run_method(self.IMAGES['R'], 'stats_quality_pca', uid, kwargs)
 
     def ethnicity_EthSEQ(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'ethnicity_EthSEQ', uid, kwargs)
+        self.run_method(self.IMAGES['R'], 'ethnicity_EthSEQ', uid, kwargs)
 
     def ethnicity_EthSEQ_summary(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'ethnicity_EthSEQ_summary', uid, kwargs)
+        self.run_method(self.IMAGES['R'], 'ethnicity_EthSEQ_summary', uid, kwargs)
 
     def relatedness(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'relatedness', uid, kwargs)
+        self.run_method(self.IMAGES['R'], 'relatedness', uid, kwargs)
 
     def annovar(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-annovar', 'annovar', uid, kwargs)
+        self.run_method(self.IMAGES['annovar'], 'annovar', uid, kwargs)
 
     def check_missing_SNAP(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'check_missing_SNAP', uid, kwargs)
+        self.run_method(self.IMAGES['R'], 'check_missing_SNAP', uid, kwargs)
 
     def varidb(self, uid, **kwargs):
-        self.run_method('bromberglab/varidb', 'varidb', uid, kwargs)
+        self.run_method(self.IMAGES['varidb'], 'varidb', uid, kwargs)
 
     def cal_genescore_make_genescore(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'cal_genescore_make_genescore', uid, kwargs)
+        self.run_method(self.IMAGES['R'], 'cal_genescore_make_genescore', uid, kwargs)
 
     def merge_genescore(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'merge_genescore', uid, kwargs)
+        self.run_method(self.IMAGES['R'], 'merge_genescore', uid, kwargs)
 
     def FS_CVperf_kfold(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'FS_CVperf_kfold', uid, kwargs)
+        self.run_method(self.IMAGES['R'], 'FS_CVperf_kfold', uid, kwargs)
 
     def FS_CVgeneOverRep_kfold(self, uid, **kwargs):
-        self.run_method('bromberglab/avadx-rscript', 'FS_CVgeneOverRep_kfold', uid, kwargs)
+        self.run_method(self.IMAGES['R'], 'FS_CVgeneOverRep_kfold', uid, kwargs)
 
 
 class Pipeline:
@@ -175,16 +186,15 @@ class Pipeline:
         'hg38': ('GRCh38', 'p13', 'GCF_000001405', '39')
     }
 
-    def __init__(self, actions=[], kwargs={}, uid=uuid.uuid1(), config_file=None, daemon='docker'):
+    def __init__(self, actions=[], kwargs={}, uid=None, config_file=None, daemon='docker'):
         self.log = self.get_logger()
         self.actions = actions
         self.kwargs = kwargs
-        self.uid = uid
+        self.uid = uid if uid is not None else uuid.uuid1()
         self.config_file = config_file
         self.config = self.load_config()
         self.daemon = daemon
         self.is_vm = self.check_vm()
-        self.init_daemon()
         self.entrypoint = kwargs.get('entrypoint') if kwargs.get('entrypoint', None) is not None else 1
         self.exitpoint = kwargs.get('exitpoint', None)
 
@@ -197,10 +207,18 @@ class Pipeline:
     def get_wd(self):
         return self.kwargs['wd'] / str(self.uid)
 
-    def init_daemon(self):
+    def init_vm(self):
         if self.daemon == 'docker':
-            # import docker
-            pass
+            try:
+                import docker
+            except ImportError:
+                self.log.error('Docker SDK for Python not installed. Please install with: "pip install docker"')
+                sys.exit()
+            self.log.info('Retrieving/updating Docker images ...')
+            client = docker.from_env()
+            for image in AVADxMeta.IMAGES.values():
+                client.images.pull(image)
+            self.log.info('Done.')
 
     def check_vm(self):
         if runningInDocker():
@@ -228,6 +246,12 @@ class Pipeline:
         print(f'AVA,Dx {__version__} {__releasedate__}')
 
     def preprocess(self):
+        def indices(labels, search):
+            return [i for i, x in enumerate(labels) if x == search]
+
+        def folds(samples, foldcnt):
+            return [samples[i * foldcnt:(i + 1) * foldcnt] for i in range((len(samples) + foldcnt - 1) // foldcnt)]
+
         if self.is_vm:
             wd_folder = self.kwargs.get('wd')
             samples_path = VM_MOUNT / 'in' / Path(self.config.get('avadx', 'samples')).name
@@ -246,8 +270,6 @@ class Pipeline:
             if not samples_path.exists():
                 self.log.warning(f'Could not read required input: {samples_path}')
                 return
-        indices = lambda labels, search: [i for i, x in enumerate(labels) if x == search]
-        folds = lambda samples, foldcnt: [samples[i * foldcnt:(i + 1) * foldcnt] for i in range((len(samples) + foldcnt - 1) // foldcnt)]
         with samples_path.open() as fin, samplesids_path.open('w') as fout_ids, cvscheme_path.open('w') as fout_cv:
             samples, labels, col3 = [], [], []
             reader = csv.reader(fin)
@@ -270,10 +292,10 @@ class Pipeline:
                 if cv_folds_config > cv_folds_max:
                     self.log.warning(
                         f'Too few groups ({cv_folds_max}) for specified {cv_folds_config}-fold cross-validation'
-                        + f' - proceeding with {cv_folds}-fold split')
+                        f' - proceeding with {cv_folds}-fold split')
                 grouped_samples_shuffled = list(grouped_samples)
                 random.shuffle(grouped_samples_shuffled)
-                group_folds = folds(grouped_samples_shuffled, len(grouped_samples_shuffled)//cv_folds)
+                group_folds = folds(grouped_samples_shuffled, len(grouped_samples_shuffled) // cv_folds)
                 for gfold in group_folds:
                     auto_folds += [flatten([grouped_samples.get(g) for g in gfold])]
                 auto_folds = adjust_splits(auto_folds, cv_folds)
@@ -297,10 +319,10 @@ class Pipeline:
                 if cv_folds_config > cv_folds_max:
                     self.log.warning(
                         f'Too few samples ({cv_folds_max}) for specified {cv_folds_config}-fold cross-validation'
-                        + f' - proceeding with {cv_folds}-fold split')
+                        f' - proceeding with {cv_folds}-fold split')
                 samples_indices = [_ for _ in range(6)]
                 random.shuffle(samples_indices)
-                auto_folds = folds(samples_indices, len(samples_indices)//cv_folds)
+                auto_folds = folds(samples_indices, len(samples_indices) // cv_folds)
                 auto_folds = adjust_splits(auto_folds, cv_folds)
                 if len(auto_folds) != cv_folds:
                     self.log.warn(f'Auto-generated cross-validation folds ({len(auto_folds)}) differ from specified folds ({cv_folds})')
@@ -369,8 +391,7 @@ class Pipeline:
 
     def add_action(
             self, action, level=None, description='', args='', daemon_args={},
-            tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], logs=(None, None)
-            ):
+            tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], logs=(None, None)):
         if level is None or (level >= self.entrypoint and (self.exitpoint is None or level < self.exitpoint)):
             self.actions += [action]
             self.kwargs[action] = self.kwargs.get(action, []) + [args]
@@ -522,7 +543,12 @@ class Pipeline:
             return cmd_base, cmd_suffix, parsed_args, parsed_daemon_args, env_exports
 
 
-get_extra = lambda x, y: [_.split('=')[1] for _ in x if _.startswith(y)]
+def get_extra(x, y):
+    res = [_.split('=')[1] for _ in x if _.startswith(y)]
+    if len(res) == 1:
+        return res[0]
+    else:
+        return res
 
 
 def adjust_splits(auto_folds, cv_folds):
@@ -544,21 +570,25 @@ def adjust_splits(auto_folds, cv_folds):
 def parse_arguments():
     parser = argparse.ArgumentParser(
         prog=f"{__name__}",
-        description="AVA,Dx pipeline\n \n" \
-            + "description\n" \
-            + "XXX\n" \
-            + "XXX\n \n"
-            + "Public web service: https://services.bromberglab.org/avadx-meta\n \n" \
-            + "Version: %s [%s]\n" % (__version__, __releasedate__),
-        epilog=f"If you use *{__name__}* in published research, please cite:\n \n" \
-            + "Wang Y., Miller M., ... Bromberg, Y. (2019).\n" \
-            + "Identifying Crohn's disease signal from variome analysis.\n" \
-            + "Genome medicine, 11(1), 59. [doi:10.1186/s13073-019-0670-6]\n" \
-            + "(https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkx1209/4670955)\n \n" \
-            + f"{__name__} is developed by Yanran Wang and Maximilian Miller.\n" \
-            + "Feel free to contact us for support at services@bromberglab.org.\n \n" \
-        "This project is licensed under [NPOSL-3.0](http://opensource.org/licenses/NPOSL-3.0)\n \n" \
-            + "Test: XXX\n \n",
+        description=(
+            "AVA,Dx pipeline\n \n"
+            "description\n"
+            "XXX\n"
+            "XXX\n \n"
+            "Public web service: https://services.bromberglab.org/avadx-meta\n \n"
+            "Version: %s [%s]\n" % (__version__, __releasedate__)
+        ),
+        epilog=(
+            "If you use *{__name__}* in published research, please cite:\n \n"
+            "Wang Y., Miller M., ... Bromberg, Y. (2019).\n"
+            "Identifying Crohn's disease signal from variome analysis.\n"
+            "Genome medicine, 11(1), 59. [doi:10.1186/s13073-019-0670-6]\n"
+            "(https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkx1209/4670955)\n \n"
+            f"{__name__} is developed by Yanran Wang and Maximilian Miller.\n"
+            "Feel free to contact us for support at services@bromberglab.org.\n \n"
+            "This project is licensed under [NPOSL-3.0](http://opensource.org/licenses/NPOSL-3.0)\n \n"
+            "Test: XXX\n \n"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument('config', nargs='?', type=Path, default=Path('pipeline.ini'), action=check_config_ini())
@@ -574,6 +604,8 @@ def parse_arguments():
     parser.add_argument('-i', '--info', action='store_true',
                         help='print pipeline info')
     parser.add_argument('-I', '--init', action='store_true',
+                        help='init pipeline - retrieve all required databases/datasources')
+    parser.add_argument('-U', '--update', type=str, action='append', choices=['all', 'data', 'docker', 'singularity'],
                         help='init pipeline - retrieve all required databases/datasources')
     parser.add_argument('-p', '--preprocess', action='store_true',
                         help='run input preprocessing')
@@ -594,10 +626,10 @@ def parse_arguments():
     parser_actions = []
     for action in namespace.action if namespace.action else []:
         if action not in parser_actions:
-            parser.add_argument(f'--{action}',  action='append', default=[])
+            parser.add_argument(f'--{action}', action='append', default=[])
             parser_actions += [action]
     namespace, extra = parser.parse_known_args()
-    namespace.verbose = 40 - min(10*namespace.verbose, 40) if namespace.verbose >= 0 else 0
+    namespace.verbose = 40 - min(10 * namespace.verbose, 40) if namespace.verbose >= 0 else 0
     global LOG_LEVEL, LOG_FILE
     LOG_LEVEL = namespace.verbose
     LOG_FILE = namespace.logfile
@@ -629,15 +661,12 @@ def get_mounts(pipeline, *config):
             if cfg_path.exists():
                 mounts += [(cfg_path.absolute(), VM_MOUNT / 'in' / cfg_path.name)]
             else:
-                pipeline.log.debug(f'Could not mount {cfg_path}. Path not found.')
+                pipeline.log.warning(f'Could not mount {cfg_path}. Path not found.')
     return mounts
 
 
 def run_all(kwargs, extra, config, daemon):
-    pipeline = Pipeline(kwargs=kwargs, config_file=config, daemon=daemon)
-    uid = get_extra(extra, '--uid')
-    if uid:
-        pipeline.uid = uid[0]
+    pipeline = Pipeline(kwargs=kwargs, uid=get_extra(extra, '--uid'), config_file=config, daemon=daemon)
     CFG = VM_MOUNT / 'in' / 'pipeline.ini'
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
@@ -661,7 +690,7 @@ def run_all(kwargs, extra, config, daemon):
         'annovar', 0.11,
         f'verify/download database: {hgref}_gnomad_exome',
         f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
-        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log\'',
+        'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
@@ -670,7 +699,7 @@ def run_all(kwargs, extra, config, daemon):
         'annovar', 0.12,
         f'verify/download database: {hgref}_gnomad_genome',
         f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
-        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log\'',
+        'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
@@ -679,7 +708,7 @@ def run_all(kwargs, extra, config, daemon):
         'gnomad_ALLabove0_preprocess', 0.121,
         'preprocess: split gnomad database files',
         f'-c \'/app/bash/avadx/gnomad_ALLabove0_preprocess.sh config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt '
-        + f'config[DEFAULT.annovar.humandb]/{hgref}_gnomad_genome.txt config[DEFAULT.avadx.data]\'',
+        f'config[DEFAULT.annovar.humandb]/{hgref}_gnomad_genome.txt config[DEFAULT.avadx.data]\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
@@ -695,7 +724,7 @@ def run_all(kwargs, extra, config, daemon):
         'gnomad_ALLabove0_postprocess', 0.123,
         'postprocess: bgzip and tabix for above0 gnomad database files',
         f'-c \'/app/bash/avadx/gnomad_ALLabove0_postprocess.sh config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt '
-        + f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt config[DEFAULT.avadx.data]\'',
+        f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt config[DEFAULT.avadx.data]\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
@@ -704,14 +733,14 @@ def run_all(kwargs, extra, config, daemon):
         'annovar', 0.13,
         f'verify/download database: {hgref}_refGene',
         f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
-        + f'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log\'',
+        'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
     # 0.14  Retrieve varidb database
     pipeline.add_action(
         'run_retrieve', 0.14,
-        f'verify/download database: varidb',
+        'verify/download database: varidb',
         f'app.pipeline {CFG} --retrieve varidb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
         logs=('print', None)
@@ -720,7 +749,7 @@ def run_all(kwargs, extra, config, daemon):
     # 0.15  Retrieve CPDB pathway mapping
     pipeline.add_action(
         'run_retrieve', 0.15,
-        f'verify/download database: CPDB pathway mapping',
+        'verify/download database: CPDB pathway mapping',
         f'app.pipeline {CFG} --retrieve cpdb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
         logs=('print', None)
@@ -741,7 +770,7 @@ def run_all(kwargs, extra, config, daemon):
     # 0.17  Retrieve prot_seqs.fa
     pipeline.add_action(
         'run_retrieve', 0.17,
-        f'verify/download reference sequences/stats: refseq',
+        'verify/download reference sequences/stats: refseq',
         f'app.pipeline {CFG} --retrieve refseq --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
         logs=('print', None)
@@ -752,23 +781,22 @@ def run_all(kwargs, extra, config, daemon):
         'generate_transcripts_protlength', 0.18,
         'generate reference proteins (refseq) stats',
         f'/app/R/avadx/generate_refseq_stats.R config[DEFAULT.refseq.data]/{hgref_mapped[0]}.{hgref_mapped[1]}_feature_table.txt '
-        + f'config[DEFAULT.refseq.data]/{hgref_mapped[0]}.{hgref_mapped[1]}_protein.faa config[DEFAULT.avadx.data]'
+        f'config[DEFAULT.refseq.data]/{hgref_mapped[0]}.{hgref_mapped[1]}_protein.faa config[DEFAULT.avadx.data]'
     )
 
     # 1   Preprocess -------------------------------------------------------------------------- #
     mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')]
     pipeline.add_action(
         'run_preprocess', 1.00,
-        f'AVA,Dx pipeline preprocess',
+        'AVA,Dx pipeline preprocess',
         f'app.pipeline {CFG} --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=mounts_preprocess,
         logs=('print', None)
     )
 
     # 1.1-6 Variant QC -------------------------------------------------------------------------- #
-    
+
     # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
-    step1_1_in = 'config[avadx.vcf]'
     step1_1_out = 'source_samp.vcf.gz'
     mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'))
     pipeline.add_action(
@@ -810,10 +838,10 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 1.40,
         'filter variant sites by site-wise quality',
-        f'view -i \'QUAL>config[avadx.qc.site.quality]&'
-        + f'AVG(FMT/DP)<=config[avadx.qc.site.mean_dp_upper]&'
-        + f'AVG(FMT/DP)>=config[avadx.qc.site.mean_dp_lower]\' '
-        + f'$WD/{step1_3_1_out} -Oz -o $WD/{step1_4_out}'
+        'view -i \'QUAL>config[avadx.qc.site.quality]&'
+        'AVG(FMT/DP)<=config[avadx.qc.site.mean_dp_upper]&'
+        'AVG(FMT/DP)>=config[avadx.qc.site.mean_dp_lower]\' '
+        f'$WD/{step1_3_1_out} -Oz -o $WD/{step1_4_out}'
     )
 
     # 1.5   Check individual call quality. In filterVCF_by_ABAD.py:
@@ -826,8 +854,8 @@ def run_all(kwargs, extra, config, daemon):
         'filterVCF_by_ABAD', 1.50,
         'check individual call quality',
         f'avadx.filterVCF_by_ABAD $WD/{step1_4_out} $WD/{step1_5_out} '
-        + f'config[avadx.qc.call.AB_low] config[avadx.qc.call.AB_high] '
-        + f'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]'
+        'config[avadx.qc.call.AB_low] config[avadx.qc.call.AB_high] '
+        'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]'
     )
 
     # 1.6   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
@@ -849,13 +877,13 @@ def run_all(kwargs, extra, config, daemon):
             'filterVCF_by_gnomAD', 1.62,
             'filter variants missing in gnomAD database',
             f'avadx.filterVCF_by_gnomAD $WD/{step1_6_1_out} $WD/{step1_6_out} '
-            + f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
-            + f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
+            f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
+            f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
         )
     step1_out = step1_6_out if gnomADfilter else step1_5_out
 
     # 2     Individual QC ----------------------------------------------------------------------- #
-    
+
     # 2.2   Quality check - Check quality outliers by examine nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
 
     # 2.1.0 Output quality metrics after variant QC:
@@ -890,9 +918,9 @@ def run_all(kwargs, extra, config, daemon):
         'bcftools', 2.21,
         'extract sample list',
         f'-c \'bcftools query -l $WD/{step1_out} > $WD/{step2_2_1_out}; '
-        + f'SPLIT=$(SAMPLES=$(wc -l < $WD/{step2_2_1_out}); echo $((SAMPLES <= {splits} ? 0 : {splits}))); '
-        + f'[[ $SPLIT -gt 0 ]] && split -d -l $SPLIT $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/xx || cp -f $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/xx00; '
-        + f'(cd $WD/{step2_2_1_outfolder} && ls -f -1 xx*) > $WD/{step2_2_1_splits}\'',
+        f'SPLIT=$(SAMPLES=$(wc -l < $WD/{step2_2_1_out}); echo $((SAMPLES <= {splits} ? 0 : {splits}))); '
+        f'[[ $SPLIT -gt 0 ]] && split -d -l $SPLIT $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/xx || cp -f $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/xx00; '
+        f'(cd $WD/{step2_2_1_outfolder} && ls -f -1 xx*) > $WD/{step2_2_1_splits}\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(WD / step2_2_1_outfolder)
     )
@@ -903,8 +931,8 @@ def run_all(kwargs, extra, config, daemon):
         'bcftools', 2.22,
         'EthSEQ preprocessing (VCF cleanup)',
         f'-c \'bcftools view -S $TASK $WD/{step1_out} | '
-        + f'bcftools annotate --remove "ID,INFO,FORMAT" | '
-        + f'bcftools view --no-header -Oz -o $WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz\'',
+        'bcftools annotate --remove "ID,INFO,FORMAT" | '
+        f'bcftools view --no-header -Oz -o $WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/'),
         outdir=(WD / step2_2_2_splits)
@@ -918,9 +946,9 @@ def run_all(kwargs, extra, config, daemon):
         'ethnicity_EthSEQ', 2.23,
         'run EthSEQ',
         f'-c \'mkdir -p $WD/{step2_2_3_outfolder}/$(basename $TASK) && '
-        + f'Rscript /app/R/avadx/ethnicity_EthSEQ.R '
-        + f'$WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz '
-        + f'config[DEFAULT.ethseq.models] $WD/{step2_2_3_outfolder}/$(basename $TASK)\'',
+        'Rscript /app/R/avadx/ethnicity_EthSEQ.R '
+        f'$WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz '
+        f'config[DEFAULT.ethseq.models] $WD/{step2_2_3_outfolder}/$(basename $TASK)\'',
         daemon_args={'docker': ['--entrypoint=bash', '--env=R_MAX_VSIZE=32000000000'], 'singularity': ['exec:/bin/bash', 'env:R_MAX_VSIZE=32000000000']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
     )
@@ -931,7 +959,7 @@ def run_all(kwargs, extra, config, daemon):
         'ethnicity_EthSEQ_summary', 2.24,
         'generate EthSEQ summaries',
         f'-c \'mkdir -p $WD/{step2_2_4_outfolder}/$(basename $TASK) && '
-        + f'Rscript /app/R/avadx/ethnicity_EthSEQ_summary.R $WD/{step2_2_3_outfolder}/$(basename $TASK)/Report.txt $WD/{step2_2_1_outfolder}/$(basename $TASK) $WD/{step2_2_4_outfolder}/$(basename $TASK)\'',
+        f'Rscript /app/R/avadx/ethnicity_EthSEQ_summary.R $WD/{step2_2_3_outfolder}/$(basename $TASK)/Report.txt $WD/{step2_2_1_outfolder}/$(basename $TASK) $WD/{step2_2_4_outfolder}/$(basename $TASK)\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
     )
@@ -940,7 +968,7 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'avadx', 2.25,
         'merge EthSEQ summaries',
-        f'$WD/{step2_2_4_outfolder} -mindepth 2 -name "sampleID_*" -exec bash -c \'cat $1 >> $WD/{step2_2_4_outfolder}/$(basename $1)\' _ {{}} \;',
+        f'$WD/{step2_2_4_outfolder} -mindepth 2 -name "sampleID_*" -exec bash -c \'cat $1 >> $WD/{step2_2_4_outfolder}/$(basename $1)\' _ {{}} \;',  # noqa: W605
         daemon_args={'docker': ['--entrypoint=find'], 'singularity': ['exec:find']}
     )
 
@@ -962,7 +990,6 @@ def run_all(kwargs, extra, config, daemon):
     #       to a file outliers.txt (one ID per row).
     step2_4_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.vcf.gz'
     if outliers_available:
-        outliers_file = pipeline.config.get('avadx', 'outliers')
         mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'))
         pipeline.add_action(
             'bcftools', 2.40,
@@ -973,7 +1000,7 @@ def run_all(kwargs, extra, config, daemon):
     step2_out = step2_4_out if outliers_available else step1_out
 
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
-    
+
     # 3.1   Get all variant annotations with ANNOVAR for cleaned VCF:
     step3_1_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput'
     pipeline.add_action(
@@ -1006,16 +1033,16 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'varidb', 3.40,
         'query SNAP variants from varidb',
-        f'-D config[DEFAULT.avadx.data]/varidb.db '
-        + f'-Q $WD/{step3_3_outfolder}/varidb_query.ids '
-        + f'-f $WD/{step3_3_outfolder}/varidb_query.fa '
-        + f'-o $WD/{step3_4_out} '
-        + f'-R $WD/varidb_query_report.txt '
-        + f'-C query variant score -S tab -H -s'
+        '-D config[DEFAULT.avadx.data]/varidb.db '
+        f'-Q $WD/{step3_3_outfolder}/varidb_query.ids '
+        f'-f $WD/{step3_3_outfolder}/varidb_query.fa '
+        f'-o $WD/{step3_4_out} '
+        '-R $WD/varidb_query_report.txt '
+        '-C query variant score -S tab -H -s'
     )
 
     # 4     Gene score calculation ---------------------------------------------------------------- #
-    
+
     # 4.1   Convert cleaned VCF to individual ANNOVAR annotation files by:
     step4_1_outfolder = 'annovar_annotations'
     step4_1_out = 'annovar_annotations.txt'
@@ -1023,7 +1050,7 @@ def run_all(kwargs, extra, config, daemon):
         'annovar', 4.10,
         'convert cleaned VCF to single annovar annotation files',
         f'-c \'convert2annovar.pl -format vcf4 $WD/{step2_out} -outfile $WD/{step4_1_outfolder}/sample -allsample; '
-        + f'(cd $WD/{step4_1_outfolder} && ls -f -1 sample.*.avinput) > $WD/{step4_1_out}\'',
+        f'(cd $WD/{step4_1_outfolder} && ls -f -1 sample.*.avinput) > $WD/{step4_1_out}\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(WD / step4_1_outfolder)
     )
@@ -1041,9 +1068,9 @@ def run_all(kwargs, extra, config, daemon):
     pipeline.add_action(
         'cal_genescore_make_genescore', 4.30,
         'calculate gene score',
-        f'/app/R/avadx/cal_genescore_make_genescore.R -f $TASK.exonic_variant_function '
-        + f'-s $WD/{step3_4_out} -l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
-        + f'-m config[avadx.gscoremethod] -n config[avadx.normalizeby] -o $WD/{step4_3_outfolder}',
+        '/app/R/avadx/cal_genescore_make_genescore.R -f $TASK.exonic_variant_function '
+        f'-s $WD/{step3_4_out} -l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
+        f'-m config[avadx.gscoremethod] -n config[avadx.normalizeby] -o $WD/{step4_3_outfolder}',
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/'),
         outdir=(WD / step4_3_outfolder)
     )
@@ -1073,9 +1100,9 @@ def run_all(kwargs, extra, config, daemon):
         'FS_CVperf_kfold', 5.10,
         'perform model cross-validation',
         f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
-        + f'-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/cv-scheme.csv '
-        + f'-l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -t config[avadx.cv.steps] '
-        + f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $OUT/{step5_1_outfolder}',
+        '-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/cv-scheme.csv '
+        '-l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -t config[avadx.cv.steps] '
+        f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $OUT/{step5_1_outfolder}',
         outdir=(OUT / step5_1_outfolder)
     )
 
@@ -1085,15 +1112,15 @@ def run_all(kwargs, extra, config, daemon):
         'FS_CVgeneOverRep_kfold', 5.20,
         'check pathway over-representation',
         f'/app/R/avadx/FS-CVgeneOverRep-kfold.R -f $OUT/{step5_1_outfolder}/selectedGenes.csv '
-        + f'-b $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
-        + f'-n config[avadx.pathways.topgenes] -d config[DEFAULT.avadx.data]/CPDB_pathways_genesymbol.tab '
-        + f'-a config[avadx.pathways.ascending] -o $OUT/{step5_2_outfolder}',
+        f'-b $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
+        '-n config[avadx.pathways.topgenes] -d config[DEFAULT.avadx.data]/CPDB_pathways_genesymbol.tab '
+        f'-a config[avadx.pathways.ascending] -o $OUT/{step5_2_outfolder}',
         outdir=(OUT / step5_2_outfolder)
     )
 
     # RUN --------------------------------------------------------------------------------------- #
     main(pipeline, extra)
-    
+
     return pipeline
 
 
@@ -1113,18 +1140,12 @@ def init():
         pipeline = run_all(vars(namespace), extra, config, daemon)
         shutil.rmtree(pipeline.get_wd())
     elif namespace.preprocess:
-        pipeline = Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon)
-        uid = get_extra(extra, '--uid')
-        if uid:
-            pipeline.uid = uid[0]
+        pipeline = Pipeline(actions, kwargs=vars(namespace), uid=get_extra(extra, '--uid'), config_file=config, daemon=daemon)
         pipeline.preprocess()
     elif namespace.retrieve:
-        pipeline = Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon)
-        uid = get_extra(extra, '--uid')
-        if uid:
-            pipeline.uid = uid[0]
+        pipeline = Pipeline(actions, kwargs=vars(namespace), uid=get_extra(extra, '--uid'), config_file=config, daemon=daemon)
         pipeline.retrieve(namespace.retrieve)
-    elif actions == None:
+    elif actions is None:
         run_all(vars(namespace), extra, config, daemon)
     else:
         pipeline = Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon)

@@ -623,8 +623,6 @@ def parse_arguments():
                         help='container engine')
     parser.add_argument('-i', '--info', action='store_true',
                         help='print pipeline info')
-    parser.add_argument('-I', '--init', action='store_true',
-                        help='init pipeline - retrieve all required databases/datasources')
     parser.add_argument('-U', '--update', type=str, action='append', choices=['all', 'data', 'vm'],
                         help='init pipeline - retrieve all required databases/datasources')
     parser.add_argument('-p', '--preprocess', action='store_true',
@@ -687,6 +685,13 @@ def get_mounts(pipeline, *config):
             else:
                 pipeline.log.warning(f'Could not mount {cfg_path}. Path not found.')
     return mounts
+
+
+def run_init(uid, kwargs, extra, config, daemon):
+    kwargs['entrypoint'] = 0
+    kwargs['exitpoint'] = 1
+    pipeline = run_all(uid, kwargs, extra, config, daemon)
+    shutil.rmtree(pipeline.get_wd())
 
 
 def run_all(uid, kwargs, extra, config, daemon):
@@ -1160,13 +1165,11 @@ def init():
     del namespace.uid
     if namespace.info:
         Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon).info()
-    elif namespace.init:
-        namespace.entrypoint = 0
-        namespace.exitpoint = 1
-        pipeline = run_all(uid, vars(namespace), extra, config, daemon)
-        shutil.rmtree(pipeline.get_wd())
     elif namespace.update:
-        AVADxMeta.init_vm(daemon)
+        if namespace.update == 'vm':
+            AVADxMeta.init_vm(daemon)
+        elif namespace.update == 'data':
+            run_init(uid, vars(namespace), extra, config, daemon)
     elif namespace.preprocess:
         pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
         pipeline.preprocess()

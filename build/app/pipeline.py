@@ -265,6 +265,8 @@ class Pipeline:
                 self.log.warning('Required input missing - sample annotation file')
                 return
             samples_path = Path(self.config.get('avadx', 'samples'))
+            if not samples_path.is_absolute():
+                samples_path = self.config_file.parent / samples_path
             samplesids_path = wd_folder / 'sampleids.txt'
             cvscheme_path = wd_folder / 'cv-scheme.csv'
             if not samples_path.exists():
@@ -416,10 +418,17 @@ class Pipeline:
             self.config.set('DEFAULT', 'datadir', config_datadir_orig)
             if not is_file:
                 formatted = f'{flag_checked}{option_value}'
-            elif Path(option_value).exists() or (VM_MOUNT / 'in' / option_value).is_file():
-                formatted = f'{flag_checked}{str(VM_MOUNT / "in")}/{option_value}'
-            elif is_file and not (Path(option_value).exists() or (VM_MOUNT / 'in' / option_value).is_file()):
-                skip = 'file not found'
+            else:
+                if Path(option_value).exists() or (VM_MOUNT / 'in' / option_value).is_file():
+                    formatted = f'{flag_checked}{str(VM_MOUNT / "in")}/{option_value}'
+                elif not Path(option_value).is_absolute():
+                    option_value_abs = self.config_file.parent / option_value
+                    if Path(option_value_abs).exists():
+                        formatted = f'{flag_checked}{str(VM_MOUNT / "in")}/{option_value}'
+                    else:
+                        skip = 'file not found'
+                else:
+                    skip = 'file not found'
         else:
             skip = 'argument not defined in config'
         if not formatted and default:
@@ -658,6 +667,8 @@ def get_mounts(pipeline, *config):
         cfg = pipeline.config.get(section, option, fallback=None)
         if cfg:
             cfg_path = Path(cfg)
+            if not cfg_path.is_absolute():
+                cfg_path = pipeline.config_file.parent / cfg_path
             if cfg_path.exists():
                 mounts += [(cfg_path.absolute(), VM_MOUNT / 'in' / cfg_path.name)]
             else:

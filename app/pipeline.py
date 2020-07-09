@@ -650,7 +650,7 @@ def parse_arguments():
     if namespace.verbose == 0:
         namespace.verbose = 20
     else:
-        namespace.verbose =- 1
+        namespace.verbose -= 1
         namespace.verbose = max(10, 40 - min(10 * namespace.verbose, 40)) if namespace.verbose >= 0 else 0
     global LOG_LEVEL, LOG_FILE, QUIET
     LOG_LEVEL = namespace.verbose
@@ -672,7 +672,7 @@ def main(pipeline, extra):
     app.log.info(f'Total runtime: {(timer() - timer_start):.3f} seconds')
 
 
-def get_mounts(pipeline, *config):
+def get_mounts(pipeline, *config, exit_on_error=False):
     mounts = []
     for section, option in config:
         cfg = pipeline.config.get(section, option, fallback=None)
@@ -684,6 +684,8 @@ def get_mounts(pipeline, *config):
                 mounts += [(cfg_path.absolute(), VM_MOUNT / 'in' / cfg_path.name)]
             else:
                 pipeline.log.warning(f'Could not mount {cfg_path}. Path not found.')
+                if exit_on_error:
+                    sys.exit(1)
     return mounts
 
 
@@ -814,7 +816,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1   Preprocess -------------------------------------------------------------------------- #
-    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')]
+    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples'), exit_on_error=True) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')]
     pipeline.add_action(
         'run_preprocess', 1.00,
         'AVA,Dx pipeline preprocess',
@@ -827,7 +829,7 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
     step1_1_out = 'source_samp.vcf.gz'
-    mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'))
+    mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=True)
     pipeline.add_action(
         'bcftools', 1.10,
         'filter for individuals of interest ',
@@ -850,14 +852,14 @@ def run_all(uid, kwargs, extra, config, daemon):
     step1_3_1_out = 'source_samp_pass_snps.vcf.gz'
     pipeline.add_action(
         'bcftools', 1.31,
-        'split SNV and InDel calls',
+        'filter snps',
         f'view --types snps $WD/{step1_2_out} -Oz -o $WD/{step1_3_1_out}'
     )
     # 1.3.2 indels
     step1_3_2_out = 'source_samp_pass_indels.vcf.gz'
     pipeline.add_action(
         'bcftools', 1.32,
-        'split SNV and InDel calls',
+        'filter indels',
         f'view --types indels $WD/{step1_2_out} -Oz -o $WD/{step1_3_2_out}'
     )
 
@@ -1019,7 +1021,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       to a file outliers.txt (one ID per row).
     step2_4_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.vcf.gz'
     if outliers_available:
-        mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'))
+        mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'), exit_on_error=True)
         pipeline.add_action(
             'bcftools', 2.40,
             'summarize outliers',

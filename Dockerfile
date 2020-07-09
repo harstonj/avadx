@@ -6,7 +6,6 @@ LABEL maintainer="mmiller@bromberglab.org" \
 FROM base as builder
 
 # setup system
-RUN mkdir /install
 WORKDIR /install
 
 # setup app

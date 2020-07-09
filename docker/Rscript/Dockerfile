@@ -1,5 +1,22 @@
 FROM r-base:3.6.3 as base
 
+FROM base as builder
+
+RUN apt-get update && apt-get install -y \
+ git \
+ && apt-get clean && rm -rf /var/lib/apt/lists/*
+WORKDIR /install
+
+# setup app
+RUN git clone --depth 1 https://bitbucket.org/bromberglab/avadx-meta.git && \
+ mkdir -p /app/R && mv avadx-meta/R /app/R/avadx && \
+ rm -rf avadx-meta
+
+FROM base
+
+COPY --from=builder /install /usr/local
+COPY --from=builder /app /app
+
 RUN apt-get update && apt-get install -y \
  curl \
  libcurl4-openssl-dev \
@@ -14,8 +31,6 @@ RUN ln -s /usr/lib/jvm/java-11-openjdk-amd64 /usr/lib/jvm/default-java
 RUN R -e 'if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")'
 RUN R -e 'BiocManager::install(c("SNPRelate"))'
 RUN R -e "install.packages(c('optparse', 'data.table', 'tidyverse', 'seqinr', 'stringr', 'EthSEQ', 'e1071', 'caret', 'ggfortify', 'R.utils', 'PRROC', 'xlsx', 'ranger'), repos = 'http://cran.us.r-project.org', lib = '/usr/local/lib/R/site-library')"
-
-COPY ./R /app/R/avadx
 
 # setup bio-node
 LABEL bio-node=v1.0

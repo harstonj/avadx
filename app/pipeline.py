@@ -832,7 +832,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         logs=('print', None)
     )
 
-    # 1.1-6 Variant QC -------------------------------------------------------------------------- #
+    # 1.1-7 Variant QC -------------------------------------------------------------------------- #
 
     # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
     step1_1_out = 'source_samp.vcf.gz'
@@ -896,29 +896,27 @@ def run_all(uid, kwargs, extra, config, daemon):
         'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]'
     )
 
-    # 1.6   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
-    #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
-    #       Check the input path of the two reference files before running the script.
-    #       Note that tabix is required for indexing to run this script.
-    step1_6_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.vcf.gz'
-    if gnomADfilter:
-        # 1.6.1 Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
-        step1_6_1_out = 'source_samp_pass_snps_site-v_gt-v_rmchr.vcf.gz'
-        pipeline.add_action(
-            'bcftools', 1.61,
-            'convert the chromosome annotations',
-            f'annotate --rename-chrs config[DEFAULT.avadx.data]/chr_to_number.txt $WD/{step1_5_out} -Oz -o $WD/{step1_6_1_out}'
-        )
+    # 1.6   Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
+    step1_6_out = 'source_samp_pass_snps_site-v_gt-v_rmchr.vcf.gz'
+    pipeline.add_action(
+        'bcftools', 1.6,
+        'convert the chromosome annotations',
+        f'annotate --rename-chrs $WD/chr_to_number.txt $WD/{step1_5_out} -Oz -o $WD/{step1_6_out}'
+    )
 
-        # 1.6.2 Then remove variants that are not in gnomAD database:
+    # 1.7   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
+    #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
+    #       Note that tabix is required for indexing to run this script.
+    step1_7_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.vcf.gz'
+    if gnomADfilter:
         pipeline.add_action(
-            'filterVCF_by_gnomAD', 1.62,
+            'filterVCF_by_gnomAD', 1.7,
             'filter variants missing in gnomAD database',
-            f'avadx.filterVCF_by_gnomAD $WD/{step1_6_1_out} $WD/{step1_6_out} '
+            f'avadx.filterVCF_by_gnomAD $WD/{step1_6_out} $WD/{step1_7_out} '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
         )
-    step1_out = step1_6_out if gnomADfilter else step1_5_out
+    step1_out = step1_7_out if gnomADfilter else step1_6_out
 
     # 2     Individual QC ----------------------------------------------------------------------- #
 

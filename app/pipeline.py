@@ -262,11 +262,15 @@ class Pipeline:
         def folds(samples, foldcnt):
             return [samples[i * foldcnt:(i + 1) * foldcnt] for i in range((len(samples) + foldcnt - 1) // foldcnt)]
 
+        def chrname2single(fout):
+            return [_ for _ in range(1, 23)] + ['X', 'Y', 'M']
+
         if self.is_vm:
             wd_folder = self.kwargs.get('wd')
             samples_path = VM_MOUNT / 'in' / Path(self.config.get('avadx', 'samples')).name
             samplesids_path = wd_folder / 'sampleids.txt'
             cvscheme_path = wd_folder / 'cv-scheme.csv'
+            chr2num_path = wd_folder / 'chr_to_number.txt'
         else:
             wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
             wd_folder.mkdir(parents=True, exist_ok=True)
@@ -279,10 +283,11 @@ class Pipeline:
                 samples_path = self.config_file.parent / samples_path
             samplesids_path = wd_folder / 'sampleids.txt'
             cvscheme_path = wd_folder / 'cv-scheme.csv'
+            chr2num_path = wd_folder / 'chr_to_number.txt'
             if not samples_path.exists():
                 self.log.warning(f'Could not read required input: {samples_path}')
                 return
-        with samples_path.open() as fin, samplesids_path.open('w') as fout_ids, cvscheme_path.open('w') as fout_cv:
+        with samples_path.open() as fin, samplesids_path.open('w') as fout_ids, cvscheme_path.open('w') as fout_cv, chr2num_path.open('w') as fout_chr:
             samples, labels, col3 = [], [], []
             reader = csv.reader(fin)
             header = next(reader)
@@ -344,6 +349,8 @@ class Pipeline:
                 split_type = 'auto-generated sample'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
             self.log.info(f'|1.00| Using {split_type} based cross-validation scheme for {split_description}')
+            chr_rename = chrname2single(fout_chr)
+            fout_chr.writelines([f'chr{_} {_}\n' for _ in chr_rename])
 
     def retrieve(self, target, outfolder=None, outfile=None):
         import requests

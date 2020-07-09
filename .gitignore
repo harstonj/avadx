@@ -13,7 +13,6 @@
 data/annovar/*/*
 data/ethseq/models/*
 data/avadx/*
-!data/avadx/chr_to_number.txt
 data/refseq/*
 !data/**/.gitkeep
 

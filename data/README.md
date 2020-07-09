@@ -16,6 +16,3 @@
 - avadx / Transcript-ProtLength_cleaned.csv
 - avadx / <assembly>_gnomad_exome_allAFabove0
 - avadx / <assembly>_gnomad_genome_allAFabove0
-
-## Static files:
-- avadx / chr_to_number.txt

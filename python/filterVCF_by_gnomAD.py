@@ -1,56 +1,52 @@
 import sys
 import gzip
-#import re
 import subprocess
-# Yanran Wang
-# Use:
-#   python filterVCF_by_gnomAD.py input.vcf.gz output.vcf.gz
+import csv
+from pathlib import Path
 
-xopen = lambda f: (gzip.open if f.endswith(".gz") else open)(f)
-vcf = xopen(sys.argv[1])
 
-fw_p = sys.argv[2]
-fw = gzip.open(fw_p, "wb")
-
+vcf_input = sys.argv[1]
+vcf_output = sys.argv[2]
 gnomad_exome = sys.argv[3]
 gnomad_genome = sys.argv[4]
 
-flog_p = fw_p + ".removed.gz"
-wlog = gzip.open(flog_p, "wb")
+base_out = Path(vcf_output).parent
+exome_filtered_path = base_out / 'gnomad_exome_filtered.tsv'
+genome_filtered_path = base_out / 'gnomad_genome_filtered.tsv'
 
-c = 0
-for line in vcf:
-	line = line.decode("utf-8") if type(line) == bytes else line
-	if line[0] != "#":
-		c += 1
-		l = (line.strip()).split("\t")
-		#position = "\t".join(l[0:5])
-		chrom = l[0]
-		pos = l[1]
-		rs = l[2]
-		ref = l[3]
-		alt = l[4]
-		#print position
-		#fm = l[8]
-		#fm_list = fm.split(":")
-		#idv = l[9:]
-		#idv_list = [x.split(":") for x in idv]
-		search_res_exome = subprocess.check_output("tabix {} {}:{}-{}".format(gnomad_exome, chrom, pos, int(pos)+1), shell=True).decode('utf-8').strip()
-		search_res_genome = subprocess.check_output("tabix {} {}:{}-{}".format(gnomad_genome, chrom, pos, int(pos)+1), shell=True).decode('utf-8').strip()
-		if (pos in search_res_exome) or (pos in search_res_genome):
-			#print "EXIST pos: {}-{}, ref: {}, alt: {}".format(chrom, pos, ref, alt)
-			line = line if type(line) == bytes else line.encode("utf-8")
-			fw.write(line)
-		else:
-			#print "NON-EXIST pos: {}-{}, ref: {}, alt: {}".format(chrom, pos, ref, alt)
-			line = line if type(line) == bytes else line.encode("utf-8")
-			wlog.write(line)
+exome_filtered_dict = {}
+genome_filtered_dict = {}
 
-		if c%1000==0: print(c)
-	else:
-		line = line if type(line) == bytes else line.encode("utf-8")
-		fw.write(line)
+subprocess.call(f'tabix {gnomad_exome} -R {vcf_input} > {exome_filtered_path}', shell=True)
+with exome_filtered_path.open() as fin:
+    reader = csv.reader(fin, delimiter='\t')
+    for row in reader:
+        if not row[0] in exome_filtered_dict:
+            exome_filtered_dict[row[0]] = set()
+        exome_filtered_dict[row[0]].add(int(row[1]))
 
-vcf.close()
-fw.close()
-wlog.close()
+subprocess.call(f'tabix {gnomad_genome} -R {vcf_input} > {genome_filtered_path}', shell=True)
+with genome_filtered_path.open() as fin:
+    reader = csv.reader(fin, delimiter='\t')
+    for row in reader:
+        if not row[0] in genome_filtered_dict:
+            genome_filtered_dict[row[0]] = set()
+        genome_filtered_dict[row[0]].add(int(row[1]))
+
+vcf_handle = (lambda f: (gzip.open if f.endswith(".gz") else open)(f))(vcf_input)
+vcf_filtered = gzip.open(vcf_output, "wb")
+
+for line in vcf_handle:
+    line_decoded = line.decode("utf-8")
+    if line_decoded[0] != "#":
+        chrom, pos = line_decoded.strip().split('\t', 2)[0:2]
+        pos = int(pos)
+        if pos in exome_filtered_dict[chrom] or pos in genome_filtered_dict[chrom]:
+            vcf_filtered.write(line)
+        else:
+            pass  # removed entries are not saved due to perfrmance considerations
+    else:
+        vcf_filtered.write(line)
+
+vcf_handle.close()
+vcf_filtered.close()

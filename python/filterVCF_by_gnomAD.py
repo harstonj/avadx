@@ -44,7 +44,7 @@ for line in vcf_handle:
     if line_decoded[0] != "#":
         chrom, pos = line_decoded.strip().split('\t', 2)[0:2]
         pos = int(pos)
-        if pos in exome_filtered_dict[chrom] or pos in genome_filtered_dict[chrom]:
+        if pos in exome_filtered_dict.get(chrom, set()) or pos in genome_filtered_dict.get(chrom, set()):
             vcf_filtered.write(line)
         else:
             pass  # removed entries are not saved due to perfrmance considerations

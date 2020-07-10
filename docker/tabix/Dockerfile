@@ -39,4 +39,4 @@ ENV PYTHONPATH=/app/python
 ENTRYPOINT ["python3", "-m"]
 
 # set app CMD
-CMD ["avadx.filterVCF_by_gnomAD.py"]
+CMD []

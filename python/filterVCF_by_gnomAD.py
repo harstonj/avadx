@@ -11,13 +11,16 @@ gnomad_exome = sys.argv[3]
 gnomad_genome = sys.argv[4]
 
 base_out = Path(vcf_output).parent
+vcf_regions = base_out / 'vcf_regions.tsv'
 exome_filtered_path = base_out / 'gnomad_exome_filtered.tsv'
 genome_filtered_path = base_out / 'gnomad_genome_filtered.tsv'
 
 exome_filtered_dict = {}
 genome_filtered_dict = {}
 
-subprocess.call(f'tabix {gnomad_exome} -R {vcf_input} > {exome_filtered_path}', shell=True)
+subprocess.call(f'zcat {vcf_input} | egrep -v "(^#.*|^$)" | cut -f1,2 > {vcf_regions}')
+
+subprocess.call(f'tabix {gnomad_exome} -R {vcf_regions} > {exome_filtered_path}', shell=True)
 with exome_filtered_path.open() as fin:
     reader = csv.reader(fin, delimiter='\t')
     for row in reader:
@@ -25,7 +28,7 @@ with exome_filtered_path.open() as fin:
             exome_filtered_dict[row[0]] = set()
         exome_filtered_dict[row[0]].add(int(row[1]))
 
-subprocess.call(f'tabix {gnomad_genome} -R {vcf_input} > {genome_filtered_path}', shell=True)
+subprocess.call(f'tabix {gnomad_genome} -R {vcf_regions} > {genome_filtered_path}', shell=True)
 with genome_filtered_path.open() as fin:
     reader = csv.reader(fin, delimiter='\t')
     for row in reader:

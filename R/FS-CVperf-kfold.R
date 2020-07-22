@@ -74,7 +74,7 @@ if (is.null(k)) {
 }
 
 # Move features/genes with low variance:
-# Default variance cutoff is 85%-15%; i.e. if over 85% individuals have the same value for the feature/gene, it is removed.
+# Default variance cutoff is 5-95%; i.e. if over 95% of individuals have the same value for the feature/gene, it is removed.
 if(file.exists(paste0(gsub(".txt","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".txt")))){
   df_input <- read.csv(paste0(gsub(".txt","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".txt")), stringsAsFactors=F, check.names=F)
   df_input$status <- ifelse(df_input$status==1, "Positive", ifelse(df_input$status==0, "Negative", df_input$status))

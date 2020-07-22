@@ -741,7 +741,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
-    # 0.121 preprocess: Generate gnomad_exome_allAFabove0 / Generate gnomad_exome_allAFabove0
+    # 0.121 preprocess: Generate gnomad_exome_allAFabove0 / Generate gnomad_genome_allAFabove0
     pipeline.add_action(
         'gnomad_ALLabove0_preprocess', 0.121,
         'preprocess: split gnomad database files',
@@ -750,14 +750,14 @@ def run_all(uid, kwargs, extra, config, daemon):
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
     )
 
-    # 0.122 main: Generate gnomad_exome_allAFabove0 / Generate gnomad_exome_allAFabove0
+    # 0.122 main: Generate gnomad_exome_allAFabove0 / Generate gnomad_genome_allAFabove0
     pipeline.add_action(
         'generate_gnomad_above0', 0.122,
         'filter gnomad database above0 (exome & genome)',
         f'/app/R/avadx/generate_gnomad_above0.R config[DEFAULT.avadx.data] {hgref}'
     )
 
-    # 0.123 postprocess: Generate gnomad_exome_allAFabove0 / Generate gnomad_exome_allAFabove0
+    # 0.123 postprocess: Generate gnomad_exome_allAFabove0 / Generate gnomad_genome_allAFabove0
     pipeline.add_action(
         'gnomad_ALLabove0_postprocess', 0.123,
         'postprocess: bgzip and tabix for above0 gnomad database files',
@@ -920,7 +920,7 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 2     Individual QC ----------------------------------------------------------------------- #
 
-    # 2.2   Quality check - Check quality outliers by examine nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
+    # 2.2   Quality check - Check quality outliers by examining nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
 
     # 2.1.0 Output quality metrics after variant QC:
     step2_1_0_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.stats.txt'

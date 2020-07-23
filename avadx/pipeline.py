@@ -630,7 +630,7 @@ def parse_arguments():
                         help='container engine')
     parser.add_argument('-i', '--info', action='store_true',
                         help='print pipeline info')
-    parser.add_argument('-U', '--update', type=str, action='append', choices=['all', 'data', 'vm'],
+    parser.add_argument('-U', '--update', type=str, default='all', choices=['all', 'data', 'vm'],
                         help='update pipeline databases/datasources')
     parser.add_argument('-I', '--init', action='store_true',
                         help='init pipeline - retrieve all required databases/datasources')
@@ -695,6 +695,8 @@ def get_mounts(pipeline, *config, exit_on_error=False):
                 pipeline.log.warning(f'Could not mount {cfg_path}. Path not found.')
                 if exit_on_error:
                     sys.exit(1)
+                else:
+                    mounts += [(None, None)]
     return mounts
 
 
@@ -715,12 +717,13 @@ def run_all(uid, kwargs, extra, config, daemon):
     gnomADfilter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='no') == 'yes' else False
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
+    is_init = kwargs['init'] 
     pipeline.entrypoint = 2.40 if outliers_available else pipeline.entrypoint
-    if kwargs['entrypoint']:
+    if kwargs['entrypoint'] is not None:
         pipeline.entrypoint = kwargs['entrypoint']
     if outliers_break and not outliers_available:
         pipeline.exitpoint = 2.40
-    if kwargs['exitpoint']:
+    if kwargs['exitpoint'] is not None:
         pipeline.exitpoint = kwargs['exitpoint']
 
     # 0     Init (downloads & data source preprocessing)  -------------------------------------------------------------------- #
@@ -825,7 +828,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1   Preprocess -------------------------------------------------------------------------- #
-    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples'), exit_on_error=True) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
+    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples'), exit_on_error=False if is_init else True) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
     pipeline.add_action(
         'run_preprocess', 1.00,
         'AVA,Dx pipeline preprocess',
@@ -838,7 +841,7 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
     step1_1_out = 'source_samp.vcf.gz'
-    mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=True)
+    mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
     pipeline.add_action(
         'bcftools', 1.10,
         'filter for individuals of interest ',
@@ -1028,7 +1031,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       to a file outliers.txt (one ID per row).
     step2_4_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.vcf.gz'
     if outliers_available:
-        mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'), exit_on_error=True)
+        mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'), exit_on_error=False if is_init else True)
         pipeline.add_action(
             'bcftools', 2.40,
             'summarize outliers',
@@ -1178,9 +1181,13 @@ def init():
         AVADxMeta.init_vm(daemon)
         run_init(uid, vars(namespace), extra, config, daemon)
     elif namespace.update:
+        namespace.init = True
         if namespace.update == 'vm':
             AVADxMeta.init_vm(daemon)
         elif namespace.update == 'data':
+            run_init(uid, vars(namespace), extra, config, daemon)
+        else:
+            AVADxMeta.init_vm(daemon)
             run_init(uid, vars(namespace), extra, config, daemon)
     elif namespace.preprocess:
         pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)

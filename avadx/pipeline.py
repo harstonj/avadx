@@ -781,7 +781,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.14,
         'verify/download database: varidb',
-        f'avadx.pipeline {CFG} --retrieve varidb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'{CFG} --retrieve varidb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
         logs=('print', None)
     )
@@ -790,7 +790,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.15,
         'verify/download database: CPDB pathway mapping',
-        f'avadx.pipeline {CFG} --retrieve cpdb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'{CFG} --retrieve cpdb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
         logs=('print', None)
     )
@@ -811,7 +811,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.17,
         'verify/download reference sequences/stats: refseq',
-        f'avadx.pipeline {CFG} --retrieve refseq --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'{CFG} --retrieve refseq --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
         logs=('print', None)
     )
@@ -829,7 +829,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_preprocess', 1.00,
         'AVA,Dx pipeline preprocess',
-        f'avadx.pipeline {CFG} --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'{CFG} --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=mounts_preprocess,
         logs=('print', None)
     )

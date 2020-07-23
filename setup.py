@@ -20,6 +20,8 @@ setup(
     include_package_data=True,
     packages=find_packages(),
     install_requires=[
+        'requests==2.24.0',
+        'docker==4.2.2',
     ],
     entry_points={
         'console_scripts': ['avadx=avadx.__main__:main'],

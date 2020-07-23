@@ -9,10 +9,8 @@ FROM base as builder
 WORKDIR /install
 
 # setup app
-COPY ./avadx /app/python/app
 COPY ./python /app/python/avadx
-COPY ./requirements.txt /tmp/requirements.txt
-RUN pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install -r /tmp/requirements.txt
+RUN pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install https://bitbucket.org/bromberglab/avadx/get/master.zip
 
 FROM base
 
@@ -29,7 +27,7 @@ WORKDIR /app
 ENV PYTHONPATH=/app/python
 
 # set app ENTRYPOINT
-ENTRYPOINT ["python", "-m"]
+ENTRYPOINT ["avadx"]
 
 # set app CMD
-CMD ["avadx.pipeline", "--help"]
+CMD ["--help"]

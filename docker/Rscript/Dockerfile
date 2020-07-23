@@ -8,9 +8,9 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /install
 
 # setup app
-RUN git clone --depth 1 https://bitbucket.org/bromberglab/avadx-meta.git && \
- mkdir -p /app/R && mv avadx-meta/R /app/R/avadx && \
- rm -rf avadx-meta
+RUN git clone --depth 1 https://bitbucket.org/bromberglab/avadx.git && \
+ mkdir -p /app/R && mv avadx/R /app/R/avadx && \
+ rm -rf avadx
 
 FROM base
 

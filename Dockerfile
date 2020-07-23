@@ -1,7 +1,7 @@
 FROM python:3.8-alpine as base
 
 LABEL maintainer="mmiller@bromberglab.org" \
-      description="avadx-meta docker image (https://services.bromberglab.org/avadx-meta)"
+      description="avadx docker image (https://services.bromberglab.org/avadx)"
 
 FROM base as builder
 
@@ -9,7 +9,7 @@ FROM base as builder
 WORKDIR /install
 
 # setup app
-COPY ./app /app/python/app
+COPY ./avadx /app/python/app
 COPY ./python /app/python/avadx
 COPY ./requirements.txt /tmp/requirements.txt
 RUN pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install -r /tmp/requirements.txt
@@ -32,4 +32,4 @@ ENV PYTHONPATH=/app/python
 ENTRYPOINT ["python", "-m"]
 
 # set app CMD
-CMD ["app.pipeline", "--help"]
+CMD ["avadx.pipeline", "--help"]

@@ -10,10 +10,10 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /install
 
 # setup app
-RUN git clone --depth 1 https://bitbucket.org/bromberglab/avadx-meta.git && \
- mkdir -p /app/python && mv avadx-meta/python /app/python/avadx && \
- mkdir -p /app/bash && mv avadx-meta/bash /app/bash/avadx && \
- rm -rf avadx-meta
+RUN git clone --depth 1 https://bitbucket.org/bromberglab/avadx.git && \
+ mkdir -p /app/python && mv avadx/python /app/python/avadx && \
+ mkdir -p /app/bash && mv avadx/bash /app/bash/avadx && \
+ rm -rf avadx
 
 FROM base
 

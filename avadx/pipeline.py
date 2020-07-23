@@ -28,7 +28,7 @@ LOG_FILE = None
 class AVADxMeta:
 
     IMAGES = {
-        'avadx': 'bromberglab/avadx-meta',
+        'avadx': 'bromberglab/avadx',
         'R': 'bromberglab/avadx-rscript',
         'bcftools': 'bromberglab/avadx-bcftools',
         'tabix': 'bromberglab/avadx-tabix',
@@ -601,7 +601,7 @@ def parse_arguments():
             "description\n"
             "XXX\n"
             "XXX\n \n"
-            "Public web service: https://services.bromberglab.org/avadx-meta\n \n"
+            "Public web service: https://services.bromberglab.org/avadx\n \n"
             "Version: %s [%s]\n" % (__version__, __releasedate__)
         ),
         epilog=(
@@ -617,7 +617,7 @@ def parse_arguments():
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument('config', nargs='?', type=Path, default=Path('pipeline.ini'), action=check_config_ini())
+    parser.add_argument('config', nargs='?', type=Path, default=Path('avadx.ini'), action=check_config_ini(Path(__file__).parent))
     parser.add_argument('-a', '--action', action='append')
     parser.add_argument('-u', '--uid', type=str)
     parser.add_argument('-w', '--wd', type=Path, default=Path.cwd(),
@@ -631,6 +631,8 @@ def parse_arguments():
     parser.add_argument('-i', '--info', action='store_true',
                         help='print pipeline info')
     parser.add_argument('-U', '--update', type=str, action='append', choices=['all', 'data', 'vm'],
+                        help='update pipeline databases/datasources')
+    parser.add_argument('-I', '--init', action='store_true',
                         help='init pipeline - retrieve all required databases/datasources')
     parser.add_argument('-p', '--preprocess', action='store_true',
                         help='run input preprocessing')
@@ -705,7 +707,7 @@ def run_init(uid, kwargs, extra, config, daemon):
 
 def run_all(uid, kwargs, extra, config, daemon):
     pipeline = Pipeline(kwargs=kwargs, uid=uid, config_file=config, daemon=daemon)
-    CFG = VM_MOUNT / 'in' / 'pipeline.ini'
+    CFG = VM_MOUNT / 'in' / 'avadx.ini'
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
     hgref = pipeline.config.get('avadx', 'hgref')
@@ -779,8 +781,8 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.14,
         'verify/download database: varidb',
-        f'app.pipeline {CFG} --retrieve varidb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
-        mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
+        f'avadx.pipeline {CFG} --retrieve varidb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
         logs=('print', None)
     )
 
@@ -788,8 +790,8 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.15,
         'verify/download database: CPDB pathway mapping',
-        f'app.pipeline {CFG} --retrieve cpdb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
-        mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
+        f'avadx.pipeline {CFG} --retrieve cpdb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
         logs=('print', None)
     )
 
@@ -809,8 +811,8 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.17,
         'verify/download reference sequences/stats: refseq',
-        f'app.pipeline {CFG} --retrieve refseq --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
-        mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')],
+        f'avadx.pipeline {CFG} --retrieve refseq --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
         logs=('print', None)
     )
 
@@ -823,11 +825,11 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1   Preprocess -------------------------------------------------------------------------- #
-    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples'), exit_on_error=True) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'pipeline.ini')]
+    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples'), exit_on_error=True) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
     pipeline.add_action(
         'run_preprocess', 1.00,
         'AVA,Dx pipeline preprocess',
-        f'app.pipeline {CFG} --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'avadx.pipeline {CFG} --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=mounts_preprocess,
         logs=('print', None)
     )
@@ -1172,6 +1174,9 @@ def init():
     del namespace.uid
     if namespace.info:
         Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon).info()
+    elif namespace.init:
+        AVADxMeta.init_vm(daemon)
+        run_init(uid, vars(namespace), extra, config, daemon)
     elif namespace.update:
         if namespace.update == 'vm':
             AVADxMeta.init_vm(daemon)

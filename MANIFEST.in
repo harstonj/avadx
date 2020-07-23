@@ -1,5 +1,2 @@
-include pipeline.ini
-include *.md
-global-exclude \
-  *.py[co] \
-  .DS_Store \
+include README.md
+include avadx/config/avadx.ini

@@ -7,6 +7,7 @@ import errno
 import signal
 import argparse
 import shlex
+import shutil
 from pathlib import Path
 from functools import wraps
 
@@ -110,6 +111,9 @@ def is_int(x):
 def check_config_ini(*additional_args):
     class customAction(argparse.Action):
         def __call__(self, parser, args, values, option_string=None):
+            if args.init:
+                config_template = additional_args[0] / 'config' / 'avadx.ini'
+                shutil.copyfile(config_template, Path(values))
             if not Path(values).exists():
                 raise argparse.ArgumentError(
                     self,

@@ -34,7 +34,8 @@ Confirm you have the required versions of Docker/Singularity and Python installe
 1. Install AVA,Dx python package
 2. Init pipeline - retrieves pre-built images & required databases. A configuration template file named *avadx.ini* is created in the working directory)
 3. Edit configuration file *avadx.ini* created in step (2)
-4. Run the pipeline
+4. Edit sample info file
+5. Run the pipeline
 
 ## Run AVA,Dx
 
@@ -51,7 +52,21 @@ avadx --init
 ### 3. Edit configuration file
 Open the file *avadx.ini* in the working directory and update the paths to the two required input files (**vcf file** and **samples info file**) and other parameters as required. **Note:** You can change the configuration file at runtime by supplying the path to the config file as argument (see `--help`).
 
-### 4. Run the pipeline
+### 4. Edit sample info file
+Create the samples info file specified in the *avadx.ini* configuration file as *samples = <PATH_TO_FILE>*. Minimum information required is **sample id** and **class label**, **group label** and manual **fold** assignment for cross-validation are oprional.
+
+**Format:** File has to be in CSV (comma separated) format and include a header with column names.
+
+| sampleid |class | *[group]* | *[fold]* |
+| -------- | ---- | --------- | -------- |
+| sample_1 |  0   |    *1*    |    *1*   |
+| sample_2 |  0   |    *1*    |    *2*   |
+| sample_3 |  0   |    *2*    |    *4*   |
+| sample_4 |  1   |    *2*    |    *1*   |
+| sample_5 |  1   |    *3*    |    *2*   |
+| sample_6 |  1   |    *3*    |    *3*   |
+
+### 5. Run the pipeline
 If no path to an user configuration file is supplied, a default config file *avadx.ini* is expected in the current working directory
 
 ```bash

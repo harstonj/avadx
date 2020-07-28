@@ -1143,7 +1143,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
         '-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/cv-scheme.csv '
         '-l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -t config[avadx.cv.steps] '
-        f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $OUT/{step5_1_outfolder}',
+        f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder}',
         outdir=(OUT / step5_1_outfolder)
     )
 
@@ -1153,7 +1153,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'FS_CVgeneOverRep_kfold', 5.20,
         'check pathway over-representation',
         f'/app/R/avadx/FS-CVgeneOverRep-kfold.R -f $OUT/{step5_1_outfolder}/selectedGenes.csv '
-        f'-b $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
+        f'-t $OUT/{step5_1_outfolder}/AUC_rank.1-genes.csv -b $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
         '-n config[avadx.pathways.topgenes] -d config[DEFAULT.avadx.data]/CPDB_pathways_genesymbol.tab '
         f'-a config[avadx.pathways.ascending] -o $OUT/{step5_2_outfolder}',
         outdir=(OUT / step5_2_outfolder)

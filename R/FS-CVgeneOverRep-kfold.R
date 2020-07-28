@@ -7,6 +7,8 @@ option_list = list(
               help="path to input file; e.g. 10F-CV-ks-selectedGenes.xlsx", metavar="character"),
   make_option(c("-b", "--input_file_genescore"), type="character", default=NULL,
               help="path to the cleaned gene score table; e.g. GeneScoreTable_normed.NAto0.nzv85-15.txt", metavar="character"),
+  make_option(c("-t", "--top_genes"), type="character", default=NULL,
+              help="path to the top AUC rank file", metavar="character"),
   make_option(c("-n", "--number_of_top_genes"), type="numeric", default=100,
               help="number of top-ranked genes for over-representation analysis; e.g. 100 (default) means using the top 100 genes as over-representation analysis input", metavar="character"),
   make_option(c("-d", "--cpdb_database"), type="character", default=NULL,
@@ -38,6 +40,9 @@ if(endsWith(opt$input_file, ".xlsx")){
   fs <- read.csv(opt$input_file, 1, stringsAsFactors=F)
 }
 
+# Read AUC top genes list
+top_genes = read.csv(opt$top_genes, header = FALSE, stringsAsFactors=F)
+
 # check topgenes selection
 if (opt$number_of_top_genes == 0) 
   opt$number_of_top_genes = length(fs$Gene)
@@ -56,9 +61,14 @@ cpdb_analysis <- function(input.fs.result, # a data frame containing gene and tr
   # the FS result (e.g. p-val from K-S test or merit from CORElearn attrEval) starts with the 3rd col
   # For 10-fold cv, the FS results should be from Col 3 to Col 12; for 20-fold cv, the FS results should be from Col 3 to Col 22
   
-  genes <- input.fs.result$Gene[order(input.fs.result[,(1+i)])][1:gene.number]
-  if(descending==T){
-    genes <- input.fs.result$Gene[order(-input.fs.result[,(1+i)])][1:gene.number]
+  if (i > 0) {
+    if(descending==T){
+      genes <- input.fs.result$Gene[order(-input.fs.result[,(1+i)])][1:gene.number]
+    } else {
+      genes <- input.fs.result$Gene[order(input.fs.result[,(1+i)])][1:gene.number]
+    }
+  } else {
+    genes = top_genes[,1]
   }
   genes_intersect.cpdb <- lapply(cpdb_genes, function(x) intersect(x, genes))
   genes_intersect.cpdb_length <- lapply(cpdb_genes, function(x) length(intersect(x, genes)))
@@ -129,6 +139,6 @@ write.xlsx(cpdb_overrep_pathway,
            paste0("PahtwayOverRepresentation_GeneN-", opt$number_of_top_genes, "_", gsub("-selectedGenes.xlsx", "",basename(opt$input_file)), "_summary.xlsx")
            )
 
-
-
-
+# OUTPUT AUC rank.1
+auc_rank1 = data.frame(cpdb_analysis(fs, i=0, gene.number=opt$number_of_top_genes, descending=!(opt$ascending)))
+write.csv(auc_rank1, "PathwayOverRepresentation_AUC_rank.1-genes.csv")

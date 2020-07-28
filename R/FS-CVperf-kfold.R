@@ -34,7 +34,9 @@ option_list = list(
   make_option(c("-n", "--number_of_top_genes"), type="numeric", default=100,
               help="number of top-ranked genes to try out; e.g. 100 (default) means try until the top 100 genes", metavar="character"),
   make_option(c("-o", "--out"), type="character", default=NULL,
-              help="path to output folder", metavar="character")
+              help="path to output folder", metavar="character"),
+  make_option(c("-w", "--wd"), type="character", default=NULL,
+              help="path to working directory", metavar="character")
 )
 
 # args <- commandArgs(trailingOnly=TRUE)
@@ -50,6 +52,7 @@ gs_fp <- opt$input_file
 cvsch_fp <- opt$cv_scheme
 prot_len_fp <- opt$protlength_file
 out_fp <- opt$out
+wd_fp <- opt$wd
 k <- opt$k_fold
 
 print(fs_method)
@@ -57,7 +60,10 @@ print(gs_fp)
 print(cvsch_fp)
 print(out_fp)
 
-setwd(out_fp)
+dir.create(file.path(wd_fp), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(out_fp), recursive = TRUE, showWarnings = FALSE)
+
+setwd(wd_fp)
 
 # Read-in files & Extract individuals from cv_scheme file only:
 cvsch <- fread(cvsch_fp, data.table=F)
@@ -301,7 +307,26 @@ colnames(cv_performance_results.df)[1] <- "AUC"
 
 write.xlsx(cv_performance_results.df, paste0(k, "F-CV-", ml_method, "-performance.xlsx"), sheetName=fs_method, append=T)
 
-file.copy(paste0(k, "F-CV-", ml_method, "-performance.xlsx"), "performance.xlsx")
-file.copy(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"), "selectedGenes.csv")
+cv_performance_ordered = cv_performance_results.df[order(-cv_performance_results.df$AUC),]
+for (ridx in 1:nrow(cv_performance_ordered)) {
+  row = cv_performance_ordered[ridx,]
+  gn = as.numeric(strsplit(as.character(row[[1]]), "\\.")[[1]][2])
+  top_genes_by_auc = c()
+  for(i in 1:k){
+    if (fs_method %in% c("ks")) {
+      fs_result = ks_FS_result$Gene[order(ks_FS_result[, paste0("Pvalue_fold", i, "out")])][1:gn]
+    } else if (fs_method %in% c("DKM", "DKMcost")) {
+      fs_result = cl_fs_result$Gene[order(cl_fs_result[, paste0("Merit_fold", i, "out")], decreasing=T)][1:gn]
+    }
+    top_genes_by_auc = union(top_genes_by_auc, fs_result)
+  }
+  write.table(top_genes_by_auc[order(top_genes_by_auc)], paste0("AUC_rank.", ridx, "_", "top.", gn, "_", k, "F-CV-", fs_method,"-selectedGenes.csv"), quote=F, row.names=F, col.names=F)
+  if (ridx == 1) {
+    write.table(top_genes_by_auc[order(top_genes_by_auc)], file.path(out_fp, "AUC_rank.1-genes.csv"), quote=F, row.names=F, col.names=F)
+  }
+}
+
+file.copy(paste0(k, "F-CV-", ml_method, "-performance.xlsx"), file.path(out_fp, "performance.xlsx"))
+file.copy(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"), file.path(out_fp, "selectedGenes.csv"))
 
 print("Done.")

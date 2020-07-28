@@ -38,6 +38,10 @@ if(endsWith(opt$input_file, ".xlsx")){
   fs <- read.csv(opt$input_file, 1, stringsAsFactors=F)
 }
 
+# check topgenes selection
+if (opt$number_of_top_genes == 0) 
+  opt$number_of_top_genes = length(fs$Gene)
+}
 
 # Read in gene score table for all background genes:
 df <- read.csv(opt$input_file_genescore, stringsAsFactors=F, check.names=F)

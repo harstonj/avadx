@@ -630,7 +630,7 @@ def parse_arguments():
                         help='container engine')
     parser.add_argument('-i', '--info', action='store_true',
                         help='print pipeline info')
-    parser.add_argument('-U', '--update', type=str, default='all', choices=['all', 'data', 'vm'],
+    parser.add_argument('-U', '--update', type=str, choices=['all', 'data', 'vm'],
                         help='update pipeline databases/datasources')
     parser.add_argument('-I', '--init', action='store_true',
                         help='init pipeline - retrieve all required databases/datasources')

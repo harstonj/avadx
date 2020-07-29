@@ -18,7 +18,8 @@ genome_filtered_path = base_out / 'gnomad_genome_filtered.tsv'
 exome_filtered_dict = {}
 genome_filtered_dict = {}
 
-subprocess.call(f'zcat {vcf_input} | egrep -v "(^#.*|^$)" | cut -f1,2 > {vcf_regions}', shell=True)
+cat = 'zcat' if vcf_input.endswith('.gz') else 'cat'
+subprocess.call(f'{cat} {vcf_input} | egrep -v "(^#.*|^$)" | cut -f1,2 > {vcf_regions}', shell=True)
 
 subprocess.call(f'tabix {gnomad_exome} -R {vcf_regions} > {exome_filtered_path}', shell=True)
 with exome_filtered_path.open() as fin:

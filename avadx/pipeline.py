@@ -918,10 +918,9 @@ def run_all(uid, kwargs, extra, config, daemon):
         pipeline.add_action(
             'filterVCF_by_gnomAD', 1.7,
             'filter variants missing in gnomAD database',
-            f'/app/python/avadx/filterVCF_by_gnomAD.py $WD/{step1_6_out} $WD/{step1_7_out} '
+            f'avadx.filterVCF_by_gnomAD $WD/{step1_6_out} $WD/{step1_7_out} '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
-            f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz',
-            daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']}
+            f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
         )
     step1_out = step1_7_out if gnomADfilter else step1_6_out
 

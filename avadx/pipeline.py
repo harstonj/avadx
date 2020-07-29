@@ -896,9 +896,10 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'filterVCF_by_ABAD', 1.50,
         'check individual call quality',
-        f'avadx.filterVCF_by_ABAD $WD/{step1_4_out} $WD/{step1_5_out} '
+        f'/app/python/avadx/filterVCF_by_ABAD.py $WD/{step1_4_out} $WD/{step1_5_out} '
         'config[avadx.qc.call.AB_low] config[avadx.qc.call.AB_high] '
-        'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]'
+        'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]',
+        daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']}
     )
 
     # 1.6   Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
@@ -917,9 +918,10 @@ def run_all(uid, kwargs, extra, config, daemon):
         pipeline.add_action(
             'filterVCF_by_gnomAD', 1.7,
             'filter variants missing in gnomAD database',
-            f'avadx.filterVCF_by_gnomAD $WD/{step1_6_out} $WD/{step1_7_out} '
+            f'/app/python/avadx/filterVCF_by_gnomAD.py $WD/{step1_6_out} $WD/{step1_7_out} '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
-            f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
+            f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz',
+            daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']}
         )
     step1_out = step1_7_out if gnomADfilter else step1_6_out
 

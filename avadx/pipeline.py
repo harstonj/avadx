@@ -769,6 +769,10 @@ def run_all(uid, kwargs, extra, config, daemon):
         pipeline.exitpoint = kwargs['exitpoint']
 
     # 0     Init (downloads & data source preprocessing)  -------------------------------------------------------------------- #
+    gnomad_base_path = Path(pipeline.config.get("DEFAULT", "annovar.humandb", fallback=WD))
+    avadx_base_path = Path(pipeline.config.get("DEFAULT", "avadx.data", fallback=WD))
+    refseq_base_path = Path(pipeline.config.get("DEFAULT", "refseq.data", fallback=WD))
+    models_base_path = Path(pipeline.config.get("DEFAULT", "ethseq.models", fallback=WD))
 
     # 0.11  Retrieve gnomad_exome database
     pipeline.add_action(
@@ -776,7 +780,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'verify/download database: {hgref}_gnomad_exome',
         f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
         'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log\'',
-        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
+        outdir=(gnomad_base_path)
     )
 
     # 0.12  Retrieve gnomad_genome database
@@ -785,7 +790,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'verify/download database: {hgref}_gnomad_genome',
         f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
         'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log\'',
-        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
+        outdir=(gnomad_base_path)
     )
 
     # 0.121 preprocess: Generate gnomad_exome_allAFabove0 / Generate gnomad_genome_allAFabove0
@@ -794,14 +800,16 @@ def run_all(uid, kwargs, extra, config, daemon):
         'preprocess: split gnomad database files',
         f'-c \'/app/bash/avadx/gnomad_ALLabove0_preprocess.sh config[DEFAULT.annovar.humandb]/{hgref}_gnomad_exome.txt '
         f'config[DEFAULT.annovar.humandb]/{hgref}_gnomad_genome.txt config[DEFAULT.avadx.data]\'',
-        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
+        outdir=(avadx_base_path)
     )
 
     # 0.122 main: Generate gnomad_exome_allAFabove0 / Generate gnomad_genome_allAFabove0
     pipeline.add_action(
         'generate_gnomad_above0', 0.122,
         'filter gnomad database above0 (exome & genome)',
-        f'/app/R/avadx/generate_gnomad_above0.R config[DEFAULT.avadx.data] {hgref}'
+        f'/app/R/avadx/generate_gnomad_above0.R config[DEFAULT.avadx.data] {hgref}',
+        outdir=(avadx_base_path)
     )
 
     # 0.123 postprocess: Generate gnomad_exome_allAFabove0 / Generate gnomad_genome_allAFabove0
@@ -810,7 +818,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         'postprocess: bgzip and tabix for above0 gnomad database files',
         f'-c \'/app/bash/avadx/gnomad_ALLabove0_postprocess.sh config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt '
         f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt config[DEFAULT.avadx.data]\'',
-        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
+        outdir=(avadx_base_path)
     )
 
     # 0.13  Retrieve refGene database
@@ -819,7 +828,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'verify/download database: {hgref}_refGene',
         f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
         'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log\'',
-        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
+        outdir=(refseq_base_path)
     )
 
     # 0.14  Retrieve varidb database
@@ -828,6 +838,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'verify/download database: varidb',
         f'{CFG} --retrieve varidb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
+        outdir=(avadx_base_path),
         logs=('print', None)
     )
 
@@ -837,13 +848,13 @@ def run_all(uid, kwargs, extra, config, daemon):
         'verify/download database: CPDB pathway mapping',
         f'{CFG} --retrieve cpdb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
+        outdir=(avadx_base_path),
         logs=('print', None)
     )
 
     # 0.16  Retrieve EthSEQ Model
     ethseq_model_name = 'Exonic.All.Model.gds'
     ethseq_model_baseurl = 'https://github.com/cibiobcg/EthSEQ_Data/raw/master/EthSEQ_Models/'
-    models_base_path = Path(pipeline.config.get("DEFAULT", "ethseq.models", fallback=WD))
     pipeline.add_action(
         'avadx', 0.16,
         f'verify/download EthSEQ Model: {ethseq_model_name}',
@@ -858,6 +869,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'verify/download reference sequences/stats: refseq',
         f'{CFG} --retrieve refseq --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
+        outdir=(avadx_base_path),
         logs=('print', None)
     )
 
@@ -866,7 +878,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         'generate_transcripts_protlength', 0.18,
         'generate reference proteins (refseq) stats',
         f'/app/R/avadx/generate_refseq_stats.R config[DEFAULT.refseq.data]/{hgref_mapped[0]}.{hgref_mapped[1]}_feature_table.txt '
-        f'config[DEFAULT.refseq.data]/{hgref_mapped[0]}.{hgref_mapped[1]}_protein.faa config[DEFAULT.avadx.data]'
+        f'config[DEFAULT.refseq.data]/{hgref_mapped[0]}.{hgref_mapped[1]}_protein.faa config[DEFAULT.avadx.data]',
+        outdir=(avadx_base_path)
     )
 
     # 1   Preprocess -------------------------------------------------------------------------- #
@@ -876,6 +889,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'AVA,Dx pipeline preprocess',
         f'{CFG} --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
         mounts=mounts_preprocess,
+        outdir=(avadx_base_path),
         logs=('print', None)
     )
 

@@ -90,6 +90,7 @@ class AVADxMeta:
         fns_pre, fns_post = kwargs.get(name + "_fns").pop(0)
         description = kwargs.get(name + "_desc").pop(0)
         level = kwargs.get(name + "_lvl").pop(0)
+        wd_results, out_results = kwargs.get(name + "_results").pop(0)
         log_stdout, log_stderr = kwargs.get(name + "_logs").pop(0)
         if outdir:
             outdir.mkdir(parents=True, exist_ok=True)
@@ -124,6 +125,19 @@ class AVADxMeta:
             if fns_post:
                 fns_post()
             self.log.info(f'|{level:.2f}| {name}{task_info}: took {(timer() - timer_start):.3f} seconds')
+            self.check_results(kwargs.get('wd'), uid, wd_results, out_results)
+
+    def check_results(self, wd, uid, wd_results, out_results):
+
+        def validate(path):
+            if not path.exists():
+                self.log.error(f'Missing result file: {path} - Aborting.')
+                sys.exit(1)
+
+        for f in wd_results:
+            validate(wd / str(uid) / 'wd' / f)
+        for f in out_results:
+            validate(wd / str(uid) / 'out' / f)
 
     def run_preprocess(self, uid, **kwargs):
         self.run_method(self.IMAGES['avadx'], 'run_preprocess', uid, kwargs)
@@ -187,6 +201,9 @@ class AVADxMeta:
 
     def FS_CVgeneOverRep_kfold(self, uid, **kwargs):
         self.run_method(self.IMAGES['R'], 'FS_CVgeneOverRep_kfold', uid, kwargs)
+
+    def run_postprocess(self, uid, **kwargs):
+        self.run_method(self.IMAGES['avadx'], 'run_postprocess', uid, kwargs)
 
 
 class Pipeline:
@@ -268,9 +285,9 @@ class Pipeline:
         if self.is_vm:
             wd_folder = self.kwargs.get('wd')
             samples_path = VM_MOUNT / 'in' / Path(self.config.get('avadx', 'samples')).name
-            samplesids_path = wd_folder / 'sampleids.txt'
-            cvscheme_path = wd_folder / 'cv-scheme.csv'
-            chr2num_path = wd_folder / 'chr_to_number.txt'
+            samplesids_path = wd_folder / 'tmp' / 'sampleids.txt'
+            cvscheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
+            chr2num_path = wd_folder / 'tmp' / 'chr_to_number.txt'
         else:
             wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
             wd_folder.mkdir(parents=True, exist_ok=True)
@@ -281,9 +298,9 @@ class Pipeline:
             samples_path = Path(self.config.get('avadx', 'samples'))
             if not samples_path.is_absolute():
                 samples_path = self.config_file.parent / samples_path
-            samplesids_path = wd_folder / 'sampleids.txt'
-            cvscheme_path = wd_folder / 'cv-scheme.csv'
-            chr2num_path = wd_folder / 'chr_to_number.txt'
+            samplesids_path = wd_folder / 'tmp' / 'sampleids.txt'
+            cvscheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
+            chr2num_path = wd_folder / 'tmp' / 'chr_to_number.txt'
             if not samples_path.exists():
                 self.log.warning(f'Could not read required input: {samples_path}')
                 return
@@ -408,9 +425,30 @@ class Pipeline:
         if self.is_vm:
             self.config.set('DEFAULT', 'datadir', config_datadir_orig)
 
+    def postprocess(self):
+
+        def cleanup(path):
+            if path.exists():
+                if path.is_file():
+                    os.remove(path)
+                else:
+                    shutil.rmtree(path)
+
+        if self.is_vm:
+            wd_folder = self.kwargs.get('wd')
+        else:
+            wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
+
+        wd_cleanup = [
+            'tmp'
+        ]
+
+        for f in wd_cleanup:
+            cleanup(wd_folder / f)
+
     def add_action(
             self, action, level=None, description='', args='', daemon_args={},
-            tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], logs=(None, None)):
+            tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], results=([], []), logs=(None, None)):
         if level is None or (level >= self.entrypoint and (self.exitpoint is None or level < self.exitpoint)):
             self.actions += [action]
             self.kwargs[action] = self.kwargs.get(action, []) + [args]
@@ -421,6 +459,7 @@ class Pipeline:
             self.kwargs[f'{action}_fns'] = self.kwargs.get(f'{action}_fns', []) + [fns]
             self.kwargs[f'{action}_outd'] = self.kwargs.get(f'{action}_outd', []) + [outdir]
             self.kwargs[f'{action}_mounts'] = self.kwargs.get(f'{action}_mounts', []) + [mounts]
+            self.kwargs[f'{action}_results'] = self.kwargs.get(f'{action}_results', []) + [results]
             self.kwargs[f'{action}_logs'] = self.kwargs.get(f'{action}_logs', []) + [logs]
 
     def check_config(self, name, section='avadx', flag='', is_file=False, default=None, quiet=False):
@@ -465,6 +504,7 @@ class Pipeline:
             (out_folder / str(uid) / 'out').mkdir(parents=True, exist_ok=True)
         wd_folder = out_folder / str(uid) / 'wd'
         wd_folder.mkdir(parents=True, exist_ok=True)
+        (wd_folder / 'tmp').mkdir(parents=True, exist_ok=True)
         data_folder = Path(self.config.get('DEFAULT', 'datadir', fallback=wd_folder)).absolute()
         config_datadir_orig = self.config.get('DEFAULT', 'datadir')
         self.config.set('DEFAULT', 'datadir', str(data_folder))
@@ -635,7 +675,9 @@ def parse_arguments():
     parser.add_argument('-I', '--init', action='store_true',
                         help='init pipeline - retrieve all required databases/datasources')
     parser.add_argument('-p', '--preprocess', action='store_true',
-                        help='run input preprocessing')
+                        help='run input pre-processing')
+    parser.add_argument('-P', '--postprocess', action='store_true',
+                        help='run pipleine post-processing')
     parser.add_argument('-r', '--retrieve', type=str,
                         help='retrieve data source')
     parser.add_argument('-e', '--entrypoint', type=float,
@@ -717,7 +759,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     gnomADfilter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='no') == 'yes' else False
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
-    is_init = kwargs['init'] 
+    is_init = kwargs['init']
     pipeline.entrypoint = 2.40 if outliers_available else pipeline.entrypoint
     if kwargs['entrypoint'] is not None:
         pipeline.entrypoint = kwargs['entrypoint']
@@ -845,8 +887,9 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 1.10,
         'filter for individuals of interest ',
-        f'view -S $WD/sampleids.txt {mounts_step1_1[0][1]} -Oz -o $WD/{step1_1_out}',
-        mounts=mounts_step1_1
+        f'view -S $WD/tmp/sampleids.txt {mounts_step1_1[0][1]} -Oz -o $WD/{step1_1_out}',
+        mounts=mounts_step1_1,
+        results=([step1_1_out], [])
     )
 
     # 1.2   Remove variant sites which did not pass the VQSR standard.
@@ -907,7 +950,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 1.6,
         'convert the chromosome annotations',
-        f'annotate --rename-chrs $WD/chr_to_number.txt $WD/{step1_5_out} -Oz -o $WD/{step1_6_out}'
+        f'annotate --rename-chrs $WD/tmp/chr_to_number.txt $WD/{step1_5_out} -Oz -o $WD/{step1_6_out}'
     )
 
     # 1.7   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
@@ -1142,7 +1185,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'FS_CVperf_kfold', 5.10,
         'perform model cross-validation',
         f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
-        '-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/cv-scheme.csv '
+        '-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/tmp/cv-scheme.csv '
         '-l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -t config[avadx.cv.steps] '
         f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder}',
         outdir=(OUT / step5_1_outfolder)
@@ -1158,6 +1201,16 @@ def run_all(uid, kwargs, extra, config, daemon):
         '-n config[avadx.pathways.topgenes] -d config[DEFAULT.avadx.data]/CPDB_pathways_genesymbol.tab '
         f'-a config[avadx.pathways.ascending] -o $OUT/{step5_2_outfolder}',
         outdir=(OUT / step5_2_outfolder)
+    )
+
+    # 6   Cleanup ------------------------------------------------------------------------------- #
+    mounts_postprocess = [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
+    pipeline.add_action(
+        'run_postprocess', 6.00,
+        'AVA,Dx pipeline postprocess',
+        f'{CFG} --postprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        mounts=mounts_postprocess,
+        logs=('print', None)
     )
 
     # RUN --------------------------------------------------------------------------------------- #
@@ -1196,6 +1249,9 @@ def init():
     elif namespace.retrieve:
         pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
         pipeline.retrieve(namespace.retrieve)
+    elif namespace.postprocess:
+        pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
+        pipeline.postprocess()
     elif actions is None:
         run_all(uid, vars(namespace), extra, config, daemon)
     else:

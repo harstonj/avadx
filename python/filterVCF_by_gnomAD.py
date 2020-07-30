@@ -11,9 +11,9 @@ gnomad_exome = sys.argv[3]
 gnomad_genome = sys.argv[4]
 
 base_out = Path(vcf_output).parent
-vcf_regions = base_out / 'vcf_regions.tsv'
-exome_filtered_path = base_out / 'gnomad_exome_filtered.tsv'
-genome_filtered_path = base_out / 'gnomad_genome_filtered.tsv'
+vcf_regions = base_out / 'tmp' / 'vcf_regions.tsv'
+exome_filtered_path = base_out / 'tmp' / 'gnomad_exome_filtered.tsv'
+genome_filtered_path = base_out / 'tmp' / 'gnomad_genome_filtered.tsv'
 
 exome_filtered_dict = {}
 genome_filtered_dict = {}

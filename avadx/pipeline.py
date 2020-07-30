@@ -91,6 +91,7 @@ class AVADxMeta:
         description = kwargs.get(name + "_desc").pop(0)
         level = kwargs.get(name + "_lvl").pop(0)
         wd_results, out_results = kwargs.get(name + "_results").pop(0)
+        reports = kwargs.get(name + "_reports").pop(0)
         log_stdout, log_stderr = kwargs.get(name + "_logs").pop(0)
         if outdir:
             outdir.mkdir(parents=True, exist_ok=True)
@@ -124,8 +125,13 @@ class AVADxMeta:
             )
             if fns_post:
                 fns_post()
+            self.reports(kwargs.get('wd'), uid, reports)
             self.log.info(f'|{level:.2f}| {name}{task_info}: took {(timer() - timer_start):.3f} seconds')
             self.check_results(kwargs.get('wd'), uid, wd_results, out_results)
+
+    def reports(self, wd, uid, reports):
+        for report in reports:
+            shutil.move(wd / str(uid) / 'wd' / Path(report[0]), wd / str(uid) / 'out' / 'reports' / Path(report[1]))
 
     def check_results(self, wd, uid, wd_results, out_results):
 
@@ -448,7 +454,7 @@ class Pipeline:
 
     def add_action(
             self, action, level=None, description='', args='', daemon_args={},
-            tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], results=([], []), logs=(None, None)):
+            tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], results=([], []), reports=[], logs=(None, None)):
         if level is None or (level >= self.entrypoint and (self.exitpoint is None or level < self.exitpoint)):
             self.actions += [action]
             self.kwargs[action] = self.kwargs.get(action, []) + [args]
@@ -460,6 +466,7 @@ class Pipeline:
             self.kwargs[f'{action}_outd'] = self.kwargs.get(f'{action}_outd', []) + [outdir]
             self.kwargs[f'{action}_mounts'] = self.kwargs.get(f'{action}_mounts', []) + [mounts]
             self.kwargs[f'{action}_results'] = self.kwargs.get(f'{action}_results', []) + [results]
+            self.kwargs[f'{action}_reports'] = self.kwargs.get(f'{action}_reports', []) + [reports]
             self.kwargs[f'{action}_logs'] = self.kwargs.get(f'{action}_logs', []) + [logs]
 
     def check_config(self, name, section='avadx', flag='', is_file=False, default=None, quiet=False):
@@ -502,6 +509,7 @@ class Pipeline:
     def run_container(self, container, args=[], daemon_args={}, uid=uuid.uuid1(), mounts=[], out_folder: Path = Path.cwd(), stdout=None, stderr=None):
         if out_folder:
             (out_folder / str(uid) / 'out').mkdir(parents=True, exist_ok=True)
+            (out_folder / str(uid) / 'out' / 'reports').mkdir(parents=True, exist_ok=True)
         wd_folder = out_folder / str(uid) / 'wd'
         wd_folder.mkdir(parents=True, exist_ok=True)
         (wd_folder / 'tmp').mkdir(parents=True, exist_ok=True)
@@ -956,7 +964,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'/app/python/avadx/filterVCF_by_ABAD.py $WD/{step1_4_out} $WD/{step1_5_out} '
         'config[avadx.qc.call.AB_low] config[avadx.qc.call.AB_high] '
         'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]',
-        daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']}
+        daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
+        reports=[(f'{step1_5_out}.log', 'call_quality_filter.log')]
     )
 
     # 1.6   Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
@@ -966,20 +975,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'convert the chromosome annotations',
         f'annotate --rename-chrs $WD/tmp/chr_to_number.txt $WD/{step1_5_out} -Oz -o $WD/{step1_6_out}'
     )
-
-    # 1.7   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
-    #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
-    #       Note that tabix is required for indexing to run this script.
-    step1_7_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.vcf.gz'
-    if gnomADfilter:
-        pipeline.add_action(
-            'filterVCF_by_gnomAD', 1.7,
-            'filter variants missing in gnomAD database',
-            f'avadx.filterVCF_by_gnomAD $WD/{step1_6_out} $WD/{step1_7_out} '
-            f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
-            f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
-        )
-    step1_out = step1_7_out if gnomADfilter else step1_6_out
+    step1_out = step1_6_out
 
     # 2     Individual QC ----------------------------------------------------------------------- #
 
@@ -1096,7 +1092,21 @@ def run_all(uid, kwargs, extra, config, daemon):
             f'view -S ^{mounts_step2_4[0][1]} $WD/{step1_out} -Oz -o $WD/{step2_4_out}',
             mounts=mounts_step2_4
         )
-    step2_out = step2_4_out if outliers_available else step1_out
+    step2_4_out = step2_4_out if outliers_available else step1_out
+
+    # 2.5   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
+    #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
+    #       Note that tabix is required for indexing to run this script.
+    step2_5_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.vcf.gz'
+    if gnomADfilter:
+        pipeline.add_action(
+            'filterVCF_by_gnomAD', 2.5,
+            'filter variants missing in gnomAD database',
+            f'avadx.filterVCF_by_gnomAD $WD/{step2_4_out} $WD/{step2_5_out} '
+            f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
+            f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
+        )
+    step2_out = step2_5_out if gnomADfilter else step2_4_out
 
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
 

@@ -5,12 +5,13 @@ import csv
 from pathlib import Path
 
 
-vcf_input = sys.argv[1]
-vcf_output = sys.argv[2]
-gnomad_exome = sys.argv[3]
-gnomad_genome = sys.argv[4]
+out_folder = sys.argv[1]
+vcf_input = sys.argv[2]
+vcf_output = sys.argv[3]
+gnomad_exome = sys.argv[4]
+gnomad_genome = sys.argv[5]
 
-base_out = Path(vcf_output).parent
+base_out = Path(out_folder)
 vcf_regions = base_out / 'tmp' / 'vcf_regions.tsv'
 exome_filtered_path = base_out / 'tmp' / 'gnomad_exome_filtered.tsv'
 genome_filtered_path = base_out / 'tmp' / 'gnomad_genome_filtered.tsv'

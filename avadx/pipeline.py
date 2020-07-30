@@ -131,7 +131,12 @@ class AVADxMeta:
 
     def reports(self, wd, uid, reports):
         for report in reports:
-            shutil.move(wd / str(uid) / 'wd' / Path(report[0]), wd / str(uid) / 'out' / 'reports' / Path(report[1]))
+            source = wd / str(uid) / 'wd' / Path(report[0])
+            target = wd / str(uid) / 'out' / 'reports' / Path(report[1])
+            if len(report) == 3 and report[2]:
+                shutil.copyfile(source, target)
+            else:
+                shutil.move(source, target)
 
     def check_results(self, wd, uid, wd_results, out_results):
 
@@ -446,7 +451,8 @@ class Pipeline:
             wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
 
         wd_cleanup = [
-            'tmp'
+            'tmp',
+            'vcf'
         ]
 
         for f in wd_cleanup:
@@ -513,6 +519,7 @@ class Pipeline:
         wd_folder = out_folder / str(uid) / 'wd'
         wd_folder.mkdir(parents=True, exist_ok=True)
         (wd_folder / 'tmp').mkdir(parents=True, exist_ok=True)
+        (wd_folder / 'vcf').mkdir(parents=True, exist_ok=True)
         data_folder = Path(self.config.get('DEFAULT', 'datadir', fallback=wd_folder)).absolute()
         config_datadir_orig = self.config.get('DEFAULT', 'datadir')
         self.config.set('DEFAULT', 'datadir', str(data_folder))
@@ -904,7 +911,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 1.1-7 Variant QC -------------------------------------------------------------------------- #
 
     # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
-    step1_1_out = 'source_samp.vcf.gz'
+    step1_1_out = 'vcf/1_1-source_samp.vcf.gz'
     mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
     pipeline.add_action(
         'bcftools', 1.10,
@@ -915,7 +922,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1.2   Remove variant sites which did not pass the VQSR standard.
-    step1_2_out = 'source_samp_pass.vcf.gz'
+    step1_2_out = 'vcf/1_2-source_samp_pass.vcf.gz'
     pipeline.add_action(
         'bcftools', 1.20,
         'filter variant sites < VQSR standard',
@@ -926,14 +933,14 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
 
     # 1.3.1 snps
-    step1_3_1_out = 'source_samp_pass_snps.vcf.gz'
+    step1_3_1_out = 'vcf/1_3-1-source_samp_pass_snps.vcf.gz'
     pipeline.add_action(
         'bcftools', 1.31,
         'filter snps',
         f'view --types snps $WD/{step1_2_out} -Oz -o $WD/{step1_3_1_out}'
     )
     # 1.3.2 indels
-    step1_3_2_out = 'source_samp_pass_indels.vcf.gz'
+    step1_3_2_out = 'vcf/1_3-2-source_samp_pass_indels.vcf.gz'
     pipeline.add_action(
         'bcftools', 1.32,
         'filter indels',
@@ -942,7 +949,7 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 1.4   Remove variant sites by site-wise quality.
     #       Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150.
-    step1_4_out = 'source_samp_pass_snps_site-v.vcf.gz'
+    step1_4_out = 'vcf/1_4-source_samp_pass_snps_site-v.vcf.gz'
     pipeline.add_action(
         'bcftools', 1.40,
         'filter variant sites by site-wise quality',
@@ -957,7 +964,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       bad individual GTs are converted into missing "./.";
     #       low call rate is determined as a call rate < 80%,
     #       i.e. missing rate >= 20%. Variant sites with a low call rate are removed.
-    step1_5_out = 'source_samp_pass_snps_site-v_gt-v.vcf.gz'
+    step1_5_out = 'vcf/1_5-source_samp_pass_snps_site-v_gt-v.vcf.gz'
     pipeline.add_action(
         'filterVCF_by_ABAD', 1.50,
         'check individual call quality',
@@ -969,7 +976,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1.6   Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
-    step1_6_out = 'source_samp_pass_snps_site-v_gt-v_rmchr.vcf.gz'
+    step1_6_out = 'vcf/1_6-source_samp_pass_snps_site-v_gt-v_rmchr.vcf.gz'
     pipeline.add_action(
         'bcftools', 1.6,
         'convert the chromosome annotations',
@@ -982,17 +989,18 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 2.2   Quality check - Check quality outliers by examining nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
 
     # 2.1.0 Output quality metrics after variant QC:
-    step2_1_0_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.stats.txt'
+    step2_1_0_out = 'tmp/source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.stats.txt'
     pipeline.add_action(
         'bcftools', 2.10,
         'generate quality metrics after variant QC',
         f'-c \'bcftools stats -v -s - $WD/{step1_out} > $WD/{step2_1_0_out}\'',
-        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']}
+        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
+        reports=[(step2_1_0_out, 'stats_post_qc.log', True)]
     )
 
     # 2.1.1 Draw individual quality figure:
     step2_1_1_outfolder = 'qualitycontrol'
-    step2_1_1_out = 'source_samp_pass_snps_site-v_gt-v_stats.PSC.PCA.pdf'
+    step2_1_1_out = 'PCA_samples.pdf'
     pipeline.add_action(
         'stats_quality_pca', 2.11,
         'draw individual quality figures',
@@ -1006,9 +1014,9 @@ def run_all(uid, kwargs, extra, config, daemon):
     #  Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
     splits_cfg = int(pipeline.config.get('avadx', 'ethseq.split', fallback=0))
     splits = splits_cfg if splits_cfg > 0 else int(10e12)
-    step2_2_1_out = 'sample_list.txt'
-    step2_2_1_outfolder = 'splits'
-    step2_2_1_splits = 'splits.txt'
+    step2_2_1_out = 'tmp/sample_list.txt'
+    step2_2_1_outfolder = 'tmp/splits'
+    step2_2_1_splits = 'tmp/splits.txt'
     pipeline.add_action(
         'bcftools', 2.21,
         'extract sample list',
@@ -1021,7 +1029,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 2.2.2 OPTIONAL: Clean VCF format for EthSEQ input for all splits:
-    step2_2_2_splits = 'splits_EthSEQ'
+    step2_2_2_splits = 'tmp/splits_EthSEQ'
     pipeline.add_action(
         'bcftools', 2.22,
         'EthSEQ preprocessing (VCF cleanup)',
@@ -1071,7 +1079,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       Check relatedness within datasets withe the SNPRelate R package.
     #       A default kinship > 0.3 is considered to be related.
     step2_3_outfolder = 'SNPRelate'
-    step2_3_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.gds'
+    step2_3_out = 'tmp/source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.gds'
     pipeline.add_action(
         'relatedness', 2.30,
         'check relatedness using SNPRelate',
@@ -1083,7 +1091,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       Outlier individual IDs should be combined from the above PCA,
     #       ethnicity annotation, and relatedness calculation
     #       to a file outliers.txt (one ID per row).
-    step2_4_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.vcf.gz'
+    step2_4_out = 'vcf/2_4-source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.vcf.gz'
     if outliers_available:
         mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'), exit_on_error=False if is_init else True)
         pipeline.add_action(
@@ -1097,12 +1105,12 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 2.5   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
     #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
     #       Note that tabix is required for indexing to run this script.
-    step2_5_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.vcf.gz'
+    step2_5_out = 'vcf/2_5-source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.vcf.gz'
     if gnomADfilter:
         pipeline.add_action(
             'filterVCF_by_gnomAD', 2.5,
             'filter variants missing in gnomAD database',
-            f'avadx.filterVCF_by_gnomAD $WD/{step2_4_out} $WD/{step2_5_out} '
+            f'avadx.filterVCF_by_gnomAD $WD $WD/{step2_4_out} $WD/{step2_5_out} '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
         )

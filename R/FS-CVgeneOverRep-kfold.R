@@ -123,9 +123,7 @@ if (nrow(cpdb_overrep_pathway) > 0) {
   cpdb_overrep_pathway = data.frame(PathwayName=NA, Freq=NA)
 }
 
-if(file.exists(paste0("PathwayOverRepresentation_by_folds.xlsx"))){
-  file.remove(paste0("PathwayOverRepresentation_by_folds.xlsx"))
-}
+dir.create(file.path('PathwayOverRepresentation_by_folds'), recursive = TRUE, showWarnings = FALSE)
 # Output k-fold details:
 for(i in 1:(ncol(fs)-1)){
   cpdb_overrep_df_i = data.frame(cpdb_overrep[[i]])
@@ -135,19 +133,24 @@ for(i in 1:(ncol(fs)-1)){
   } else {
     cpdb_overrep_i = cpdb_overrep[[i]]
   }
-  write.xlsx(cpdb_overrep_i, 
-             paste0("PathwayOverRepresentation_by_folds.xlsx"), 
-             sheetName=paste0("Fold", i, "out"), append=T)
+  cpdb_overrep_dt_i = data.table(cpdb_overrep_i)
+  cpdb_overrep_dt_i[, overlapping.genes:=gsub(overlapping.genes, pattern=",", replacement=";")]
+  cpdb_overrep_dt_i[, hgnc_symbol_ids:=gsub(hgnc_symbol_ids, pattern=",", replacement=";")]
+  write.table(cpdb_overrep_dt_i, 
+             file.path("PathwayOverRepresentation_by_folds", paste0("fold_", i, ".csv")),
+             quote=F, row.names=F, col.names=T, sep=",")
 }
 
-if(file.exists(paste0("PathwayOverRepresentation_by_folds_summary.xlsx"))){
-  file.remove(paste0("PathwayOverRepresentation_by_folds_summary.xlsx"))
+if(file.exists(paste0("PathwayOverRepresentation_by_folds_summary.csv"))){
+  file.remove(paste0("PathwayOverRepresentation_by_folds_summary.csv"))
 }
 # Output the summary:
-write.xlsx(cpdb_overrep_pathway,
-           paste0("PathwayOverRepresentation_by_folds_summary.xlsx")
-           )
+write.table(cpdb_overrep_pathway,
+           paste0("PathwayOverRepresentation_by_folds_summary.csv"),
+           quote=F, row.names=F, col.names=T, sep=",")
 
 # OUTPUT AUC rank.1
-auc_rank1 = data.frame(cpdb_analysis(fs, i=0, gene.number=opt$number_of_top_genes, descending=!(order_ascending)))
-write.csv(auc_rank1, "PathwayOverRepresentation_AUC_rank.1-genes.csv")
+auc_rank1 = data.table(cpdb_analysis(fs, i=0, gene.number=opt$number_of_top_genes, descending=!(order_ascending)))
+auc_rank1[, overlapping.genes:=gsub(overlapping.genes, pattern=",", replacement=";")]
+auc_rank1[, hgnc_symbol_ids:=gsub(hgnc_symbol_ids, pattern=",", replacement=";")]
+write.table(auc_rank1, "PathwayOverRepresentation_AUC_rank.1-genes.csv", quote=F, row.names=F, col.names=T, sep=",")

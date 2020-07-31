@@ -1073,7 +1073,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'ethnicity_EthSEQ_summary', 2.24,
         'generate EthSEQ summaries',
         f'-c \'mkdir -p $WD/{step2_2_4_outfolder}/$(basename $TASK) && '
-        f'Rscript /app/R/avadx/ethnicity_EthSEQ_summary.R $WD/{step2_2_3_outfolder}/$(basename $TASK)/Report.txt $WD/{step2_2_1_outfolder}/$(basename $TASK) $WD/{step2_2_4_outfolder}/$(basename $TASK)\'',
+        f'Rscript /app/R/avadx/ethnicity_EthSEQ_summary.R $WD/{step2_2_3_outfolder}/$(basename $TASK)/Report.txt $WD/{step2_2_4_outfolder}/$(basename $TASK)\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
     )

@@ -1025,28 +1025,28 @@ def run_all(uid, kwargs, extra, config, daemon):
     #  Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
     splits_cfg = int(pipeline.config.get('avadx', 'ethseq.split', fallback=0))
     splits = splits_cfg if splits_cfg > 0 else int(10e12)
-    step2_2_1_out = 'tmp/sample_list.txt'
-    step2_2_1_outfolder = 'tmp/splits'
-    step2_2_1_splits = 'tmp/splits.txt'
+    step2_2_1_out = 'tmp/EthSEQ_split_ids.txt'
+    step2_2_1_outfolder = 'tmp/EthSEQ_splits'
+    step2_2_1_splits = 'tmp/EthSEQ_splits.txt'
     pipeline.add_action(
         'bcftools', 2.21,
         'extract sample list',
         f'-c \'bcftools query -l $WD/{step1_out} > $WD/{step2_2_1_out}; '
         f'SPLIT=$(SAMPLES=$(wc -l < $WD/{step2_2_1_out}); echo $((SAMPLES <= {splits} ? 0 : {splits}))); '
-        f'[[ $SPLIT -gt 0 ]] && split -d -l $SPLIT $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/xx || cp -f $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/xx00; '
-        f'(cd $WD/{step2_2_1_outfolder} && ls -f -1 xx*) > $WD/{step2_2_1_splits}\'',
+        f'[[ $SPLIT -gt 0 ]] && split -d -l $SPLIT $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/split_ || cp -f $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/split_00; '
+        f'(cd $WD/{step2_2_1_outfolder} && ls -f -1 split_*) > $WD/{step2_2_1_splits}\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(WD / step2_2_1_outfolder)
     )
 
     # 2.2.2 OPTIONAL: Clean VCF format for EthSEQ input for all splits:
-    step2_2_2_splits = 'tmp/splits_EthSEQ'
+    step2_2_2_splits = 'tmp/EthSEQ_splits'
     pipeline.add_action(
         'bcftools', 2.22,
         'EthSEQ preprocessing (VCF cleanup)',
         f'-c \'bcftools view -S $TASK $WD/{step1_out} | '
         'bcftools annotate --remove "ID,INFO,FORMAT" | '
-        f'bcftools view --no-header -Oz -o $WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz\'',
+        f'sed /^##/d | gzip --stdout > $WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/'),
         outdir=(WD / step2_2_2_splits)

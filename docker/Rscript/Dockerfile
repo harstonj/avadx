@@ -18,6 +18,7 @@ COPY --from=builder /install /usr/local
 COPY --from=builder /app /app
 
 RUN apt-get update && apt-get install -y \
+ file \
  curl \
  libcurl4-openssl-dev \
  openssl \

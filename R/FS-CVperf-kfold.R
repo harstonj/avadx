@@ -85,8 +85,8 @@ if(file.exists(paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx"))){
 if(file.exists(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"))){
   file.remove(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"))
 }
-if(file.exists(paste0(k, "F-CV-", ml_method, "-performance.xlsx"))){
-  file.remove(paste0(k, "F-CV-", ml_method, "-performance.xlsx"))
+if(file.exists(paste0(k, "F-CV-", ml_method, "-performance.csv"))){
+  file.remove(paste0(k, "F-CV-", ml_method, "-performance.csv"))
 }
 if(file.exists(paste0(gsub(".csv","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".csv")))){
   file.remove(paste0(gsub(".csv","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".csv")))
@@ -319,13 +319,16 @@ for(gn in seq(0, opt$number_of_top_genes, opt$step_of_top_genes)){
 cv_performance_results.df <- as.data.frame(do.call("rbind", cv_performance_results))
 colnames(cv_performance_results.df)[1] <- "AUC"
 
-write.xlsx(cv_performance_results.df, paste0(k, "F-CV-", ml_method, "-performance.xlsx"), sheetName=fs_method, append=T)
+#write.xlsx(cv_performance_results.df, paste0(k, "F-CV-", ml_method, "-performance.xlsx"), sheetName=fs_method, append=T)
 
 cv_performance_ordered = setDT(cv_performance_results.df, keep.rownames = TRUE)
 cv_performance_ordered = cv_performance_ordered[order(-cv_performance_ordered$AUC),]
+cv_performance_ordered[, rn:=as.numeric(gsub(rn, pattern="GeneNumber\\.", replacement=""))]
+setnames(cv_performance_ordered, "rn", "selected_genes")
+write.table(cv_performance_ordered, paste0(k, "F-CV-", ml_method, "-performance.csv"), quote=F, row.names=F, col.names=T, sep=",")
 for (ridx in 1:nrow(cv_performance_ordered)) {
   row = cv_performance_ordered[ridx,]
-  gn = as.numeric(strsplit(as.character(row[[1]]), "\\.")[[1]][2])
+  gn = row[[1]]
   top_genes_by_auc = c()
   for(i in 1:k){
     if (fs_method %in% c("ks")) {
@@ -344,7 +347,7 @@ for (ridx in 1:nrow(cv_performance_ordered)) {
   }
 }
 
-file.copy(paste0(k, "F-CV-", ml_method, "-performance.xlsx"), file.path(out_fp, "performance.xlsx"))
-file.copy(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"), file.path(out_fp, "selectedGenes.csv"))
+file.copy(paste0(k, "F-CV-", ml_method, "-performance.csv"), file.path(out_fp, "performance.csv"), overwrite=T)
+file.copy(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"), file.path(out_fp, "selectedGenes.csv"), overwrite=T)
 
 print("Done.")

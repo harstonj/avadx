@@ -44,7 +44,7 @@ if("gene_score" %in% colnames(gs[[1]])){
   
   # Write to file:
   setwd(opt$out)
-  fwrite(gs_df_unnormed, "GeneScoreTable_unnormed.txt")
+  fwrite(gs_df_unnormed, "GeneScoreTable_raw.csv")
 }
 
 
@@ -60,7 +60,7 @@ if("gene_score_normed" %in% colnames(gs[[1]])){
   
   # Write to file
   setwd(opt$out)
-  fwrite(gs_df_normed, "GeneScoreTable_normed.txt")
+  fwrite(gs_df_normed, "GeneScoreTable_normalized.csv")
 }
 
 rm(gs)

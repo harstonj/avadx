@@ -79,10 +79,23 @@ if (is.null(k)) {
   k = length(unique(cvsch$fold))
 }
 
+if(file.exists(paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx"))){
+  file.remove(paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx"))
+}
+if(file.exists(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"))){
+  file.remove(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"))
+}
+if(file.exists(paste0(k, "F-CV-", ml_method, "-performance.xlsx"))){
+  file.remove(paste0(k, "F-CV-", ml_method, "-performance.xlsx"))
+}
+if(file.exists(paste0(gsub(".csv","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".csv")))){
+  file.remove(paste0(gsub(".csv","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".csv")))
+}
+
 # Move features/genes with low variance:
 # Default variance cutoff is 5-95%; i.e. if over 95% of individuals have the same value for the feature/gene, it is removed.
-if(file.exists(paste0(gsub(".txt","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".txt")))){
-  df_input <- read.csv(paste0(gsub(".txt","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".txt")), stringsAsFactors=F, check.names=F)
+if(file.exists(paste0(gsub(".csv","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".csv")))){
+  df_input <- read.csv(paste0(gsub(".csv","",gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".csv")), stringsAsFactors=F, check.names=F)
   df_input$status <- ifelse(df_input$status==1, "Positive", ifelse(df_input$status==0, "Negative", df_input$status))
   df_input$status <- as.factor(df_input$status)
 }else{
@@ -112,9 +125,10 @@ if(file.exists(paste0(gsub(".txt","",gs_fp), paste0(".NAto0.nzv", opt$variance_c
   df_input <- cbind(df.X, df.y)
   colnames(df_input)[ncol(df_input)] <- "status"
   df_input$status <- ifelse(df_input$status==1, "Positive", ifelse(df_input$status==0, "Negative", df_input$status))
-  write.table(df_input, paste0(gsub(".txt", "", gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".txt")), sep=",", quote=F, col.names=T, row.names=T)
+  write.table(df_input, paste0(gsub(".csv", "", gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".csv")), sep=",", quote=F, col.names=T, row.names=T)
   df_input$status <- as.factor(df_input$status)
 }
+file.rename(paste0(gsub(".csv", "", gs_fp), paste0(".NAto0.nzv", opt$variance_cutoff,"-", (100-opt$variance_cutoff), ".csv")), paste0(gsub(".csv", "", gs_fp), "_variation_filtered.csv"))
 
 # Feature selection in a k-fold fashion:
 if(fs_method %in% c("ks", "KS")){
@@ -307,7 +321,8 @@ colnames(cv_performance_results.df)[1] <- "AUC"
 
 write.xlsx(cv_performance_results.df, paste0(k, "F-CV-", ml_method, "-performance.xlsx"), sheetName=fs_method, append=T)
 
-cv_performance_ordered = cv_performance_results.df[order(-cv_performance_results.df$AUC),]
+cv_performance_ordered = setDT(cv_performance_results.df, keep.rownames = TRUE)
+cv_performance_ordered = cv_performance_ordered[order(-cv_performance_ordered$AUC),]
 for (ridx in 1:nrow(cv_performance_ordered)) {
   row = cv_performance_ordered[ridx,]
   gn = as.numeric(strsplit(as.character(row[[1]]), "\\.")[[1]][2])
@@ -318,11 +333,14 @@ for (ridx in 1:nrow(cv_performance_ordered)) {
     } else if (fs_method %in% c("DKM", "DKMcost")) {
       fs_result = cl_fs_result$Gene[order(cl_fs_result[, paste0("Merit_fold", i, "out")], decreasing=T)][1:gn]
     }
-    top_genes_by_auc = union(top_genes_by_auc, fs_result)
+    top_genes_by_auc = c(top_genes_by_auc, fs_result)
   }
+  top_genes_by_auc.df = as.data.frame(table(top_genes_by_auc))
+  top_genes_by_auc.df = top_genes_by_auc.df[order(-top_genes_by_auc.df$Freq),]
   write.table(top_genes_by_auc[order(top_genes_by_auc)], paste0("AUC_rank.", ridx, "_", "top.", gn, "_", k, "F-CV-", fs_method,"-selectedGenes.csv"), quote=F, row.names=F, col.names=F)
   if (ridx == 1) {
-    write.table(top_genes_by_auc[order(top_genes_by_auc)], file.path(out_fp, "AUC_rank.1-genes.csv"), quote=F, row.names=F, col.names=F)
+    write.table(top_genes_by_auc.df$top_genes_by_auc, file.path(wd_fp, "AUC_rank.1-genes-list.csv"), quote=F, row.names=F, col.names=F)
+    write.table(top_genes_by_auc.df, file.path(out_fp, "AUC_rank.1-genes.csv"), quote=F, row.names=F, col.names=F, sep = ",")
   }
 }
 

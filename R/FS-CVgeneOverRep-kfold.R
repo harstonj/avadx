@@ -44,9 +44,10 @@ if(endsWith(opt$input_file, ".xlsx")){
 top_genes = read.csv(opt$top_genes, header = FALSE, stringsAsFactors=F)
 
 # check topgenes selection
-if (opt$number_of_top_genes == 0) 
-  opt$number_of_top_genes = length(fs$Gene)
+if (opt$number_of_top_genes == 0) {
+  opt$number_of_top_genes = nrow(top_genes)
 }
+print(opt$number_of_top_genes)
 
 # Read in gene score table for all background genes:
 df <- read.csv(opt$input_file_genescore, stringsAsFactors=F, check.names=F)
@@ -120,6 +121,9 @@ if (nrow(cpdb_overrep_pathway) > 0) {
   cpdb_overrep_pathway = data.frame(PathwayName=NA, Freq=NA)
 }
 
+if(file.exists(paste0("PathwayOverRepresentation_by_folds.xlsx"))){
+  file.remove(paste0("PathwayOverRepresentation_by_folds.xlsx"))
+}
 # Output k-fold details:
 for(i in 1:(ncol(fs)-1)){
   cpdb_overrep_df_i = data.frame(cpdb_overrep[[1]])
@@ -130,13 +134,16 @@ for(i in 1:(ncol(fs)-1)){
     cpdb_overrep_i = cpdb_overrep[[i]]
   }
   write.xlsx(cpdb_overrep_i, 
-             paste0("PahtwayOverRepresentation_GeneN-", opt$number_of_top_genes, "_", gsub("-selectedGenes.xlsx", "",basename(opt$input_file)), ".xlsx"), 
+             paste0("PathwayOverRepresentation_by_folds.xlsx"), 
              sheetName=paste0("Fold", i, "out"), append=T)
 }
 
+if(file.exists(paste0("PathwayOverRepresentation_by_folds_summary.xlsx"))){
+  file.remove(paste0("PathwayOverRepresentation_by_folds_summary.xlsx"))
+}
 # Output the summary:
 write.xlsx(cpdb_overrep_pathway,
-           paste0("PahtwayOverRepresentation_GeneN-", opt$number_of_top_genes, "_", gsub("-selectedGenes.xlsx", "",basename(opt$input_file)), "_summary.xlsx")
+           paste0("PathwayOverRepresentation_by_folds_summary.xlsx")
            )
 
 # OUTPUT AUC rank.1

@@ -141,7 +141,7 @@ class AVADxMeta:
                         shutil.rmtree(target)
                     shutil.copytree(source, target)
             else:
-                if target.exists():
+                if target.exists() and target.is_dir():
                     shutil.rmtree(target)
                 shutil.move(source, target)
 
@@ -202,8 +202,8 @@ class AVADxMeta:
     def annovar(self, uid, **kwargs):
         self.run_method(self.IMAGES['annovar'], 'annovar', uid, kwargs)
 
-    def check_missing_SNAP(self, uid, **kwargs):
-        self.run_method(self.IMAGES['R'], 'check_missing_SNAP', uid, kwargs)
+    def generate_SNAP_query(self, uid, **kwargs):
+        self.run_method(self.IMAGES['R'], 'generate_SNAP_query', uid, kwargs)
 
     def varidb(self, uid, **kwargs):
         self.run_method(self.IMAGES['varidb'], 'varidb', uid, kwargs)
@@ -445,12 +445,15 @@ class Pipeline:
 
     def postprocess(self):
 
-        def cleanup(path):
-            if path.exists():
-                if path.is_file():
-                    os.remove(path)
-                else:
-                    shutil.rmtree(path)
+        def cleanup(wd_folder, item):
+            base = item[0]
+            if item[1] is None:
+                path = wd_folder / base
+                if path.exists():
+                    if path.is_file():
+                        os.remove(path)
+                    else:
+                        shutil.rmtree(path)
 
         if self.is_vm:
             wd_folder = self.kwargs.get('wd')
@@ -458,12 +461,13 @@ class Pipeline:
             wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
 
         wd_cleanup = [
-            'tmp',
-            'vcf'
+            ('tmp', None),
+            ('vcf', None),
+            ('annovar', ('*.log', '*.avinput'))
         ]
 
-        for f in wd_cleanup:
-            cleanup(wd_folder / f)
+        for item in wd_cleanup:
+            cleanup(wd_folder, item)
 
     def add_action(
             self, action, level=None, description='', args='', daemon_args={},
@@ -527,6 +531,7 @@ class Pipeline:
         wd_folder.mkdir(parents=True, exist_ok=True)
         (wd_folder / 'tmp').mkdir(parents=True, exist_ok=True)
         (wd_folder / 'vcf').mkdir(parents=True, exist_ok=True)
+        (wd_folder / 'annovar').mkdir(parents=True, exist_ok=True)
         data_folder = Path(self.config.get('DEFAULT', 'datadir', fallback=wd_folder)).absolute()
         config_datadir_orig = self.config.get('DEFAULT', 'datadir')
         self.config.set('DEFAULT', 'datadir', str(data_folder))
@@ -1006,13 +1011,12 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 2.1.1 Draw individual quality figure:
-    step2_1_1_outfolder = 'qualitycontrol'
-    step2_1_1_out = 'PCA_samples.pdf'
+    step2_1_1_out = 'tmp/quality_control_samples_PCA.pdf'
     pipeline.add_action(
         'stats_quality_pca', 2.11,
         'draw individual quality figures',
-        f'/app/R/avadx/stats_quality_pca.R -f $WD/{step2_1_0_out} -o $OUT/{step2_1_1_outfolder}/{step2_1_1_out}',
-        outdir=(OUT / step2_1_1_outfolder)
+        f'/app/R/avadx/stats_quality_pca.R -f $WD/{step2_1_0_out} -o $WD/{step2_1_1_out}',
+        reports=[(step2_1_1_out, 'quality_control_samples_PCA.pdf')]
     )
 
     # 2.2   Ethnicity check - Annotate ethnicity with EthSEQ R package:
@@ -1135,34 +1139,35 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
 
     # 3.1   Get all variant annotations with ANNOVAR for cleaned VCF:
-    step3_1_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput'
+    step3_1_out = 'annovar/source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput'
     pipeline.add_action(
         'annovar', 3.10,
         'convert VCF file to ANNOVAR input format',
         f'convert2annovar.pl -format vcf4old $WD/{step2_out} -outfile $WD/{step3_1_out}',
-        logs=('convert2annovar.log', None)
+        reports=[('annovar/convert2annovar.log', 'convert2annovar.log')],
+        logs=('annovar/convert2annovar.log', None)
     )
 
     # 3.2   Annotate using <hgref> RefSeq:
-    step3_2_out = 'source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput.exonic_variant_function'
+    step3_2_out = 'annovar/source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput.exonic_variant_function'
     pipeline.add_action(
         'annovar', 3.20,
         f'annotate using {hgref} RefSeq',
         f'annotate_variation.pl -buildver {hgref} $WD/{step3_1_out} config[DEFAULT.annovar.humandb]/',
-        logs=('annotate_variation.log', None)
+        logs=('annovar/annotate_variation.log', None)
     )
 
     # 3.3   Create varidb query
-    step3_3_outfolder = 'check_missing_SNAP'
+    step3_3_outfolder = 'SNAP_scores'
     pipeline.add_action(
-        'check_missing_SNAP', 3.30,
-        'check missing SNAP predictions',
+        'generate_SNAP_query', 3.30,
+        'generate SNAP scores query',
         f'/app/R/avadx/check_missing_SNAP.R $WD/{step3_2_out} config[DEFAULT.avadx.data] $WD/{step3_3_outfolder}',
         outdir=(WD / step3_3_outfolder)
     )
 
     # 3.4   Query varidb for SNAP mutations
-    step3_4_out = 'varidb_query_result.csv'
+    step3_4_out = 'SNAP_scores/varidb_query_result.csv'
     pipeline.add_action(
         'varidb', 3.40,
         'query SNAP variants from varidb',
@@ -1170,15 +1175,16 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'-Q $WD/{step3_3_outfolder}/varidb_query.ids '
         f'-f $WD/{step3_3_outfolder}/varidb_query.fa '
         f'-o $WD/{step3_4_out} '
-        '-R $WD/varidb_query_report.txt '
-        '-C query variant score -S tab -H -s'
+        '-R $WD/SNAP_scores/varidb_query_report.txt '
+        '-C query variant score -S tab -H -s',
+        reports=[(Path('SNAP_scores') / 'varidb_query_report.txt', 'SNAP_scores_varidb_report.txt')]
     )
 
     # 4     Gene score calculation ---------------------------------------------------------------- #
 
     # 4.1   Convert cleaned VCF to individual ANNOVAR annotation files by:
-    step4_1_outfolder = 'annovar_annotations'
-    step4_1_out = 'annovar_annotations.txt'
+    step4_1_outfolder = 'annovar/annotations'
+    step4_1_out = 'tmp/annovar_annotations.txt'
     pipeline.add_action(
         'annovar', 4.10,
         'convert cleaned VCF to single annovar annotation files',
@@ -1197,7 +1203,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 4.3 - Then, calculate gene score:
-    step4_3_outfolder = 'gene_scores'
+    step4_3_outfolder = 'genescores'
     pipeline.add_action(
         'cal_genescore_make_genescore', 4.30,
         'calculate gene score',
@@ -1228,11 +1234,11 @@ def run_all(uid, kwargs, extra, config, daemon):
     #  so that to compare sick v.s. healthy instead of differentiating families.
 
     # 5.1 - Cross-validation:
-    step5_1_outfolder = 'crossvalidation'
+    step5_1_outfolder = 'results'
     pipeline.add_action(
         'FS_CVperf_kfold', 5.10,
         'perform model cross-validation',
-        f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
+        f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normalized.csv '
         '-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/tmp/cv-scheme.csv '
         '-l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -t config[avadx.cv.steps] '
         f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder}',
@@ -1245,7 +1251,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'FS_CVgeneOverRep_kfold', 5.20,
         'check pathway over-representation',
         f'/app/R/avadx/FS-CVgeneOverRep-kfold.R -f $OUT/{step5_1_outfolder}/selectedGenes.csv '
-        f'-t $OUT/{step5_1_outfolder}/AUC_rank.1-genes.csv -b $OUT/{step4_4_outfolder}/GeneScoreTable_normed.txt '
+        f'-t $WD/{step5_1_outfolder}/AUC_rank.1-genes-list.csv -b $OUT/{step4_4_outfolder}/GeneScoreTable_normalized_variation_filtered.csv '
         '-n config[avadx.pathways.topgenes] -d config[DEFAULT.avadx.data]/CPDB_pathways_genesymbol.tab '
         f'-a config[avadx.pathways.ascending] -o $OUT/{step5_2_outfolder}',
         outdir=(OUT / step5_2_outfolder)

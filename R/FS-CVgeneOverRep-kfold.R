@@ -126,7 +126,7 @@ if(file.exists(paste0("PathwayOverRepresentation_by_folds.xlsx"))){
 }
 # Output k-fold details:
 for(i in 1:(ncol(fs)-1)){
-  cpdb_overrep_df_i = data.frame(cpdb_overrep[[1]])
+  cpdb_overrep_df_i = data.frame(cpdb_overrep[[i]])
   if (nrow(cpdb_overrep_df_i) == 0) {
     cpdb_overrep_i = cpdb_overrep_df_i
     cpdb_overrep_i[nrow(cpdb_overrep_i)+1,] = NA

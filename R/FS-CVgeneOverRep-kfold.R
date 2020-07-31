@@ -13,8 +13,8 @@ option_list = list(
               help="number of top-ranked genes for over-representation analysis; e.g. 100 (default) means using the top 100 genes as over-representation analysis input", metavar="character"),
   make_option(c("-d", "--cpdb_database"), type="character", default=NULL,
               help="path to the CPDB_pathways_genesymbol.tab file", metavar="character"),
-  make_option(c("-a", "--ascending"), type="logical", default=T,
-              help="T: list gene ranking ascendingly (from small to large; for ks); F: list descendingly (from large to small; for DKM)", metavar="character"),
+  make_option(c("-m", "--fs_method"), type="character", default=NULL,
+              help="feature selection method used previously ('ks' or 'DKM') - defines sorting order", metavar="character"),
   make_option(c("-o", "--out"), type="character", default=NULL,
               help="path to output folder", metavar="character")
 )
@@ -25,6 +25,8 @@ print(opt$input_file)
 print(opt$number_of_top_genes)
 print(opt$cpdb_database)
 print(opt$out)
+
+order_ascending = if (opt$fs_method == "ks") TRUE else if (opt$fs_method == "DKM") FALSE else TRUE
 
 setwd(opt$out)
 
@@ -110,7 +112,7 @@ cpdb_analysis <- function(input.fs.result, # a data frame containing gene and tr
 
 cpdb_overrep <- list()
 for(i in 1:(ncol(fs)-1)){
-  cpdb_overrep[[i]] <- cpdb_analysis(fs, i=i, gene.number=opt$number_of_top_genes, descending=!(opt$ascending))
+  cpdb_overrep[[i]] <- cpdb_analysis(fs, i=i, gene.number=opt$number_of_top_genes, descending=!(order_ascending))
 }
 
 cpdb_overrep_pathway <- as.data.frame(table(unlist(lapply(cpdb_overrep, function(x) x[, "pathway"]))))
@@ -147,5 +149,5 @@ write.xlsx(cpdb_overrep_pathway,
            )
 
 # OUTPUT AUC rank.1
-auc_rank1 = data.frame(cpdb_analysis(fs, i=0, gene.number=opt$number_of_top_genes, descending=!(opt$ascending)))
+auc_rank1 = data.frame(cpdb_analysis(fs, i=0, gene.number=opt$number_of_top_genes, descending=!(order_ascending)))
 write.csv(auc_rank1, "PathwayOverRepresentation_AUC_rank.1-genes.csv")

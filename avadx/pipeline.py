@@ -1253,7 +1253,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'/app/R/avadx/FS-CVgeneOverRep-kfold.R -f $OUT/{step5_1_outfolder}/selectedGenes.csv '
         f'-t $WD/{step5_1_outfolder}/AUC_rank.1-genes-list.csv -b $OUT/{step4_4_outfolder}/GeneScoreTable_normalized_variation_filtered.csv '
         '-n config[avadx.pathways.topgenes] -d config[DEFAULT.avadx.data]/CPDB_pathways_genesymbol.tab '
-        f'-a config[avadx.pathways.ascending] -o $OUT/{step5_2_outfolder}',
+        f'-m config[avadx.cv.featureselection] -o $OUT/{step5_2_outfolder}',
         outdir=(OUT / step5_2_outfolder)
     )
 

@@ -134,8 +134,15 @@ class AVADxMeta:
             source = wd / str(uid) / 'wd' / Path(report[0])
             target = wd / str(uid) / 'out' / 'reports' / Path(report[1])
             if len(report) == 3 and report[2]:
-                shutil.copyfile(source, target)
+                if source.is_file():
+                    shutil.copyfile(source, target)
+                else:
+                    if target.exists():
+                        shutil.rmtree(target)
+                    shutil.copytree(source, target)
             else:
+                if target.exists():
+                    shutil.rmtree(target)
                 shutil.move(source, target)
 
     def check_results(self, wd, uid, wd_results, out_results):
@@ -1057,7 +1064,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 2.2.4 Ethnicity prediction summary
-    step2_2_4_outfolder = 'EthSEQ_summary'
+    step2_2_4_outfolder = 'tmp/EthSEQ_summary'
     pipeline.add_action(
         'ethnicity_EthSEQ_summary', 2.24,
         'generate EthSEQ summaries',
@@ -1075,6 +1082,14 @@ def run_all(uid, kwargs, extra, config, daemon):
         daemon_args={'docker': ['--entrypoint=find'], 'singularity': ['exec:find']}
     )
 
+    # 2.2.6 Collect ethnicity prediction reports
+    pipeline.add_action(
+        'avadx', 2.26,
+        'collect EthSEQ reports',
+        f'$WD/{step2_2_3_outfolder} -mindepth 2 -regex \'.*\(txt\|pdf\)$\' -exec bash -c \'cp $1 $OUT/reports/EthSEQ_$(basename $(dirname $1))_$(basename $1)\' _ {{}} \;',  # noqa: W605
+        daemon_args={'docker': ['--entrypoint=find'], 'singularity': ['exec:find']}
+    )
+
     # 2.3   Relatedness check:
     #       Check relatedness within datasets withe the SNPRelate R package.
     #       A default kinship > 0.3 is considered to be related.
@@ -1084,7 +1099,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         'relatedness', 2.30,
         'check relatedness using SNPRelate',
         f'/app/R/avadx/relatedness.R -i $WD/{step1_out} -g $WD/{step2_3_out} -c config[avadx.kinship] -o $WD/{step2_3_outfolder}',
-        outdir=(WD / step2_3_outfolder)
+        outdir=(WD / step2_3_outfolder),
+        reports=[(Path(step2_3_outfolder) / 'IBD_related.txt', 'IBD_related.txt'), (Path(step2_3_outfolder) / 'IBD.txt', 'IBD.txt')]
     )
 
     # 2.4   Remove individual outliers

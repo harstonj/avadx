@@ -984,7 +984,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'config[avadx.qc.call.AB_low] config[avadx.qc.call.AB_high] '
         'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]',
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
-        reports=[(f'{step1_5_out}.log', 'call_quality_filter.log')]
+        reports=[(f'{step1_5_out}.log', '1_5-call_quality_filter.log')]
     )
 
     # 1.6   Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
@@ -1007,7 +1007,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'generate quality metrics after variant QC',
         f'-c \'bcftools stats -v -s - $WD/{step1_out} > $WD/{step2_1_0_out}\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
-        reports=[(step2_1_0_out, 'stats_post_qc.log', True)]
+        reports=[(step2_1_0_out, '2_1-stats_post_qc.log', True)]
     )
 
     # 2.1.1 Draw individual quality figure:
@@ -1016,7 +1016,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'stats_quality_pca', 2.11,
         'draw individual quality figures',
         f'/app/R/avadx/stats_quality_pca.R -f $WD/{step2_1_0_out} -o $WD/{step2_1_1_out}',
-        reports=[(step2_1_1_out, 'quality_control_samples_PCA.pdf')]
+        reports=[(step2_1_1_out, '2_1-1-quality_control_samples_PCA.pdf')]
     )
 
     # 2.2   Ethnicity check - Annotate ethnicity with EthSEQ R package:
@@ -1090,7 +1090,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'avadx', 2.26,
         'collect EthSEQ reports',
-        f'$WD/{step2_2_3_outfolder} -mindepth 2 -regex \'.*\(txt\|pdf\)$\' -exec bash -c \'cp $1 $OUT/reports/EthSEQ_$(basename $(dirname $1))_$(basename $1)\' _ {{}} \;',  # noqa: W605
+        f'$WD/{step2_2_3_outfolder} -mindepth 2 -regex \'.*\(txt\|pdf\)$\' -exec bash -c \'cp $1 $OUT/reports/2_2-6-EthSEQ_$(basename $(dirname $1))_$(basename $1)\' _ {{}} \;',  # noqa: W605
         daemon_args={'docker': ['--entrypoint=find'], 'singularity': ['exec:find']}
     )
 
@@ -1104,7 +1104,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'check relatedness using SNPRelate',
         f'/app/R/avadx/relatedness.R -i $WD/{step1_out} -g $WD/{step2_3_out} -c config[avadx.kinship] -o $WD/{step2_3_outfolder}',
         outdir=(WD / step2_3_outfolder),
-        reports=[(Path(step2_3_outfolder) / 'IBD_related.txt', 'IBD_related.txt'), (Path(step2_3_outfolder) / 'IBD.txt', 'IBD.txt')]
+        reports=[(Path(step2_3_outfolder) / 'IBD_related.txt', '2_3-IBD_related.txt'), (Path(step2_3_outfolder) / 'IBD.txt', '2_3-IBD.txt')]
     )
 
     # 2.4   Remove individual outliers
@@ -1144,7 +1144,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'annovar', 3.10,
         'convert VCF file to ANNOVAR input format',
         f'convert2annovar.pl -format vcf4old $WD/{step2_out} -outfile $WD/{step3_1_out}',
-        reports=[('annovar/convert2annovar.log', 'convert2annovar.log')],
+        reports=[('annovar/convert2annovar.log', '3_3-convert2annovar.log')],
         logs=('annovar/convert2annovar.log', None)
     )
 
@@ -1177,7 +1177,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'-o $WD/{step3_4_out} '
         '-R $WD/SNAP_scores/varidb_query_report.txt '
         '-C query variant score -S tab -H -s',
-        reports=[(Path('SNAP_scores') / 'varidb_query_report.txt', 'SNAP_scores_varidb_report.txt')]
+        reports=[(Path('SNAP_scores') / 'varidb_query_report.txt', '3_4-SNAP_scores_varidb_report.txt')]
     )
 
     # 4     Gene score calculation ---------------------------------------------------------------- #

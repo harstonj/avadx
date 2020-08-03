@@ -9,7 +9,11 @@ FROM base as builder
 WORKDIR /install
 
 # setup app
-COPY ./python /app/python/avadx
+RUN apk --no-cache add build-base gcc make wget git
+RUN git clone --depth 1 https://bitbucket.org/bromberglab/avadx.git && \
+ mkdir -p /app/python && mv avadx/python /app/python/avadx && \
+ rm -rf avadx
+
 RUN pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install https://bitbucket.org/bromberglab/avadx/get/master.zip
 
 FROM base

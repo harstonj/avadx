@@ -22,6 +22,8 @@ setup(
     install_requires=[
         'requests==2.24.0',
         'docker==4.2.2',
+        'pandas==1.1.0',
+        'plotly==4.9.0',
     ],
     entry_points={
         'console_scripts': ['avadx=avadx.__main__:main'],

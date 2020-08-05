@@ -675,18 +675,8 @@ def get_extra(x, y):
 
 
 def adjust_splits(auto_folds, cv_folds):
-    last_elem = -1
-    while len(auto_folds) > cv_folds:
-        tmp = []
-        for idx, elem in enumerate(auto_folds):
-            if idx == last_elem:
-                tmp += [elem]
-            elif idx == last_elem + 1 and idx + 1 < len(auto_folds):
-                tmp += [elem + auto_folds[idx + 1]]
-            elif idx > last_elem + 2:
-                tmp += [elem]
-        last_elem += 1
-        auto_folds = tmp
+    while len(auto_folds) > 1 and len(auto_folds) > cv_folds:
+        auto_folds = auto_folds[0:-2] + [auto_folds[-2] + auto_folds[-1]]
     return auto_folds
 
 

@@ -306,6 +306,7 @@ class Pipeline:
             samplesids_path = wd_folder / 'tmp' / 'sampleids.txt'
             cvscheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
             chr2num_path = wd_folder / 'tmp' / 'chr_to_number.txt'
+            samples_list = wd_folder / 'tmp' / 'all_samples.txt'
         else:
             wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
             wd_folder.mkdir(parents=True, exist_ok=True)
@@ -319,9 +320,13 @@ class Pipeline:
             samplesids_path = wd_folder / 'tmp' / 'sampleids.txt'
             cvscheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
             chr2num_path = wd_folder / 'tmp' / 'chr_to_number.txt'
-            if not samples_path.exists():
-                self.log.warning(f'Could not read required input: {samples_path}')
-                return
+            samples_list = wd_folder / 'tmp' / 'all_samples.txt'
+        if not samples_path.exists():
+            self.log.warning(f'No samples file found: {samples_path}. Creating this file using ALL samples and unknown class labels.\n -> IMPORTANT: You have to set class labels manually for model training! <-')
+            with samples_list.open('r') as fin, samples_path.open('w') as fout:
+                fout.write('sampleid,class\n')
+                for line in fin:
+                    fout.write(f'{line.strip()},?\n')
         with samples_path.open() as fin, samplesids_path.open('w') as fout_ids, cvscheme_path.open('w') as fout_cv, chr2num_path.open('w') as fout_chr:
             samples, labels, col3 = [], [], []
             reader = csv.reader(fin)
@@ -491,16 +496,16 @@ class Pipeline:
         pos1, remaining = f'{step:.2f}'.rsplit(".", 1)[0], list(f'{step:.2f}'.rsplit(".", 1)[-1])
         return f'{pos1}_{remaining[0]}{"-" + remaining[1] if remaining[1] != "0" else ""}'
 
-    def add_stats_report(self, step, data, mounts=[], save_as=None, keep=False):
+    def add_stats_report(self, step, data, refers_to=None, query='stats -v -s -', mounts=[], save_as=None, report_name='stats_report.log', report_description='generate stats report', keep=False):
         source = data if mounts else f'$WD/{data}'
-        target = save_as if save_as is not None else 'tmp/stats_report.log'
+        target = save_as if save_as is not None else f'tmp/{report_name}'
         self.add_action(
             'bcftools', step,
-            'generate stats report',
-            f'-c \'bcftools stats -v -s - {source} > $WD/{target}\'',
+            report_description,
+            f'-c \'bcftools {query} {source} > $WD/{target}\'',
             daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
             mounts=mounts,
-            reports=[(target, f'{Pipeline.format_step(step)}-stats_report.log', keep)]
+            reports=[(target, f'{Pipeline.format_step(step) if refers_to is None else Pipeline.format_step(refers_to)}-{report_name}', keep)]
         )
 
     def check_config(self, name, section='avadx', flag='', is_file=False, default=None, quiet=False):
@@ -927,19 +932,25 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1   Preprocess -------------------------------------------------------------------------- #
-    mounts_preprocess = get_mounts(pipeline, ('avadx', 'samples'), exit_on_error=False if is_init else True) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
+    # 1.0.0 Extract list of samples
+    mounts_step1_0_0 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
+    step1_0_0_out = 'tmp/all_samples.txt'
+    pipeline.add_stats_report(1.00, mounts_step1_0_0[0][1], query='query -l', mounts=mounts_step1_0_0, save_as=step1_0_0_out, report_name='all_samples.log', report_description='extract sample list', keep=True)
+
+    # 1.0.1 Run pre-processing
+    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
     pipeline.add_action(
-        'run_preprocess', 1.00,
+        'run_preprocess', 1.01,
         'AVA,Dx pipeline preprocess',
         f'{CFG} --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
-        mounts=mounts_preprocess,
+        mounts=mounts_step1_0_1,
         outdir=(avadx_base_path),
         logs=('print', None)
     )
 
-    # 1.0.1 Generate stats report
+    # 1.0.2 Generate stats report
     mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
-    pipeline.add_stats_report(1.01, mounts_step1_0_1[0][1], mounts=mounts_step1_0_1)
+    pipeline.add_stats_report(1.02, mounts_step1_0_1[0][1], refers_to=1.00, mounts=mounts_step1_0_1)
 
     # 1.1-7 Variant QC -------------------------------------------------------------------------- #
 
@@ -955,7 +966,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1.1.1 Generate stats report
-    pipeline.add_stats_report(1.11, step1_1_out)
+    pipeline.add_stats_report(1.11, step1_1_out, refers_to=1.10)
 
     # 1.2   Remove variant sites which did not pass the VQSR standard.
     step1_2_out = 'vcf/1_2-source_samp_pass.vcf.gz'
@@ -1009,7 +1020,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     step1_5_out = 'vcf/1_5-source_samp_pass_snps_site-v_gt-v.vcf.gz'
     pipeline.add_action(
         'filterVCF_by_ABAD', 1.50,
-        'check individual call quality',
+        'check individual call quality by allele balance and missing rate',
         f'/app/python/avadx/filterVCF_by_ABAD.py $WD/{step1_4_out} $WD/{step1_5_out} '
         'config[avadx.qc.call.AB_low] config[avadx.qc.call.AB_high] '
         'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]',

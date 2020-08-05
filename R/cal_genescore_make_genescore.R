@@ -86,7 +86,7 @@ if(opt$m=="sum"){
   # Normalizing variant score by protein lengths:
   df_gs$Prot_length <- protL$Prot_length[match(df_gs$Transcript, protL$Transcript)]
   df_gs <- df_gs %>%
-    mutate(gene_score_normed = gene_score * 100/Prot_length)
+    mutate(gene_score_normalized = gene_score * 100/Prot_length)
 
 
   }else if(opt$m=="product"){
@@ -106,7 +106,7 @@ if(opt$m=="sum"){
     # Normalizing variant score by protein lengths:
     df_gs$Prot_length <- protL$Prot_length[match(df_gs$Transcript, protL$Transcript)]
     df_gs <- df_gs %>%
-      mutate(gene_score_normed = gene_score * 100/Prot_length)  
+      mutate(gene_score_normalized = gene_score * 100/Prot_length)  
 }
 
 setwd(opt$out)
@@ -114,9 +114,9 @@ setwd(opt$out)
 if(opt$n=="n"){
   fwrite(df_gs[, c("Gene", "Transcript", "gene_score")], paste0(sample_name, ".gs"))
 }else if(opt$n=="y"){
-  fwrite(df_gs[, c("Gene", "Transcript", "gene_score_normed")], paste0(sample_name, ".gs"))
+  fwrite(df_gs[, c("Gene", "Transcript", "gene_score_normalized")], paste0(sample_name, ".gs"))
 }else if(opt$n=="both"){
-  fwrite(df_gs[, c("Gene", "Transcript", "gene_score", "gene_score_normed")], paste0(sample_name, ".gs"))
+  fwrite(df_gs[, c("Gene", "Transcript", "gene_score", "gene_score_normalized")], paste0(sample_name, ".gs"))
 }
 
 

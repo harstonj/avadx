@@ -6,7 +6,7 @@ suppressMessages(library(caret))
 suppressMessages(library(PRROC))
 suppressMessages(library(xlsx))
 
-# This script takes in GeneScoreTable_normed.txt, cv-scheme1.txt, and an output folder path
+# This script takes in GeneScoreTable_normalized.txt, cv-scheme1.txt, and an output folder path
 # It outputs 10-fold cross-validation performance with randomforest the enriched gene lists with KS test as FS
 # Default gene number tested: seq(5, 300, 5)
 
@@ -16,7 +16,7 @@ suppressMessages(library(xlsx))
 
 option_list = list(
   make_option(c("-f", "--input_file"), type="character", default=NULL,
-              help="path to input file; e.g. GeneScoreTable_normed.txt", metavar="character"),
+              help="path to input file; e.g. GeneScoreTable_normalized.txt", metavar="character"),
   make_option(c("-m", "--fs_method"), type="character", default=NULL,
               help="feature selection method to use: 'ks' - Kolmogorov–Smirnov test between disease and control samples", metavar="character"),
   make_option(c("-M", "--ml_method"), type="character", default=NULL,
@@ -40,7 +40,7 @@ option_list = list(
 )
 
 # args <- commandArgs(trailingOnly=TRUE)
-# gs_fp <- args[1]    # path to GeneScoreTable_normed.txt
+# gs_fp <- args[1]    # path to GeneScoreTable_normalized.txt
 # cvsch_fp <- args[2] # path to cv-scheme1.txt
 # out_fp <- args[3]   # path to output folder
 

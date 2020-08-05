@@ -6,7 +6,7 @@ option_list = list(
   make_option(c("-f", "--input_file"), type="character", default=NULL,
               help="path to input file; e.g. 10F-CV-ks-selectedGenes.xlsx", metavar="character"),
   make_option(c("-b", "--input_file_genescore"), type="character", default=NULL,
-              help="path to the cleaned gene score table; e.g. GeneScoreTable_normed.NAto0.nzv85-15.txt", metavar="character"),
+              help="path to the cleaned gene score table; e.g. GeneScoreTable_normalized.NAto0.nzv85-15.txt", metavar="character"),
   make_option(c("-t", "--top_genes"), type="character", default=NULL,
               help="path to the top AUC rank file", metavar="character"),
   make_option(c("-n", "--number_of_top_genes"), type="numeric", default=100,

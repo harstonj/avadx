@@ -582,7 +582,10 @@ class Pipeline:
         if self.daemon == "docker":
             bind_mounts = []
             for m in mounts:
-                bind_mounts += ['-v', f'{m[0]}:{m[1]}']
+                if m[0] is None or m[0] is None:
+                    self.log.warning(f'Invalid bind mount: {m}')
+                else:
+                    bind_mounts += ['-v', f'{m[0]}:{m[1]}']
             cmd_base += [
                 '--rm',
                 '-v', f'{out_folder.absolute()}:{VM_MOUNT / "out"}',

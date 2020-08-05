@@ -1,6 +1,7 @@
 #!/usr/bin/env Rscript
 library(dplyr)
 library(seqinr)
+library(data.table)
 
 args <- commandArgs(trailingOnly=TRUE)
 
@@ -8,13 +9,26 @@ exonic.file <- args[1]
 dbfolder <- args[2]
 outputfolder <- args[3]
 
+logs = c()
+
+setwd(outputfolder)
+all.file = gsub(".exonic_variant_function", ".variant_function", exonic.file)
+all.info = data.table(table(fread(all.file, header=F, data.table=F)$V1))
+colnames(all.info) = c('type', 'count')
+all.info = rbindlist(list(all.info, data.table(type='TOTAL', count=sum(all.info$count))))
+fwrite(all.info, 'annovar_stats.csv')
+
 setwd(dbfolder)
 df_len <- read.csv("Transcript-ProtLength.csv", stringsAsFactors=F, header=T)
 #mutOut <- read.table("Mutations.mutOut", stringsAsFactors=F, header=F, sep="\t")
 
-exonic <- data.table::fread(exonic.file, header=F, data.table=F)
+var_filter = c("synonymous SNV", "nonsynonymous SNV", "stopgain", "stoploss")
+exonic <- fread(exonic.file, header=F, data.table=F)
+logs = c(logs, paste('Variants read:', nrow(exonic)))
 exonic <- exonic[exonic$V3!="UNKNOWN",]
-exonic <- exonic[exonic$V2 %in% c("synonymous SNV", "nonsynonymous SNV", "stopgain", "stoploss"), ]
+exonic <- exonic[exonic$V2 %in% var_filter, ]
+vars_retained = table(exonic['V2'])
+logs = c(logs, paste('Variants retained:', nrow(exonic)), paste(names(vars_retained), collapse = ","), toString(vars_retained))
 
 variants <- strsplit(exonic$V3, ",")
 variants <- lapply(variants, function(x) strsplit(x, ":"))
@@ -39,19 +53,19 @@ for(i in 1:length(variants)){
   rm(g, trans, dfi)
 }
 
-gene_mRNA <- data.table::rbindlist(gene_mRNA_list, use.names=T)
+gene_mRNA <- rbindlist(gene_mRNA_list, use.names=T)
 gene_mRNA$prot_length <- df_len$Prot_length[match(gene_mRNA$Transcript, df_len$Transcript)]
+logs = c(logs, paste("Variants annotated (including isoforms)", nrow(gene_mRNA)))
 
 setwd(outputfolder)
   write.table(unique(as.character(gene_mRNA$Transcript[is.na(gene_mRNA$prot_length)])), 
               file="missing_mRNA_accession_global.txt", quote=F, col.names=F, row.names=F)
 if(any(is.na(gene_mRNA$prot_length))){
-  print(
-    paste0(
-      "Transcript-ProtLength.csv lacks protein length info for ",
-      length(which(is.na(gene_mRNA$prot_length))), " GLOBAL transcripts (",
-      round(length(which(is.na(gene_mRNA$prot_length)))/nrow(gene_mRNA)*100), "%). "
-    )
+  missing_count = length(which(is.na(gene_mRNA$prot_length)))
+  missing_vars = gene_mRNA[which(is.na(gene_mRNA$prot_length)), ]
+  missing_vars_cnt = length(unique(missing_vars$Transcript))
+  logs = c(logs,
+    paste0("Protein length information missing for ", missing_vars_cnt, " GLOBAL transcripts (", round(missing_count/nrow(gene_mRNA)*100, 2), "% of all variants)")
   )
 }
 
@@ -64,20 +78,27 @@ if(any(is.na(gene_mRNA$prot_length))){
 #gene_mRNA <- gene_mRNA[gene_mRNA$Exist==F, ]
 gene_mRNA_nodup <- gene_mRNA %>%
   group_by(line) %>%
-  filter(prot_length == max(prot_length))
+  filter(prot_length == max(prot_length)) %>%
+  filter(row_number()==1)
+logs = c(logs, paste("Variants retained (longest isoform / first if same langth):", nrow(gene_mRNA_nodup)))
 
 setwd(outputfolder)
 write.table(unique(as.character(gene_mRNA_nodup$Transcript[is.na(gene_mRNA_nodup$prot_length)])), 
             file="missing_mRNA_accession_query.txt", quote=F, col.names=F, row.names=F)
 if(any(is.na(gene_mRNA_nodup$prot_length))){
-  print(
+  missing_count = length(which(is.na(gene_mRNA_nodup$prot_length)))
+  missing_vars = gene_mRNA_nodup[which(is.na(gene_mRNA_nodup$prot_length)), ]
+  missing_vars_cnt = length(unique(missing_vars$Transcript))
+  logs = c(logs,
     paste0(
-      "Transcript-ProtLength.csv lacks protein length info for ",
-      length(which(is.na(gene_mRNA_nodup$prot_length))), " QUERY transcripts (",
-      round(length(which(is.na(gene_mRNA_nodup$prot_length)))/nrow(gene_mRNA_nodup)*100), "%)"
+      "Protein length information missing for ", missing_vars_cnt, " QUERY transcripts (", round(missing_count/nrow(gene_mRNA_nodup)*100, 2), "% of all variants)"
     )
   )
 }
+
+fileConn<-file("SNAP_extract_vars.log")
+writeLines(logs, fileConn)
+close(fileConn)
 
 # Read in fasta files:
 setwd(dbfolder)

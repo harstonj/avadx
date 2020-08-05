@@ -1163,7 +1163,11 @@ def run_all(uid, kwargs, extra, config, daemon):
         'generate_SNAP_query', 3.30,
         'generate SNAP scores query',
         f'/app/R/avadx/check_missing_SNAP.R $WD/{step3_2_out} config[DEFAULT.avadx.data] $WD/{step3_3_outfolder}',
-        outdir=(WD / step3_3_outfolder)
+        outdir=(WD / step3_3_outfolder),
+        reports=[
+            (Path('SNAP_scores') / 'annovar_stats.csv', '3_3-annovar_stats.csv'),
+            (Path('SNAP_scores') / 'SNAP_extract_vars.log', '3_3-extract_variants.log')
+        ]
     )
 
     # 3.4   Query varidb for SNAP mutations
@@ -1177,7 +1181,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'-o $WD/{step3_4_out} '
         '-R $WD/SNAP_scores/varidb_query_report.txt '
         '-C query variant score -S tab -H -s',
-        reports=[(Path('SNAP_scores') / 'varidb_query_report.txt', '3_4-SNAP_scores_varidb_report.txt')]
+        reports=[(Path('SNAP_scores') / 'varidb_query_report.txt', '3_4-SNAP_scores_varidb_report.log')]
     )
 
     # 4     Gene score calculation ---------------------------------------------------------------- #

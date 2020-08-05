@@ -133,17 +133,18 @@ class AVADxMeta:
         for report in reports:
             source = wd / str(uid) / 'wd' / Path(report[0])
             target = wd / str(uid) / 'out' / 'reports' / Path(report[1])
-            if len(report) == 3 and report[2]:
-                if source.is_file():
-                    shutil.copyfile(source, target)
+            if source.exists():
+                if len(report) == 3 and report[2]:
+                    if source.is_file():
+                        shutil.copyfile(source, target)
+                    else:
+                        if target.exists():
+                            shutil.rmtree(target)
+                        shutil.copytree(source, target)
                 else:
-                    if target.exists():
+                    if target.exists() and target.is_dir():
                         shutil.rmtree(target)
-                    shutil.copytree(source, target)
-            else:
-                if target.exists() and target.is_dir():
-                    shutil.rmtree(target)
-                shutil.move(source, target)
+                    shutil.move(source, target)
 
     def check_results(self, wd, uid, wd_results, out_results):
 
@@ -496,13 +497,17 @@ class Pipeline:
         pos1, remaining = f'{step:.2f}'.rsplit(".", 1)[0], list(f'{step:.2f}'.rsplit(".", 1)[-1])
         return f'{pos1}_{remaining[0]}{"-" + remaining[1] if remaining[1] != "0" else ""}'
 
-    def add_stats_report(self, step, data, refers_to=None, query='stats -v -s -', mounts=[], save_as=None, report_name='stats_report.log', report_description='generate stats report', keep=False):
+    def add_stats_report(
+        self, step, data, refers_to=None, query='stats -v -s -', mounts=[], save_as=None,
+        report_name='stats_report.log', report_description='generate stats report', check_exists=None, keep=False
+    ):
         source = data if mounts else f'$WD/{data}'
         target = save_as if save_as is not None else f'tmp/{report_name}'
+        pre_check = f'[[ ! -f "$WD/{check_exists}" || ! -s "$WD/{check_exists}" ]] && ' if check_exists else ''
         self.add_action(
             'bcftools', step,
             report_description,
-            f'-c \'bcftools {query} {source} > $WD/{target}\'',
+            f'-c \'{pre_check}bcftools {query} {source} > $WD/{target}\'',
             daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
             mounts=mounts,
             reports=[(target, f'{Pipeline.format_step(step) if refers_to is None else Pipeline.format_step(refers_to)}-{report_name}', keep)]
@@ -935,7 +940,10 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 1.0.0 Extract list of samples
     mounts_step1_0_0 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
     step1_0_0_out = 'tmp/all_samples.txt'
-    pipeline.add_stats_report(1.00, mounts_step1_0_0[0][1], query='query -l', mounts=mounts_step1_0_0, save_as=step1_0_0_out, report_name='all_samples.log', report_description='extract sample list', keep=True)
+    pipeline.add_stats_report(
+        1.00, mounts_step1_0_0[0][1], query='query -l', mounts=mounts_step1_0_0, save_as=step1_0_0_out,
+        report_name='all_samples.log', report_description='extract sample list', keep=True
+    )
 
     # 1.0.1 Run pre-processing
     mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
@@ -966,7 +974,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1.1.1 Generate stats report
-    pipeline.add_stats_report(1.11, step1_1_out, refers_to=1.10)
+    pipeline.add_stats_report(1.11, step1_1_out, refers_to=1.10, check_exists='tmp/sampleids.txt')
 
     # 1.2   Remove variant sites which did not pass the VQSR standard.
     step1_2_out = 'vcf/1_2-source_samp_pass.vcf.gz'
@@ -977,7 +985,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1.2.1 Generate stats report
-    pipeline.add_stats_report(1.21, step1_2_out)
+    pipeline.add_stats_report(1.21, step1_2_out, refers_to=1.20)
 
     # 1.3   Split SNV and InDel calls to separated files because they use different QC thresholds.
     #       Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
@@ -1010,7 +1018,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1.4.1 Generate stats report
-    pipeline.add_stats_report(1.41, step1_4_out)
+    pipeline.add_stats_report(1.41, step1_4_out, refers_to=1.40)
 
     # 1.5   Check individual call quality. In filterVCF_by_ABAD.py:
     #       good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4;
@@ -1043,7 +1051,7 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 2.1.0 Generate stats report
     step2_1_0_out = 'tmp/source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.stats.txt'
-    pipeline.add_stats_report(2.10, step1_out, save_as=step2_1_0_out, keep=True)
+    pipeline.add_stats_report(2.10, step1_out, refers_to=1.50, save_as=step2_1_0_out, keep=True)
 
     # 2.1.1 Draw individual quality figure:
     step2_1_1_out = 'tmp/quality_control_samples_PCA.pdf'
@@ -1158,7 +1166,8 @@ def run_all(uid, kwargs, extra, config, daemon):
     step2_4_out = step2_4_out if outliers_available else step1_out
 
     # 2.4.1 Generate stats report
-    pipeline.add_stats_report(2.41, step2_4_out)
+    if outliers_available:
+        pipeline.add_stats_report(2.41, step2_4_out, refers_to=2.40)
 
     # 2.5   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
     #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
@@ -1175,7 +1184,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     step2_out = step2_5_out if gnomADfilter else step2_4_out
 
     # 2.5.1 Generate stats report
-    pipeline.add_stats_report(2.51, step2_5_out)
+    pipeline.add_stats_report(2.51, step2_5_out, refers_to=2.50)
 
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
 

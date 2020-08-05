@@ -486,6 +486,23 @@ class Pipeline:
             self.kwargs[f'{action}_reports'] = self.kwargs.get(f'{action}_reports', []) + [reports]
             self.kwargs[f'{action}_logs'] = self.kwargs.get(f'{action}_logs', []) + [logs]
 
+    @staticmethod
+    def format_step(step):
+        pos1, remaining = f'{step:.2f}'.rsplit(".", 1)[0], list(f'{step:.2f}'.rsplit(".", 1)[-1])
+        return f'{pos1}_{remaining[0]}{"-" + remaining[1] if remaining[1] != "0" else ""}'
+
+    def add_stats_report(self, step, data, mounts=[], save_as=None, keep=False):
+        source = data if mounts else f'$WD/{data}'
+        target = save_as if save_as is not None else 'tmp/stats_report.log'
+        self.add_action(
+            'bcftools', step,
+            'generate stats report',
+            f'-c \'bcftools stats -v -s - {source} > $WD/{target}\'',
+            daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
+            mounts=mounts,
+            reports=[(target, f'{Pipeline.format_step(step)}-stats_report.log', keep)]
+        )
+
     def check_config(self, name, section='avadx', flag='', is_file=False, default=None, quiet=False):
         option_value = 'NA'
         formatted = ''
@@ -920,6 +937,10 @@ def run_all(uid, kwargs, extra, config, daemon):
         logs=('print', None)
     )
 
+    # 1.0.1 Generate stats report
+    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
+    pipeline.add_stats_report(1.01, mounts_step1_0_1[0][1], mounts=mounts_step1_0_1)
+
     # 1.1-7 Variant QC -------------------------------------------------------------------------- #
 
     # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
@@ -933,6 +954,9 @@ def run_all(uid, kwargs, extra, config, daemon):
         results=([step1_1_out], [])
     )
 
+    # 1.1.1 Generate stats report
+    pipeline.add_stats_report(1.11, step1_1_out)
+
     # 1.2   Remove variant sites which did not pass the VQSR standard.
     step1_2_out = 'vcf/1_2-source_samp_pass.vcf.gz'
     pipeline.add_action(
@@ -940,6 +964,9 @@ def run_all(uid, kwargs, extra, config, daemon):
         'filter variant sites < VQSR standard',
         f'filter -i \'FILTER="PASS"\' $WD/{step1_1_out} -Oz -o $WD/{step1_2_out}'
     )
+
+    # 1.2.1 Generate stats report
+    pipeline.add_stats_report(1.21, step1_2_out)
 
     # 1.3   Split SNV and InDel calls to separated files because they use different QC thresholds.
     #       Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
@@ -971,6 +998,9 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'$WD/{step1_3_1_out} -Oz -o $WD/{step1_4_out}'
     )
 
+    # 1.4.1 Generate stats report
+    pipeline.add_stats_report(1.41, step1_4_out)
+
     # 1.5   Check individual call quality. In filterVCF_by_ABAD.py:
     #       good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4;
     #       bad individual GTs are converted into missing "./.";
@@ -1000,15 +1030,9 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 2.2   Quality check - Check quality outliers by examining nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
 
-    # 2.1.0 Output quality metrics after variant QC:
+    # 2.1.0 Generate stats report
     step2_1_0_out = 'tmp/source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.stats.txt'
-    pipeline.add_action(
-        'bcftools', 2.10,
-        'generate quality metrics after variant QC',
-        f'-c \'bcftools stats -v -s - $WD/{step1_out} > $WD/{step2_1_0_out}\'',
-        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
-        reports=[(step2_1_0_out, '2_1-stats_post_qc.log', True)]
-    )
+    pipeline.add_stats_report(2.10, step1_out, save_as=step2_1_0_out, keep=True)
 
     # 2.1.1 Draw individual quality figure:
     step2_1_1_out = 'tmp/quality_control_samples_PCA.pdf'
@@ -1122,6 +1146,9 @@ def run_all(uid, kwargs, extra, config, daemon):
         )
     step2_4_out = step2_4_out if outliers_available else step1_out
 
+    # 2.4.1 Generate stats report
+    pipeline.add_stats_report(2.41, step2_4_out)
+
     # 2.5   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
     #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
     #       Note that tabix is required for indexing to run this script.
@@ -1135,6 +1162,9 @@ def run_all(uid, kwargs, extra, config, daemon):
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
         )
     step2_out = step2_5_out if gnomADfilter else step2_4_out
+
+    # 2.5.1 Generate stats report
+    pipeline.add_stats_report(2.51, step2_5_out)
 
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
 

@@ -1176,8 +1176,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         'varidb', 3.40,
         'query SNAP variants from varidb',
         '-D config[DEFAULT.avadx.data]/varidb.db '
-        f'-Q $WD/{step3_3_outfolder}/varidb_query.ids '
-        f'-f $WD/{step3_3_outfolder}/varidb_query.fa '
+        f'-Q $WD/{step3_3_outfolder}/varidb_query_nonsyn.ids '
+        f'-f $WD/{step3_3_outfolder}/varidb_query_nonsyn.fa '
         f'-o $WD/{step3_4_out} '
         '-R $WD/SNAP_scores/varidb_query_report.txt '
         '-C query variant score -S tab -H -s',

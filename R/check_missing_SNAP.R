@@ -46,9 +46,10 @@ gene_mRNA_list <- list()
 for(i in 1:length(variants)){
   g <- unlist(variants_gene[[i]])
   line <- exonic$V1[i]
+  type <- exonic$V2[i]
   trans <- unlist(variants_mRNA[[i]])
   aaMut <- unlist(variants_aaMut[[i]])
-  dfi <- data.frame("Gene"=g, "Transcript"=trans, "aaMut"=gsub("p.", "", aaMut), "line"=line)
+  dfi <- data.frame("Gene"=g, "Transcript"=trans, "aaMut"=gsub("p.", "", aaMut), "line"=line, "type"=type)
   gene_mRNA_list[[i]] <- dfi
   rm(g, trans, dfi)
 }
@@ -95,10 +96,6 @@ if(any(is.na(gene_mRNA_nodup$prot_length))){
     )
   )
 }
-
-fileConn<-file("SNAP_extract_vars.log")
-writeLines(logs, fileConn)
-close(fileConn)
 
 # Read in fasta files:
 setwd(dbfolder)
@@ -148,7 +145,19 @@ if(length(missing_prot_seq_nodup)>0){
 
 # 2. Generate varidb input
 setwd(outputfolder)
-matched = match(unique(gene_mRNA_nodup$Transcript), fas_mRNA)
-write.fasta(fas[matched], fas_mRNA[matched], file.out='varidb_query.fa')
-write.table(gene_mRNA_nodup[c('Transcript', 'aaMut')], "varidb_query.ids", quote=F, col.names=F, row.names=F)
+gene_mRNA_nodup_nonsyn = gene_mRNA_nodup[which(gene_mRNA_nodup$type != 'synonymous SNV'), ]
+matched_nonsyn = match(unique(gene_mRNA_nodup_nonsyn$Transcript), fas_mRNA)
+write.fasta(fas[matched_nonsyn], fas_mRNA[matched_nonsyn], file.out='varidb_query_nonsyn.fa')
+write.table(gene_mRNA_nodup_nonsyn[c('Transcript', 'aaMut')], "varidb_query_nonsyn.ids", quote=F, col.names=F, row.names=F)
+gene_mRNA_nodup_syn = gene_mRNA_nodup[which(gene_mRNA_nodup$type == 'synonymous SNV'), ]
+matched_syn = match(unique(gene_mRNA_nodup_syn$Transcript), fas_mRNA)
+write.fasta(fas[matched_syn], fas_mRNA[matched_syn], file.out='varidb_query_syn.fa')
+write.table(gene_mRNA_nodup_syn[c('Transcript', 'aaMut')], "varidb_query_syn.ids", quote=F, col.names=F, row.names=F)
 write.table(gene_mRNA_nodup, "varidb_gene_mRNA_nodup.tsv", quote=F, col.names=T, row.names=T)
+
+logs = c(logs, paste("Extracted [synonymous SNVs]:", nrow(gene_mRNA_nodup_syn)))
+logs = c(logs, paste("Extracted [non-synonymous SNVs, stopgain, stoploss]:", nrow(gene_mRNA_nodup_nonsyn)))
+
+fileConn<-file("SNAP_extract_vars.log")
+writeLines(logs, fileConn)
+close(fileConn)

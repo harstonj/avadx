@@ -24,18 +24,18 @@ df_len <- read.csv("Transcript-ProtLength.csv", stringsAsFactors=F, header=T)
 
 var_filter = c("synonymous SNV", "nonsynonymous SNV", "stopgain", "stoploss")
 exonic <- fread(exonic.file, header=F, data.table=F)
-logs = c(logs, paste('Variants read:', nrow(exonic)))
+logs = c(logs, paste('Exonic variants read:', nrow(exonic)))
 exonic <- exonic[exonic$V3!="UNKNOWN",]
 exonic <- exonic[exonic$V2 %in% var_filter, ]
 vars_retained = table(exonic['V2'])
-logs = c(logs, paste('Variants retained:', nrow(exonic)), paste(names(vars_retained), collapse = ","), toString(vars_retained))
+logs = c(logs, paste('Annotated variants retained:', nrow(exonic)), paste(names(vars_retained), collapse = ","), toString(vars_retained))
 
 variants <- strsplit(exonic$V3, ",")
 variants <- lapply(variants, function(x) strsplit(x, ":"))
 
 variant_lengths <- lapply(variants, function(x) unlist(lapply(x, length)))
 if(unique(unlist(variant_lengths))!=5){
-  stop(".exonic_variant_function file has rows with weird rows, please check and run this script again.")
+  stop("ERROR: Annovar .exonic_variant_function file format not recognized.")
 }
 
 variants_mRNA <- lapply(variants, function(x) lapply(x, function(y) y[2]))
@@ -56,17 +56,17 @@ for(i in 1:length(variants)){
 
 gene_mRNA <- rbindlist(gene_mRNA_list, use.names=T)
 gene_mRNA$prot_length <- df_len$Prot_length[match(gene_mRNA$Transcript, df_len$Transcript)]
-logs = c(logs, paste("Variants annotated (including isoforms)", nrow(gene_mRNA)))
+logs = c(logs, paste0("Variants across all isoforms: ", nrow(gene_mRNA), " (in ", length(unique(gene_mRNA$Transcript)), " transcripts)"))
 
 setwd(outputfolder)
   write.table(unique(as.character(gene_mRNA$Transcript[is.na(gene_mRNA$prot_length)])), 
-              file="missing_mRNA_accession_global.txt", quote=F, col.names=F, row.names=F)
+              file="missing_mRNA_accession_all_transcripts.txt", quote=F, col.names=F, row.names=F)
 if(any(is.na(gene_mRNA$prot_length))){
   missing_count = length(which(is.na(gene_mRNA$prot_length)))
   missing_vars = gene_mRNA[which(is.na(gene_mRNA$prot_length)), ]
   missing_vars_cnt = length(unique(missing_vars$Transcript))
   logs = c(logs,
-    paste0("Protein length information missing for ", missing_vars_cnt, " GLOBAL transcripts (", round(missing_count/nrow(gene_mRNA)*100, 2), "% of all variants)")
+    paste0("Information missing for ", missing_vars_cnt, " transcripts (", round(missing_count/nrow(gene_mRNA)*100, 2), "% of all variants)")
   )
 }
 
@@ -81,18 +81,18 @@ gene_mRNA_nodup <- gene_mRNA %>%
   group_by(line) %>%
   filter(prot_length == max(prot_length)) %>%
   filter(row_number()==1)
-logs = c(logs, paste("Variants retained (longest isoform / first if same langth):", nrow(gene_mRNA_nodup)))
+logs = c(logs, paste("\nFinal variants retained (longest isoform; primary annovar isoform if same length):", nrow(gene_mRNA_nodup)))
 
 setwd(outputfolder)
 write.table(unique(as.character(gene_mRNA_nodup$Transcript[is.na(gene_mRNA_nodup$prot_length)])), 
-            file="missing_mRNA_accession_query.txt", quote=F, col.names=F, row.names=F)
+            file="missing_mRNA_accession_mapped_transcripts.txt", quote=F, col.names=F, row.names=F)
 if(any(is.na(gene_mRNA_nodup$prot_length))){
   missing_count = length(which(is.na(gene_mRNA_nodup$prot_length)))
   missing_vars = gene_mRNA_nodup[which(is.na(gene_mRNA_nodup$prot_length)), ]
   missing_vars_cnt = length(unique(missing_vars$Transcript))
   logs = c(logs,
     paste0(
-      "Protein length information missing for ", missing_vars_cnt, " QUERY transcripts (", round(missing_count/nrow(gene_mRNA_nodup)*100, 2), "% of all variants)"
+      "Information missing for ", missing_vars_cnt, " mapped transcripts (", round(missing_count/nrow(gene_mRNA_nodup)*100, 2), "% of all variants)"
     )
   )
 }
@@ -108,12 +108,6 @@ fas_mRNA <- unlist(lapply(fas_mRNA, function(x) x[1]))
 
 # 1. check if the prot_seq.txt contains the protein sequence:
 missing_prot_seq <- setdiff(unique(as.character(gene_mRNA$Transcript)), fas_mRNA)
-
-if(length(missing_prot_seq)>0){
-  setwd(outputfolder)
-  write.table(missing_prot_seq, "TranscriptAccess_missing_prot_seq_global.txt", quote=F, col.names=F, row.names=F)
-  print(paste0(length(missing_prot_seq), " GLOBAL transcripts do not have protein sequences in the db folder. Please append the protein sequence into the prot_seqs.fa file! mRNA transcript accession numbers were output to the output folder and is named: TranscriptAccess_missing_prot_seq.txt. Please use NCBI batch entrez query to obtain protein sequences (https://www.ncbi.nlm.nih.gov/sites/batchentrez)."))
-}
 
 # # 2. make SNAP input:
 # setwd(outputfolder)
@@ -137,7 +131,7 @@ if(length(missing_prot_seq)>0){
 # 1. check if prot_seq.txt contains all sequence for relevant query subset:
 missing_prot_seq_nodup <- setdiff(unique(as.character(gene_mRNA_nodup$Transcript)), fas_mRNA)
 setwd(outputfolder)
-  write.table(missing_prot_seq_nodup, "TranscriptAccess_missing_prot_seq_query.txt", quote=F, col.names=F, row.names=F)
+  write.table(missing_prot_seq_nodup, "TranscriptAccess_missing_prot_seq_mapped.txt", quote=F, col.names=F, row.names=F)
 
 if(length(missing_prot_seq_nodup)>0){
   print(paste0(length(missing_prot_seq_nodup), " QUERY transcripts do not have protein sequences in the db folder"))
@@ -145,18 +139,41 @@ if(length(missing_prot_seq_nodup)>0){
 
 # 2. Generate varidb input
 setwd(outputfolder)
-gene_mRNA_nodup_nonsyn = gene_mRNA_nodup[which(gene_mRNA_nodup$type != 'synonymous SNV'), ]
+
+gene_mRNA_nodup_nonsyn = gene_mRNA_nodup[which(gene_mRNA_nodup$type == 'nonsynonymous SNV'), ]
 matched_nonsyn = match(unique(gene_mRNA_nodup_nonsyn$Transcript), fas_mRNA)
 write.fasta(fas[matched_nonsyn], fas_mRNA[matched_nonsyn], file.out='varidb_query_nonsyn.fa')
 write.table(gene_mRNA_nodup_nonsyn[c('Transcript', 'aaMut')], "varidb_query_nonsyn.ids", quote=F, col.names=F, row.names=F)
+
 gene_mRNA_nodup_syn = gene_mRNA_nodup[which(gene_mRNA_nodup$type == 'synonymous SNV'), ]
 matched_syn = match(unique(gene_mRNA_nodup_syn$Transcript), fas_mRNA)
 write.fasta(fas[matched_syn], fas_mRNA[matched_syn], file.out='varidb_query_syn.fa')
 write.table(gene_mRNA_nodup_syn[c('Transcript', 'aaMut')], "varidb_query_syn.ids", quote=F, col.names=F, row.names=F)
-write.table(gene_mRNA_nodup, "varidb_gene_mRNA_nodup.tsv", quote=F, col.names=T, row.names=T)
 
-logs = c(logs, paste("Extracted [synonymous SNVs]:", nrow(gene_mRNA_nodup_syn)))
-logs = c(logs, paste("Extracted [non-synonymous SNVs, stopgain, stoploss]:", nrow(gene_mRNA_nodup_nonsyn)))
+gene_mRNA_nodup_stopgainloss = gene_mRNA_nodup[which(gene_mRNA_nodup$type %in% c('stopgain', 'stoploss')), ]
+matched_stopgainloss = match(unique(gene_mRNA_nodup_stopgainloss$Transcript), fas_mRNA)
+write.fasta(fas[matched_stopgainloss], fas_mRNA[matched_stopgainloss], file.out='varidb_query_stopgainloss.fa')
+write.table(gene_mRNA_nodup_stopgainloss[c('Transcript', 'aaMut')], "varidb_query_stopgainloss.ids", quote=F, col.names=F, row.names=F)
+
+write.table(gene_mRNA_nodup, "varidb_gene_mRNA_all.tsv", quote=F, col.names=T, row.names=T)
+
+logs = c(logs, "\n-- Variant types --")
+logs = c(logs, paste("synonymous SNVs    :", nrow(gene_mRNA_nodup_syn)))
+logs = c(logs, paste("non-synonymous SNVs:", nrow(gene_mRNA_nodup_nonsyn)))
+logs = c(logs, paste("stopgain / stoploss:", nrow(gene_mRNA_nodup_stopgainloss)))
+
+if(length(missing_prot_seq)>0){
+  setwd(outputfolder)
+  write.table(missing_prot_seq, "TranscriptAccess_missing_prot_seq_all.txt", quote=F, col.names=F, row.names=F)
+  logs = c(logs,
+    paste0(
+      "\n\n\nNOTE: For ", length(missing_prot_seq), " transcripts no protein sequences were available. ",
+      "To include respective variants, add missing sequences to the avadx/prot_seqs.fa file. ",
+      "mRNA transcript accession numbers can be found in the working directory: SNAP_scores/TranscriptAccess_missing_prot_seq_[all|mapped].txt. ",
+      "Please use NCBI batch entrez query to obtain protein sequences (https://www.ncbi.nlm.nih.gov/sites/batchentrez)."
+    )
+  )
+}
 
 fileConn<-file("SNAP_extract_vars.log")
 writeLines(logs, fileConn)

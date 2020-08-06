@@ -224,6 +224,9 @@ class AVADxMeta:
     def run_postprocess(self, uid, **kwargs):
         self.run_method(self.IMAGES['avadx'], 'run_postprocess', uid, kwargs)
 
+    def run_visualization(self, uid, **kwargs):
+        self.run_method(self.IMAGES['avadx'], 'run_visualization', uid, kwargs)
+
 
 class Pipeline:
 
@@ -475,6 +478,18 @@ class Pipeline:
         for item in wd_cleanup:
             cleanup(wd_folder, item)
 
+    def visualization(self, info):
+        from .plots import Figure
+        vis, dataset = info.split(':')
+        if self.is_vm:
+            wd_folder = self.kwargs.get('wd')
+            out_folder = wd_folder.parent / 'out'
+        else:
+            wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
+            out_folder = self.kwargs.get('wd') / str(self.uid) / 'out'
+        fig = Figure(vis, dataset, wd_folder, out_folder)
+        fig.create()
+
     def add_action(
             self, action, level=None, description='', args='', daemon_args={},
             tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], results=([], []), reports=[], logs=(None, None)):
@@ -725,12 +740,12 @@ def parse_arguments():
                         help='run input pre-processing')
     parser.add_argument('-P', '--postprocess', action='store_true',
                         help='run pipleine post-processing')
+    parser.add_argument('-V', '--visualize', type=str,
+                        help='create visualizations / result plots')
     parser.add_argument('-r', '--retrieve', type=str,
                         help='retrieve data source')
-    parser.add_argument('-e', '--entrypoint', type=float,
-                        help='(re)start pipeline at specified entrypoint')
-    parser.add_argument('-E', '--exitpoint', type=float,
-                        help='stop pipeline before specified exitpoint')
+    parser.add_argument('-S', '--steps', type=str,
+                        help='steps to run, e.g. 1 (start from 1) or 1-2 (start from 1, stop at 2)')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='set verbosity level (v: ERROR, vv: WARNING, vvv: info, vvvv: debug); default: log level INFO')
     parser.add_argument('-L', '--logfile', type=Path, const=Path('pipeline.log'),
@@ -756,6 +771,12 @@ def parse_arguments():
     QUIET = namespace.quiet
     del namespace.verbose
     del namespace.logfile
+    if namespace.steps:
+        namespace.entrypoint = float(namespace.steps.split('-')[0]) if namespace.steps.split('-')[0] != '' else None
+        namespace.exitpoint = float(namespace.steps.split('-')[1]) if len(namespace.steps.split('-')) == 2 else None
+    else:
+        namespace.entrypoint, namespace.exitpoint = None, None
+    del namespace.steps
 
     return namespace, extra
 
@@ -883,7 +904,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.14,
         'verify/download database: varidb',
-        f'{CFG} --retrieve varidb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'{CFG} --retrieve varidb --wd $WD {("-" if LOG_LEVEL > 0 else "") + "v"*((50-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
         outdir=(avadx_base_path),
         logs=('print', None)
@@ -893,7 +914,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.15,
         'verify/download database: CPDB pathway mapping',
-        f'{CFG} --retrieve cpdb --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'{CFG} --retrieve cpdb --wd $WD {("-" if LOG_LEVEL > 0 else "") + "v"*((50-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
         outdir=(avadx_base_path),
         logs=('print', None)
@@ -914,7 +935,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_retrieve', 0.17,
         'verify/download reference sequences/stats: refseq',
-        f'{CFG} --retrieve refseq --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'{CFG} --retrieve refseq --wd $WD {("-" if LOG_LEVEL > 0 else "") + "v"*((50-LOG_LEVEL)//10)}',
         mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
         outdir=(avadx_base_path),
         logs=('print', None)
@@ -943,7 +964,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'run_preprocess', 1.01,
         'AVA,Dx pipeline preprocess',
-        f'{CFG} --preprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'{CFG} --preprocess --wd $WD {("-" if LOG_LEVEL > 0 else "") + "v"*((50-LOG_LEVEL)//10)}',
         mounts=mounts_step1_0_1,
         outdir=(avadx_base_path),
         logs=('print', None)
@@ -1304,12 +1325,22 @@ def run_all(uid, kwargs, extra, config, daemon):
         outdir=(OUT / step5_2_outfolder)
     )
 
-    # 6   Cleanup ------------------------------------------------------------------------------- #
+    # 6   Visualizations ------------------------------------------------------------------------ #
+    mounts_visualization = [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
+    pipeline.add_action(
+        'run_visualization', 6.00,
+        'AVA,Dx visualizations',
+        f'{CFG} --visualize heatmap_clust_dend:genescores --wd $WD {("-" if LOG_LEVEL > 0 else "") + "v"*((50-LOG_LEVEL)//10)}',
+        mounts=mounts_visualization,
+        logs=('print', None)
+    )
+
+    # 7   Cleanup ------------------------------------------------------------------------------- #
     mounts_postprocess = [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
     pipeline.add_action(
-        'run_postprocess', 6.00,
+        'run_postprocess', 7.00,
         'AVA,Dx pipeline postprocess',
-        f'{CFG} --postprocess --wd $WD {"-v "*((40-LOG_LEVEL)//10)}',
+        f'{CFG} --postprocess --wd $WD {("-" if LOG_LEVEL > 0 else "") + "v"*((50-LOG_LEVEL)//10)}',
         mounts=mounts_postprocess,
         logs=('print', None)
     )
@@ -1353,6 +1384,10 @@ def init():
     elif namespace.postprocess:
         pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
         pipeline.postprocess()
+    elif namespace.visualize:
+        namespace.init = True
+        pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
+        pipeline.visualization(namespace.visualize)
     elif actions is None:
         run_all(uid, vars(namespace), extra, config, daemon)
     else:

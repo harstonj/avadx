@@ -824,7 +824,10 @@ def run_all(uid, kwargs, extra, config, daemon):
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
     hgref = pipeline.config.get('avadx', 'hgref')
     hgref_mapped = pipeline.ASSEMBLY_MAPPING[hgref]
-    gnomADfilter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='no') == 'yes' else False
+    gnomAD_filter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='yes') == 'yes' else False
+    vqsr_PASS_filter = True if pipeline.config.get('avadx', 'vqsrPASSfilter.enabled', fallback='yes') == 'yes' else False
+    site_quality_filter = True if pipeline.config.get('avadx', 'sitequalityfilter.enabled', fallback='yes') == 'yes' else False
+    ABAD_filter = True if pipeline.config.get('avadx', 'ABADfilter.enabled', fallback='yes') == 'yes' else False
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
     genescorefn_available = True if pipeline.check_config('avadx.genescore.fn', is_file=True, quiet=True) else False
@@ -992,68 +995,76 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 1.1.1 Generate stats report
     pipeline.add_stats_report(1.11, step1_1_out, refers_to=1.10, check_exists='tmp/sampleids.txt')
 
-    # 1.2   Remove variant sites which did not pass the VQSR standard.
-    step1_2_out = 'vcf/1_2-source_samp_pass.vcf.gz'
-    pipeline.add_action(
-        'bcftools', 1.20,
-        'filter variant sites < VQSR standard',
-        f'filter -i \'FILTER="PASS"\' $WD/{step1_1_out} -Oz -o $WD/{step1_2_out}'
-    )
-
-    # 1.2.1 Generate stats report
-    pipeline.add_stats_report(1.21, step1_2_out, refers_to=1.20)
-
-    # 1.3   Split SNV and InDel calls to separated files because they use different QC thresholds.
+    # 1.2   Split SNV and InDel calls to separated files because they use different QC thresholds.
     #       Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
 
-    # 1.3.1 snps
-    step1_3_1_out = 'vcf/1_3-1-source_samp_pass_snps.vcf.gz'
+    # 1.2.1 snps
+    step1_2_1_out = 'vcf/1_2-1-source_samp_snps.vcf.gz'
     pipeline.add_action(
-        'bcftools', 1.31,
+        'bcftools', 1.21,
         'filter snps',
-        f'view --types snps $WD/{step1_2_out} -Oz -o $WD/{step1_3_1_out}'
+        f'view --types snps $WD/{step1_1_out} -Oz -o $WD/{step1_2_1_out}'
     )
-    # 1.3.2 indels
-    step1_3_2_out = 'vcf/1_3-2-source_samp_pass_indels.vcf.gz'
+    # 1.2.2 indels
+    step1_2_2_out = 'vcf/1_2-2-source_samp_indels.vcf.gz'
     pipeline.add_action(
-        'bcftools', 1.32,
+        'bcftools', 1.22,
         'filter indels',
-        f'view --types indels $WD/{step1_2_out} -Oz -o $WD/{step1_3_2_out}'
+        f'view --types indels $WD/{step1_1_out} -Oz -o $WD/{step1_2_2_out}'
     )
 
-    # 1.4   Remove variant sites by site-wise quality.
+    # 1.3   OPTIONAL - vqsr PASS filter: Remove variant sites which did not pass the VQSR standard.
+    if vqsr_PASS_filter:
+        step1_3_out = 'vcf/1_3-source_samp_snps_pass.vcf.gz'
+        pipeline.add_action(
+            'bcftools', 1.30,
+            'filter variant sites < VQSR standard',
+            f'filter -i \'FILTER="PASS"\' $WD/{step1_2_1_out} -Oz -o $WD/{step1_3_out}'
+        )
+    step1_3_out = step1_3_out if vqsr_PASS_filter else step1_2_1_out
+
+    # 1.2.1 Generate stats report
+    if vqsr_PASS_filter:
+        pipeline.add_stats_report(1.31, step1_3_out, refers_to=1.30)
+
+    # 1.4   OPTIONAL - Remove variant sites by site-wise quality.
     #       Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150.
-    step1_4_out = 'vcf/1_4-source_samp_pass_snps_site-v.vcf.gz'
-    pipeline.add_action(
-        'bcftools', 1.40,
-        'filter variant sites by site-wise quality',
-        'view -i \'QUAL>config[avadx.qc.site.quality]&'
-        'AVG(FMT/DP)<=config[avadx.qc.site.mean_dp_upper]&'
-        'AVG(FMT/DP)>=config[avadx.qc.site.mean_dp_lower]\' '
-        f'$WD/{step1_3_1_out} -Oz -o $WD/{step1_4_out}'
-    )
+    if site_quality_filter:
+        step1_4_out = 'vcf/1_4-source_samp_snps_pass_site-v.vcf.gz'
+        pipeline.add_action(
+            'bcftools', 1.40,
+            'filter variant sites by site-wise quality',
+            'view -i \'QUAL>config[avadx.qc.site.quality]&'
+            'AVG(FMT/DP)<=config[avadx.qc.site.mean_dp_upper]&'
+            'AVG(FMT/DP)>=config[avadx.qc.site.mean_dp_lower]\' '
+            f'$WD/{step1_3_out} -Oz -o $WD/{step1_4_out}'
+        )
+    step1_4_out = step1_4_out if site_quality_filter else step1_2_1_out
 
     # 1.4.1 Generate stats report
-    pipeline.add_stats_report(1.41, step1_4_out, refers_to=1.40)
+    if site_quality_filter:
+        pipeline.add_stats_report(1.41, step1_4_out, refers_to=1.40)
 
-    # 1.5   Check individual call quality. In filterVCF_by_ABAD.py:
+    # 1.5   OPTIONAL - Check individual call quality. In filterVCF_by_ABAD.py:
     #       good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4;
     #       bad individual GTs are converted into missing "./.";
     #       low call rate is determined as a call rate < 80%,
     #       i.e. missing rate >= 20%. Variant sites with a low call rate are removed.
-    step1_5_out = 'vcf/1_5-source_samp_pass_snps_site-v_gt-v.vcf.gz'
-    pipeline.add_action(
-        'filterVCF_by_ABAD', 1.50,
-        'check individual call quality by allele balance and missing rate',
-        f'/app/python/avadx/filterVCF_by_ABAD.py $WD/{step1_4_out} $WD/{step1_5_out} '
-        'config[avadx.qc.call.AB_low] config[avadx.qc.call.AB_high] '
-        'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]',
-        daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
-        reports=[(f'{step1_5_out}.log', '1_5-call_quality_filter.log')]
-    )
+    if ABAD_filter:
+        step1_5_out = 'vcf/1_5-source_samp_snps_pass_site-v_gt-v.vcf.gz'
+        pipeline.add_action(
+            'filterVCF_by_ABAD', 1.50,
+            'check individual call quality by allele balance and missing rate',
+            f'/app/python/avadx/filterVCF_by_ABAD.py $WD/{step1_4_out} $WD/{step1_5_out} '
+            'config[avadx.qc.call.AB_low] config[avadx.qc.call.AB_high] '
+            'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]',
+            daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
+            reports=[(f'{step1_5_out}.log', '1_5-call_quality_filter.log')]
+        )
+    step1_5_out = step1_5_out if ABAD_filter else step1_4_out
 
     # 1.6   Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
-    step1_6_out = 'vcf/1_6-source_samp_pass_snps_site-v_gt-v_rmchr.vcf.gz'
+    step1_6_out = 'vcf/1_6-source_samp_snps_pass_site-v_gt-v_rmchr.vcf.gz'
     pipeline.add_action(
         'bcftools', 1.6,
         'convert the chromosome annotations',
@@ -1066,7 +1077,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 2.2   Quality check - Check quality outliers by examining nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
 
     # 2.1.0 Generate stats report
-    step2_1_0_out = 'tmp/source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.stats.txt'
+    step2_1_0_out = 'tmp/source_samp_snps_pass_site-v_gt-v_rmchr.stats.txt'
     pipeline.add_stats_report(2.10, step1_out, refers_to=1.50, save_as=step2_1_0_out, keep=True)
 
     # 2.1.1 Draw individual quality figure:
@@ -1157,7 +1168,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       Check relatedness within datasets withe the SNPRelate R package.
     #       A default kinship > 0.3 is considered to be related.
     step2_3_outfolder = 'SNPRelate'
-    step2_3_out = 'tmp/source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.gds'
+    step2_3_out = 'tmp/source_samp_snps_pass_site-v_gt-v_rmchr.gds'
     pipeline.add_action(
         'relatedness', 2.30,
         'check relatedness using SNPRelate',
@@ -1170,7 +1181,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       Outlier individual IDs should be combined from the above PCA,
     #       ethnicity annotation, and relatedness calculation
     #       to a file outliers.txt (one ID per row).
-    step2_4_out = 'vcf/2_4-source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.vcf.gz'
+    step2_4_out = 'vcf/2_4-source_samp_snps_pass_site-v_gt-v_rmchr_ind-cleaned.vcf.gz'
     if outliers_available:
         mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'), exit_on_error=False if is_init else True)
         pipeline.add_action(
@@ -1188,8 +1199,8 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 2.5   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
     #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
     #       Note that tabix is required for indexing to run this script.
-    step2_5_out = 'vcf/2_5-source_samp_pass_snps_site-v_gt-v_rmchr_gnomad.vcf.gz'
-    if gnomADfilter:
+    step2_5_out = 'vcf/2_5-source_samp_snps_pass_site-v_gt-v_rmchr_gnomad.vcf.gz'
+    if gnomAD_filter:
         pipeline.add_action(
             'filterVCF_by_gnomAD', 2.5,
             'filter variants missing in gnomAD database',
@@ -1197,7 +1208,7 @@ def run_all(uid, kwargs, extra, config, daemon):
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
         )
-    step2_out = step2_5_out if gnomADfilter else step2_4_out
+    step2_out = step2_5_out if gnomAD_filter else step2_4_out
 
     # 2.5.1 Generate stats report
     pipeline.add_stats_report(2.51, step2_5_out, refers_to=2.50)
@@ -1205,7 +1216,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
 
     # 3.1   Get all variant annotations with ANNOVAR for cleaned VCF:
-    step3_1_out = 'annovar/source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput'
+    step3_1_out = 'annovar/source_samp_snps_pass_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput'
     pipeline.add_action(
         'annovar', 3.10,
         'convert VCF file to ANNOVAR input format',
@@ -1215,7 +1226,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 3.2   Annotate using <hgref> RefSeq:
-    step3_2_out = 'annovar/source_samp_pass_snps_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput.exonic_variant_function'
+    step3_2_out = 'annovar/source_samp_snps_pass_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput.exonic_variant_function'
     pipeline.add_action(
         'annovar', 3.20,
         f'annotate using {hgref} RefSeq',

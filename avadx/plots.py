@@ -57,7 +57,7 @@ class Figure:
 
     def save(self, fig):
         with self.out_file.open('w') as fout:
-            if self.out_file.extension == 'html':
+            if self.out_file.suffix == '.html':
                 fout.write(plot(fig, output_type='div'))
 
     def heatmap_simple(self):
@@ -166,7 +166,6 @@ class Figure:
                 'tickvals': tickvals_samples,
                 'ticklen': 200,
                 'tickcolor': 'rgba(255,255,255,0)',
-                'margin': {'pad': 20},
             }
         ),
 

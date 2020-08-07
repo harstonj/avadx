@@ -169,7 +169,7 @@ if(length(missing_prot_seq)>0){
     paste0(
       "\n\n\nNOTE: For ", length(missing_prot_seq), " transcripts no protein sequences were available. ",
       "To include respective variants, add missing sequences to the avadx/prot_seqs.fa file. ",
-      "mRNA transcript accession numbers can be found in the working directory: SNAP_scores/TranscriptAccess_missing_prot_seq_[all|mapped].txt. ",
+      "mRNA transcript accession numbers can be found in the working directory: varidb/TranscriptAccess_missing_prot_seq_[all|mapped].txt. ",
       "Please use NCBI batch entrez query to obtain protein sequences (https://www.ncbi.nlm.nih.gov/sites/batchentrez)."
     )
   )

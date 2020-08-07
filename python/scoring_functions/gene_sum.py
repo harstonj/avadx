@@ -1,9 +1,17 @@
 from functools import reduce
 
 
-def score_gene(series):
-    # score correlates positive with function change
-    # score = 0: protein function disrupted (e.g. stopgain/loss variant)
-    # score = 1: protein function unchanged (e.g. synonymous / nonsynonymous (neutral) variant
+def score_gene(variant_scores):
+    """ Default AVA,Dx variant score aggregation function (sum)
 
-    return reduce(lambda x, y: x + y, series)
+    Parameters
+    ----------
+    variant_scores : pandas.core.series.Series
+                     Series contains all variant scores computed for the current gene
+
+    Returns
+    -------
+    gene_score : float
+    """
+
+    return reduce(lambda x, y: x + y, variant_scores)

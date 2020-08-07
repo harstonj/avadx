@@ -995,23 +995,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 1.1.1 Generate stats report
     pipeline.add_stats_report(1.11, step1_1_out, refers_to=1.10, check_exists='tmp/sampleids.txt')
 
-    # 1.2   Split SNV and InDel calls to separated files because they use different QC thresholds.
-    #       Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
-
-    # 1.2.1 snps
-    step1_2_1_out = 'vcf/1_2-1-source_samp_snps.vcf.gz'
-    pipeline.add_action(
-        'bcftools', 1.21,
-        'filter snps',
-        f'view --types snps $WD/{step1_1_out} -Oz -o $WD/{step1_2_1_out}'
-    )
-    # 1.2.2 indels
-    step1_2_2_out = 'vcf/1_2-2-source_samp_indels.vcf.gz'
-    pipeline.add_action(
-        'bcftools', 1.22,
-        'filter indels',
-        f'view --types indels $WD/{step1_1_out} -Oz -o $WD/{step1_2_2_out}'
-    )
+    # 1.2   POTENTIAL PREPROCESSING SLOT
 
     # 1.3   OPTIONAL - vqsr PASS filter: Remove variant sites which did not pass the VQSR standard.
     if vqsr_PASS_filter:
@@ -1019,11 +1003,11 @@ def run_all(uid, kwargs, extra, config, daemon):
         pipeline.add_action(
             'bcftools', 1.30,
             'filter variant sites < VQSR standard',
-            f'filter -i \'FILTER="PASS"\' $WD/{step1_2_1_out} -Oz -o $WD/{step1_3_out}'
+            f'filter -i \'FILTER="PASS"\' $WD/{step1_1_out} -Oz -o $WD/{step1_3_out}'
         )
-    step1_3_out = step1_3_out if vqsr_PASS_filter else step1_2_1_out
+    step1_3_out = step1_3_out if vqsr_PASS_filter else step1_1_out
 
-    # 1.2.1 Generate stats report
+    # 1.3.1 Generate stats report
     if vqsr_PASS_filter:
         pipeline.add_stats_report(1.31, step1_3_out, refers_to=1.30)
 
@@ -1039,7 +1023,7 @@ def run_all(uid, kwargs, extra, config, daemon):
             'AVG(FMT/DP)>=config[avadx.qc.site.mean_dp_lower]\' '
             f'$WD/{step1_3_out} -Oz -o $WD/{step1_4_out}'
         )
-    step1_4_out = step1_4_out if site_quality_filter else step1_2_1_out
+    step1_4_out = step1_4_out if site_quality_filter else step1_3_out
 
     # 1.4.1 Generate stats report
     if site_quality_filter:
@@ -1196,22 +1180,40 @@ def run_all(uid, kwargs, extra, config, daemon):
     if outliers_available:
         pipeline.add_stats_report(2.41, step2_4_out, refers_to=2.40)
 
-    # 2.5   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
+    # 2.5   Split SNV and InDel calls to separated files because they use different QC thresholds.
+    #       Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
+
+    # 2.5.1 snps
+    step2_5_1_out = 'vcf/2_5-1-source_samp_snps.vcf.gz'
+    pipeline.add_action(
+        'bcftools', 2.51,
+        'filter snps',
+        f'view --types snps $WD/{step2_4_out} -Oz -o $WD/{step2_5_1_out}'
+    )
+    # 2.5.2 indels
+    step2_5_2_out = 'vcf/2_5-2-source_samp_indels.vcf.gz'
+    pipeline.add_action(
+        'bcftools', 2.52,
+        'filter indels',
+        f'view --types indels $WD/{step2_4_out} -Oz -o $WD/{step2_5_2_out}'
+    )
+
+    # 2.6   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
     #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
     #       Note that tabix is required for indexing to run this script.
-    step2_5_out = 'vcf/2_5-source_samp_snps_pass_site-v_gt-v_rmchr_gnomad.vcf.gz'
+    step2_6_out = 'vcf/2_6-source_samp_snps_pass_site-v_gt-v_rmchr_gnomad.vcf.gz'
     if gnomAD_filter:
         pipeline.add_action(
-            'filterVCF_by_gnomAD', 2.5,
+            'filterVCF_by_gnomAD', 2.6,
             'filter variants missing in gnomAD database',
-            f'avadx.filterVCF_by_gnomAD $WD $WD/{step2_4_out} $WD/{step2_5_out} '
+            f'avadx.filterVCF_by_gnomAD $WD $WD/{step2_5_1_out} $WD/{step2_6_out} '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
         )
-    step2_out = step2_5_out if gnomAD_filter else step2_4_out
+    step2_out = step2_6_out if gnomAD_filter else step2_5_1_out
 
-    # 2.5.1 Generate stats report
-    pipeline.add_stats_report(2.51, step2_5_out, refers_to=2.50)
+    # 2.6.1 Generate stats report
+    pipeline.add_stats_report(2.61, step2_6_out, refers_to=2.60)
 
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
 
@@ -1235,20 +1237,20 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 3.3   Create varidb query
-    step3_3_outfolder = 'SNAP_scores'
+    step3_3_outfolder = 'varidb'
     pipeline.add_action(
         'generate_SNAP_query', 3.30,
         'generate SNAP scores query',
         f'/app/R/avadx/check_missing_SNAP.R $WD/{step3_2_out} config[DEFAULT.avadx.data] $WD/{step3_3_outfolder}',
         outdir=(WD / step3_3_outfolder),
         reports=[
-            (Path('SNAP_scores') / 'annovar_stats.csv', '3_3-annovar_stats.csv'),
-            (Path('SNAP_scores') / 'SNAP_extract_vars.log', '3_3-extract_variants.log')
+            (Path('varidb') / 'annovar_stats.csv', '3_3-annovar_stats.csv'),
+            (Path('varidb') / 'SNAP_extract_vars.log', '3_3-extract_variants.log')
         ]
     )
 
     # 3.4   Query varidb for SNAP mutations
-    step3_4_out = 'SNAP_scores/varidb_query_result.csv'
+    step3_4_out = 'varidb/varidb_query_result.csv'
     pipeline.add_action(
         'varidb', 3.40,
         'query SNAP variants from varidb',
@@ -1256,9 +1258,12 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'-Q $WD/{step3_3_outfolder}/varidb_query_nonsyn.ids '
         f'-f $WD/{step3_3_outfolder}/varidb_query_nonsyn.fa '
         f'-o $WD/{step3_4_out} '
-        '-R $WD/SNAP_scores/varidb_query_report.txt '
+        '-R $WD/varidb/varidb_query_report.txt '
         '-C query variant score -S tab -s',
-        reports=[(Path('SNAP_scores') / 'varidb_query_report.txt', '3_4-SNAP_scores_varidb_report.log')]
+        reports=[
+            (Path('varidb') / 'varidb_query_report.txt', '3_4-varidb_report.log'),
+            (Path('varidb') / 'varidb_query_report_info.txt', '3_4-scoring_functions_info.log')
+        ]
     )
 
     # 4     Gene score calculation ---------------------------------------------------------------- #
@@ -1275,7 +1280,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         outdir=(WD / step4_1_outfolder)
     )
 
-    # 4.2 - Next, annotate all sample*.avinput files:
+    # 4.2   Annotate all sample*.avinput files
     pipeline.add_action(
         'annovar', 4.20,
         'generate annovar annotation',
@@ -1283,6 +1288,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/')
     )
 
+    # 4.3   Compute gene scores
     step4_3_outfolder = 'genescores'
     genescore_file = Path(pipeline.check_config('genescore.fn')).suffix == '.py'
     genescorefn_mnt = get_mounts(pipeline, ('avadx', 'genescore.fn'), exit_on_error=False if is_init else genescorefn_available) if genescore_file else []
@@ -1303,7 +1309,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         outdir=(WD / step4_3_outfolder)
     )
 
-    # 4.4 - Merge gene scores:
+    # 4.4   Merge gene scores:
     #  Assuming there are 500 individuals in the dataset, 500 resulting files will be generated (e.g. sample.S001.gs).
     #  Merge them into a data frame where a row is an individual and a column is a gene (protein):
     step4_4_outfolder = 'genescores'
@@ -1322,7 +1328,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     #  into 10 folds and the individuals from the same family enter the same fold,
     #  so that to compare sick v.s. healthy instead of differentiating families.
 
-    # 5.1 - Cross-validation:
+    # 5.1   Cross-validation:
     step5_1_outfolder = 'results'
     pipeline.add_action(
         'FS_CVperf_kfold', 5.10,
@@ -1334,7 +1340,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         outdir=(OUT / step5_1_outfolder)
     )
 
-    # 5.2 - Check pathway over-representation:
+    # 5.2   Check pathway over-representation:
     step5_2_outfolder = 'pathways'
     pipeline.add_action(
         'FS_CVgeneOverRep_kfold', 5.20,

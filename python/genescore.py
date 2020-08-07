@@ -31,22 +31,6 @@ class ScoringFunction:
         gene_spec.loader.exec_module(self.gene)
 
 
-def process_snap_scores(row):
-    res = np.nan
-    score = row['snapfun.score']
-    var_class = row['variant_class']
-    is_na = np.isnan(score)
-    if is_na and var_class == 'nonsynonymous SNV':
-        res = np.nan
-    elif is_na and var_class in ['stoploss', 'stopgain']:
-        res = 100
-    elif is_na and var_class == 'synonymous SNV':
-        res = -99
-    else:
-        res = score
-    return res
-
-
 def extract_neutrality(row):
     label = np.nan
     score = row['snapfun.score']
@@ -94,18 +78,13 @@ def run(annotations, scoretable, metadata, tools, variantfn, genefn, normalize, 
     exonic_flted = exonic_flted.assign(Mut=exonic_flted.aaChange.str.replace('p.', ''))  # format variants
     exonic_flted = pd.merge(exonic_flted, score_table, on=['Transcript', 'Mut'], how='left')  # join with scores table
 
-    # adjust scores
-    exonic_flted['snapfun.score'] = exonic_flted.apply(lambda row: process_snap_scores(row), axis=1)  # process SNAPfun scores
-    exonic_flted = exonic_flted.dropna(subset=['snapfun.score'])  # drop all rows with missing snapfun.score
-
     # Generate a summary for this sample:
     exonic_flted_summary = exonic_flted[['variant_class', 'zygosity', 'snapfun.score']].copy()
     exonic_flted_summary['neutrality'] = exonic_flted_summary.apply(lambda row: extract_neutrality(row), axis=1)
     summary_exonic = exonic_flted_summary.groupby(['variant_class', 'zygosity', 'neutrality']).count().rename(columns={'snapfun.score': 'counts'}).reset_index()
     summary_exonic.to_csv(out / f'summary_{sample_name}.csv', sep=',', index=False)
 
-    # NOTE def generate_genescores():
-
+    # copy score table
     df = exonic_flted.copy()
 
     # compute variant scores

@@ -1291,7 +1291,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     mounts_step4_3 = genescorefn_mnt + variantscorefn_mnt
     pipeline.add_action(
         'cal_genescore_make_genescore', 4.30,
-        'calculate gene score (NEW)',
+        'calculate gene score',
         '/app/python/avadx/genescore.py -a $TASK.exonic_variant_function '
         f'-s $WD/{step3_4_out} -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
         f'-g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '

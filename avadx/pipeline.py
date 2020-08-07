@@ -210,7 +210,7 @@ class AVADxMeta:
         self.run_method(self.IMAGES['varidb'], 'varidb', uid, kwargs)
 
     def cal_genescore_make_genescore(self, uid, **kwargs):
-        self.run_method(self.IMAGES['R'], 'cal_genescore_make_genescore', uid, kwargs)
+        self.run_method(self.IMAGES['avadx'], 'cal_genescore_make_genescore', uid, kwargs)
 
     def merge_genescore(self, uid, **kwargs):
         self.run_method(self.IMAGES['R'], 'merge_genescore', uid, kwargs)
@@ -827,6 +827,8 @@ def run_all(uid, kwargs, extra, config, daemon):
     gnomADfilter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='no') == 'yes' else False
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
+    genescorefn_available = True if pipeline.check_config('avadx.genescore.fn', is_file=True, quiet=True) else False
+    variantscorefn_available = True if pipeline.check_config('avadx.variantscore.fn', is_file=True, quiet=True) else False
     is_init = kwargs['init']
     pipeline.entrypoint = 2.40 if outliers_available else pipeline.entrypoint
     if kwargs['entrypoint'] is not None:
@@ -1244,7 +1246,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'-f $WD/{step3_3_outfolder}/varidb_query_nonsyn.fa '
         f'-o $WD/{step3_4_out} '
         '-R $WD/SNAP_scores/varidb_query_report.txt '
-        '-C query variant score -S tab -H -s',
+        '-C query variant score -S tab -s',
         reports=[(Path('SNAP_scores') / 'varidb_query_report.txt', '3_4-SNAP_scores_varidb_report.log')]
     )
 
@@ -1270,15 +1272,23 @@ def run_all(uid, kwargs, extra, config, daemon):
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/')
     )
 
-    # 4.3 - Then, calculate gene score:
     step4_3_outfolder = 'genescores'
+    genescore_file = Path(pipeline.check_config('genescore.fn')).suffix == '.py'
+    genescorefn_mnt = get_mounts(pipeline, ('avadx', 'genescore.fn'), exit_on_error=False if is_init else genescorefn_available) if genescore_file else []
+    variantscore_file = Path(pipeline.check_config('variantscore.fn')).suffix == '.py'
+    variantscorefn_mnt = get_mounts(pipeline, ('avadx', 'variantscore.fn'), exit_on_error=False if is_init else variantscorefn_available) if variantscore_file else []
+    mounts_step4_3 = genescorefn_mnt + variantscorefn_mnt
     pipeline.add_action(
         'cal_genescore_make_genescore', 4.30,
-        'calculate gene score',
-        '/app/R/avadx/cal_genescore_make_genescore.R -f $TASK.exonic_variant_function '
-        f'-s $WD/{step3_4_out} -l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
-        f'-m config[avadx.gscoremethod] -n config[avadx.normalizeby] -o $WD/{step4_3_outfolder}',
+        'calculate gene score (NEW)',
+        '/app/python/avadx/genescore.py -a $TASK.exonic_variant_function '
+        f'-s $WD/{step3_4_out} -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
+        f'-g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
+        f'-v {variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn"}] '
+        f'-t config[avadx.varidb.predictors] -n config[avadx.normalizeby] -o $WD/{step4_3_outfolder}',
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/'),
+        daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
+        mounts=mounts_step4_3,
         outdir=(WD / step4_3_outfolder)
     )
 

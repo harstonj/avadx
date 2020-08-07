@@ -9,19 +9,20 @@ FROM base as builder
 WORKDIR /install
 
 # setup app
-RUN apk --no-cache add build-base gcc make wget git
+RUN apk --no-cache add build-base gcc make gfortran openblas-dev lapack-dev wget git
 RUN git clone --depth 1 https://bitbucket.org/bromberglab/avadx.git && \
  mkdir -p /app/python && mv avadx/python /app/python/avadx && \
  rm -rf avadx
 
-RUN pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install https://bitbucket.org/bromberglab/avadx/get/master.zip
+RUN pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install https://bitbucket.org/bromberglab/avadx/get/master.zip scipy
+RUN python -c 'import compileall; compileall.compile_dir("/app/python/avadx", force=1)'
 
 FROM base
 
 COPY --from=builder /install /usr/local
 COPY --from=builder /app /app
 
-RUN apk --no-cache add bash zip p7zip outils-md5
+RUN apk --no-cache add bash zip p7zip outils-md5 openblas-dev lapack-dev
 
 # setup bio-node
 LABEL bio-node=v1.0

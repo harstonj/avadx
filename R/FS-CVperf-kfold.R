@@ -33,6 +33,8 @@ option_list = list(
               help="step genes to try out; e.g. 5 (default) means increasing by 5 genes", metavar="character"),
   make_option(c("-n", "--number_of_top_genes"), type="numeric", default=100,
               help="number of top-ranked genes to try out; e.g. 100 (default) means try until the top 100 genes", metavar="character"),
+  make_option(c("-K", "--ks_pval_cutoff"), type="numeric", default=0.2,
+              help="only keep genes with p-val < 0.2 for model training", metavar="character"),
   make_option(c("-o", "--out"), type="character", default=NULL,
               help="path to output folder", metavar="character"),
   make_option(c("-w", "--wd"), type="character", default=NULL,
@@ -54,11 +56,7 @@ prot_len_fp <- opt$protlength_file
 out_fp <- opt$out
 wd_fp <- opt$wd
 k <- opt$k_fold
-
-print(fs_method)
-print(gs_fp)
-print(cvsch_fp)
-print(out_fp)
+ks_pval_cutoff <- opt$ks_pval_cutoff
 
 dir.create(file.path(wd_fp), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_fp), recursive = TRUE, showWarnings = FALSE)
@@ -164,8 +162,6 @@ if(fs_method %in% c("ks", "KS")){
     colnames(ks_FS_result) <- c("Gene", paste0("Pvalue_fold", 1:k, "out"))
     ks_FS_result$Gene <- as.character(ks_FS_result$Gene)
     
-    #write.xlsx(ks_FS_result, paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx"), row.names=F)
-    #print(paste0("KS FS results has been output to ", paste0(k, "F-CV-", fs_method, "-selectedGenes.xlsx")))
     write.csv(ks_FS_result, paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"), quote=F, row.names=F)
     print(paste0("KS FS results has been output to ", paste0(k, "F-CV-", fs_method, "-selectedGenes.csv")))
   }
@@ -205,19 +201,24 @@ if(fs_method %in% c("ks", "KS")){
   
 }
 
-
 # Cross-validation with FS genes:
 cv_performance_results <- list()
-for(gn in seq(0, opt$number_of_top_genes, opt$step_of_top_genes)){
-#for(gn in seq(0, 50, 10)){
+
+genes_considered = seq(0, opt$number_of_top_genes, opt$step_of_top_genes)
+remaining = opt$number_of_top_genes - genes_considered[length(genes_considered)]
+if (remaining > 0) {
+  genes_considered[length(genes_considered) + 1] = opt$number_of_top_genes + remaining
+}
+
+for(gn in genes_considered){
   if(gn>=2){
     print(paste0("Now running cross-validation with ", gn, " genes ..."))
-    
+
     if(ml_method=="rf"){
       pred_res_rf <- list()
       suppressMessages(library(ranger))
       for(i in 1:k){
-        #print(i)
+        
         train_dat <- df_input[rownames(df_input) %in% cvsch$sample_id[cvsch$fold %in% setdiff(c(1:k), c(i))],]
         test_dat <- df_input[rownames(df_input) %in% cvsch$sample_id[cvsch$fold %in% i],]
         
@@ -229,20 +230,32 @@ for(gn in seq(0, opt$number_of_top_genes, opt$step_of_top_genes)){
         weights[train_dat$status=="Positive"] <- w["Positive"]
         
         if(fs_method %in% c("ks")){
-          
-          #print(ks_FS_result$Gene[order(ks_FS_result[, paste0("Pvalue_fold", i, "out")])][1:gn])
-          #print(setdiff(ks_FS_result$Gene[order(ks_FS_result[, paste0("Pvalue_fold", i, "out")])][1:gn], 
-          #              colnames(train_dat)))
+
+          genes_list = ks_FS_result[, paste0("Pvalue_fold", i, "out")]
+          genes_ordered = order(genes_list)
+          genes_subset = intersect(genes_ordered, which(genes_list < ks_pval_cutoff))
+          genes_subset = genes_subset[1:min(gn, length(genes_subset))]
+          gn_cutoff = min(gn, length(genes_subset))
+
+          if (gn_cutoff == 0) {
+            print(paste0("KS p-val cutoff (", ks_pval_cutoff, ") removed all genes in fold ", i, " ... aborting."))
+            pred_res_rf[[i]] <- data.frame("status"=c(), "prediction"=c(), stringsAsFactors=F)
+            rm(train_dat, test_dat, weights, w)
+            next
+          } else {
+            removed_cnt = gn - length(genes_subset)
+            print(paste0("KS p-val cutoff (", ks_pval_cutoff, ") removed ", removed_cnt, " (", format(round(100*removed_cnt/gn, 2), nsmall = 2), "%) of ", gn, " genes in fold ", i, " ..."))
+          }
           
           model_rf <- ranger(dependent.variable.name="status",
-                             data=train_dat[, c(ks_FS_result$Gene[order(ks_FS_result[, paste0("Pvalue_fold", i, "out")])][1:gn],
+                             data=train_dat[, c(ks_FS_result$Gene[genes_subset],
                                                 "status")],
                              probability=T,
                              case.weights=weights
           )
           
           pred_rf <- predict(model_rf, 
-                             test_dat[, c(ks_FS_result$Gene[order(ks_FS_result[, paste0("Pvalue_fold", i, "out")])][1:gn])])
+                             test_dat[, c(ks_FS_result$Gene[genes_subset])])
           
         }else if(fs_method %in% c("DKM", "DKMcost")){
           model_rf <- ranger(dependent.variable.name="status",
@@ -274,17 +287,34 @@ for(gn in seq(0, opt$number_of_top_genes, opt$step_of_top_genes)){
       pred_res_svm <- list()
       suppressMessages(library(e1071))
       for(i in 1:k){
-        #print(i)
+
         train_dat <- df_input[rownames(df_input) %in% cvsch$sample_id[cvsch$fold %in% setdiff(c(1:k), c(i))],]
         test_dat <- df_input[rownames(df_input) %in% cvsch$sample_id[cvsch$fold %in% i],]
         
         if(fs_method %in% c("ks")){
-          model_svm <- svm(x=train_dat[, c(ks_FS_result$Gene[order(ks_FS_result[, paste0("Pvalue_fold", i, "out")])][1:gn])],
+
+          genes_list = ks_FS_result[, paste0("Pvalue_fold", i, "out")]
+          genes_ordered = order(genes_list)
+          genes_subset = intersect(genes_ordered, which(genes_list < ks_pval_cutoff))
+          genes_subset = genes_subset[1:min(gn, length(genes_subset))]
+          gn_cutoff = min(gn, length(genes_subset))
+
+          if (gn_cutoff == 0) {
+            print(paste0("KS p-val cutoff (", ks_pval_cutoff, ") removed all genes in fold ", i, " ... aborting."))
+            pred_res_svm[[i]] = data.frame("probabilities"=c(), "SampleID"=c(), stringsAsFactors=F)
+            rm(train_dat, test_dat)
+            next
+          } else {
+            removed_cnt = gn - length(genes_subset)
+            print(paste0("KS p-val cutoff (", ks_pval_cutoff, ") removed ", removed_cnt, " (", format(round(100*removed_cnt/gn, 2), nsmall = 2), "%) of ", gn, " genes in fold ", i, " ..."))
+          }
+
+          model_svm <- svm(x=train_dat[, c(ks_FS_result$Gene[genes_subset])],
                            y=train_dat[, "status"],
                            class.weights = 100 / table(train_dat$status)
           )
           pred_svm <- predict(model_svm, 
-                              test_dat[, c(ks_FS_result$Gene[order(ks_FS_result[, paste0("Pvalue_fold", i, "out")])][1:gn])],
+                              test_dat[, c(ks_FS_result$Gene[genes_subset])],
                               decision.values=T)
           
         }else if(fs_method %in% c("DKM", "DKMcost")){

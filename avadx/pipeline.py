@@ -392,7 +392,7 @@ class Pipeline:
                         fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
                 split_type = 'auto-generated sample'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
-            self.log.info(f'|1.00| Using {split_type} based cross-validation scheme for {split_description}')
+            self.log.info(f'|1.01| Using {split_type} based cross-validation scheme for {split_description}')
             chr_rename = chrname2single(fout_chr)
             fout_chr.writelines([f'chr{_} {_}\n' for _ in chr_rename])
 
@@ -1336,7 +1336,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normalized.csv '
         '-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/tmp/cv-scheme.csv '
         '-l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -t config[avadx.cv.steps] '
-        f'-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder}',
+        '-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -K config[avadx.cv.ks.pvalcutoff] '
+        f'-o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder}',
         outdir=(OUT / step5_1_outfolder)
     )
 

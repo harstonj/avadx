@@ -982,7 +982,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 1.1-7 Variant QC -------------------------------------------------------------------------- #
 
     # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
-    step1_1_out = 'vcf/1_1-source_samp.vcf.gz'
+    step1_1_out = 'vcf/1_1.vcf.gz'
     mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
     pipeline.add_action(
         'bcftools', 1.10,
@@ -999,7 +999,7 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 1.3   OPTIONAL - vqsr PASS filter: Remove variant sites which did not pass the VQSR standard.
     if vqsr_PASS_filter:
-        step1_3_out = 'vcf/1_3-source_samp_snps_pass.vcf.gz'
+        step1_3_out = 'vcf/1_3.vcf.gz'
         pipeline.add_action(
             'bcftools', 1.30,
             'filter variant sites < VQSR standard',
@@ -1014,7 +1014,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 1.4   OPTIONAL - Remove variant sites by site-wise quality.
     #       Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150.
     if site_quality_filter:
-        step1_4_out = 'vcf/1_4-source_samp_snps_pass_site-v.vcf.gz'
+        step1_4_out = 'vcf/1_4.vcf.gz'
         pipeline.add_action(
             'bcftools', 1.40,
             'filter variant sites by site-wise quality',
@@ -1035,7 +1035,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       low call rate is determined as a call rate < 80%,
     #       i.e. missing rate >= 20%. Variant sites with a low call rate are removed.
     if ABAD_filter:
-        step1_5_out = 'vcf/1_5-source_samp_snps_pass_site-v_gt-v.vcf.gz'
+        step1_5_out = 'vcf/1_5.vcf.gz'
         pipeline.add_action(
             'filterVCF_by_ABAD', 1.50,
             'check individual call quality by allele balance and missing rate',
@@ -1048,7 +1048,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     step1_5_out = step1_5_out if ABAD_filter else step1_4_out
 
     # 1.6   Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
-    step1_6_out = 'vcf/1_6-source_samp_snps_pass_site-v_gt-v_rmchr.vcf.gz'
+    step1_6_out = 'vcf/1_6.vcf.gz'
     pipeline.add_action(
         'bcftools', 1.6,
         'convert the chromosome annotations',
@@ -1061,7 +1061,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 2.2   Quality check - Check quality outliers by examining nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
 
     # 2.1.0 Generate stats report
-    step2_1_0_out = 'tmp/source_samp_snps_pass_site-v_gt-v_rmchr.stats.txt'
+    step2_1_0_out = 'tmp/qc_filters.stats.txt'
     pipeline.add_stats_report(2.10, step1_out, refers_to=1.50, save_as=step2_1_0_out, keep=True)
 
     # 2.1.1 Draw individual quality figure:
@@ -1152,7 +1152,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       Check relatedness within datasets withe the SNPRelate R package.
     #       A default kinship > 0.3 is considered to be related.
     step2_3_outfolder = 'SNPRelate'
-    step2_3_out = 'tmp/source_samp_snps_pass_site-v_gt-v_rmchr.gds'
+    step2_3_out = 'tmp/relatedness.gds'
     pipeline.add_action(
         'relatedness', 2.30,
         'check relatedness using SNPRelate',
@@ -1165,7 +1165,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       Outlier individual IDs should be combined from the above PCA,
     #       ethnicity annotation, and relatedness calculation
     #       to a file outliers.txt (one ID per row).
-    step2_4_out = 'vcf/2_4-source_samp_snps_pass_site-v_gt-v_rmchr_ind-cleaned.vcf.gz'
+    step2_4_out = 'vcf/2_4.vcf.gz'
     if outliers_available:
         mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'), exit_on_error=False if is_init else True)
         pipeline.add_action(
@@ -1184,14 +1184,14 @@ def run_all(uid, kwargs, extra, config, daemon):
     #       Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
 
     # 2.5.1 snps
-    step2_5_1_out = 'vcf/2_5-1-source_samp_snps.vcf.gz'
+    step2_5_1_out = 'vcf/2_5-1-snps.vcf.gz'
     pipeline.add_action(
         'bcftools', 2.51,
         'filter snps',
         f'view --types snps $WD/{step2_4_out} -Oz -o $WD/{step2_5_1_out}'
     )
     # 2.5.2 indels
-    step2_5_2_out = 'vcf/2_5-2-source_samp_indels.vcf.gz'
+    step2_5_2_out = 'vcf/2_5-2-indels.vcf.gz'
     pipeline.add_action(
         'bcftools', 2.52,
         'filter indels',
@@ -1201,7 +1201,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 2.6   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
     #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
     #       Note that tabix is required for indexing to run this script.
-    step2_6_out = 'vcf/2_6-source_samp_snps_pass_site-v_gt-v_rmchr_gnomad.vcf.gz'
+    step2_6_out = 'vcf/2_6.vcf.gz'
     if gnomAD_filter:
         pipeline.add_action(
             'filterVCF_by_gnomAD', 2.6,
@@ -1218,7 +1218,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
 
     # 3.1   Get all variant annotations with ANNOVAR for cleaned VCF:
-    step3_1_out = 'annovar/source_samp_snps_pass_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput'
+    step3_1_out = 'annovar/3_1.avinput'
     pipeline.add_action(
         'annovar', 3.10,
         'convert VCF file to ANNOVAR input format',
@@ -1228,7 +1228,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 3.2   Annotate using <hgref> RefSeq:
-    step3_2_out = 'annovar/source_samp_snps_pass_site-v_gt-v_rmchr_gnomad_ind-cleaned.avinput.exonic_variant_function'
+    step3_2_out = 'annovar/3_2.avinput.exonic_variant_function'
     pipeline.add_action(
         'annovar', 3.20,
         f'annotate using {hgref} RefSeq',

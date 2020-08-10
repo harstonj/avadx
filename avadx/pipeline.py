@@ -518,7 +518,7 @@ class Pipeline:
     ):
         source = data if mounts else f'$WD/{data}'
         target = save_as if save_as is not None else f'tmp/{report_name}'
-        pre_check = f'[[ ! -f "$WD/{check_exists}" || ! -s "$WD/{check_exists}" ]] && ' if check_exists else ''
+        pre_check = f'[[ -f "$WD/{check_exists}" && -s "$WD/{check_exists}" ]] && ' if check_exists else ''
         self.add_action(
             'bcftools', step,
             report_description,

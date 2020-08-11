@@ -10,6 +10,7 @@ vcf_input = sys.argv[2]
 vcf_output = sys.argv[3]
 gnomad_exome = sys.argv[4]
 gnomad_genome = sys.argv[5]
+line_buffer = 1e4
 
 base_out = Path(out_folder)
 vcf_regions = base_out / 'tmp' / 'vcf_regions.tsv'
@@ -38,20 +39,18 @@ with genome_filtered_path.open() as fin:
             genome_filtered_dict[row[0]] = set()
         genome_filtered_dict[row[0]].add(int(row[1]))
 
-vcf_handle = (lambda f: (gzip.open if f.endswith(".gz") else open)(f))(vcf_input)
-vcf_filtered = gzip.open(vcf_output, "wb")
-
-for line in vcf_handle:
-    line_decoded = line.decode("utf-8")
-    if line_decoded[0] != "#":
-        chrom, pos = line_decoded.strip().split('\t', 2)[0:2]
-        pos = int(pos)
-        if pos in exome_filtered_dict.get(chrom, set()) or pos in genome_filtered_dict.get(chrom, set()):
-            vcf_filtered.write(line)
+with (lambda f: (gzip.open if f.endswith('.gz') else open)(f, 'rt'))(vcf_input) as vcf_handle, gzip.open(vcf_output, 'wt') as vcf_filtered:
+    line_cnt = 0
+    for line in vcf_handle:
+        if line[0] != '#':
+            line_cnt += 1
+            chrom, pos = line.strip().split('\t', 2)[0:2]
+            pos = int(pos)
+            if pos in exome_filtered_dict.get(chrom, set()) or pos in genome_filtered_dict.get(chrom, set()):
+                vcf_filtered.write(line)
+                if line_cnt % 1e4 == 0:
+                    vcf_filtered.flush()
+            else:
+                pass  # removed entries are not saved due to performance considerations
         else:
-            pass  # removed entries are not saved due to perfrmance considerations
-    else:
-        vcf_filtered.write(line)
-
-vcf_handle.close()
-vcf_filtered.close()
+            vcf_filtered.write(line)

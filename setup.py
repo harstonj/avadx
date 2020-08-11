@@ -24,6 +24,7 @@ setup(
         'docker==4.2.2',
         'pandas==1.1.0',
         'plotly==4.9.0',
+        'progressbar2==3.51.4',
     ],
     entry_points={
         'console_scripts': ['avadx=avadx.__main__:main'],

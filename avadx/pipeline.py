@@ -8,6 +8,7 @@ import csv
 import uuid
 import shutil
 import random
+import progressbar
 import configparser
 import multiprocessing
 from pathlib import Path
@@ -23,6 +24,7 @@ VM_MOUNT = Path('/mnt')
 SINGULARITY_LIB = Path(os.getenv('SINGULARITY_LIB', str(Path.cwd())))
 LOG_LEVEL = 'INFO'
 LOG_FILE = None
+progressbar.streams.wrap_stderr()
 
 
 class AVADxMeta:
@@ -95,6 +97,8 @@ class AVADxMeta:
         log_stdout, log_stderr = kwargs.get(name + "_logs").pop(0)
         if outdir:
             outdir.mkdir(parents=True, exist_ok=True)
+        tasks = len(tasklist)
+        bar = progressbar.ProgressBar(max_value=tasks) if tasks > 1 else None
         for tid, task in enumerate(tasklist, 1):
             args_ = list(args)
             task_info = f' [{tid}/{len(tasklist)}] ({task})' if task else ''
@@ -128,6 +132,8 @@ class AVADxMeta:
             self.reports(kwargs.get('wd'), uid, reports)
             self.log.info(f'|{level:.2f}| {name}{task_info}: took {(timer() - timer_start):.3f} seconds')
             self.check_results(kwargs.get('wd'), uid, wd_results, out_results)
+            if bar is not None:
+                bar.update(tid - 1)
 
     def reports(self, wd, uid, reports):
         for report in reports:
@@ -514,19 +520,20 @@ class Pipeline:
 
     def add_stats_report(
         self, step, data, refers_to=None, query='stats -v -s -', mounts=[], save_as=None,
-        report_name='stats_report.log', report_description='generate stats report', check_exists=None, keep=False
+        report_name='stats_report.log', report_description='generate stats report', check_exists=None, keep=False, enabled=True
     ):
-        source = data if mounts else f'$WD/{data}'
-        target = save_as if save_as is not None else f'tmp/{report_name}'
-        pre_check = f'[[ -f "$WD/{check_exists}" && -s "$WD/{check_exists}" ]] && ' if check_exists else ''
-        self.add_action(
-            'bcftools', step,
-            report_description,
-            f'-c \'{pre_check}bcftools {query} {source} > $WD/{target}\'',
-            daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
-            mounts=mounts,
-            reports=[(target, f'{Pipeline.format_step(step) if refers_to is None else Pipeline.format_step(refers_to)}-{report_name}', keep)]
-        )
+        if enabled:
+            source = data if mounts else f'$WD/{data}'
+            target = save_as if save_as is not None else f'tmp/{report_name}'
+            pre_check = f'[[ -f "$WD/{check_exists}" && -s "$WD/{check_exists}" ]] && ' if check_exists else ''
+            self.add_action(
+                'bcftools', step,
+                report_description,
+                f'-c \'{pre_check}bcftools {query} {source} > $WD/{target}\'',
+                daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
+                mounts=mounts,
+                reports=[(target, f'{Pipeline.format_step(step) if refers_to is None else Pipeline.format_step(refers_to)}-{report_name}', keep)]
+            )
 
     def check_config(self, name, section='avadx', flag='', is_file=False, default=None, quiet=False):
         option_value = 'NA'
@@ -832,6 +839,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
     genescorefn_available = True if pipeline.check_config('avadx.genescore.fn', is_file=True, quiet=True) else False
     variantscorefn_available = True if pipeline.check_config('avadx.variantscore.fn', is_file=True, quiet=True) else False
+    create_filter_reports = True if pipeline.config.get('avadx', 'create.filter.reports', fallback='no') == 'yes' else False
     is_init = kwargs['init']
     pipeline.entrypoint = 2.40 if outliers_available else pipeline.entrypoint
     if kwargs['entrypoint'] is not None:
@@ -977,7 +985,7 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 1.0.2 Generate stats report
     mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
-    pipeline.add_stats_report(1.02, mounts_step1_0_1[0][1], refers_to=1.00, mounts=mounts_step1_0_1)
+    pipeline.add_stats_report(1.02, mounts_step1_0_1[0][1], refers_to=1.00, mounts=mounts_step1_0_1, enabled=create_filter_reports)
 
     # 1.1-7 Variant QC -------------------------------------------------------------------------- #
 
@@ -993,7 +1001,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1.1.1 Generate stats report
-    pipeline.add_stats_report(1.11, step1_1_out, refers_to=1.10, check_exists='tmp/sampleids.txt')
+    pipeline.add_stats_report(1.11, step1_1_out, refers_to=1.10, check_exists='tmp/sampleids.txt', enabled=create_filter_reports)
 
     # 1.2   POTENTIAL PREPROCESSING SLOT
 
@@ -1009,7 +1017,7 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 1.3.1 Generate stats report
     if vqsr_PASS_filter:
-        pipeline.add_stats_report(1.31, step1_3_out, refers_to=1.30)
+        pipeline.add_stats_report(1.31, step1_3_out, refers_to=1.30, enabled=create_filter_reports)
 
     # 1.4   OPTIONAL - Remove variant sites by site-wise quality.
     #       Good site-wise qualities are: QUAL > 30, mean DP > 6, mean DP < 150.
@@ -1027,7 +1035,7 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 1.4.1 Generate stats report
     if site_quality_filter:
-        pipeline.add_stats_report(1.41, step1_4_out, refers_to=1.40)
+        pipeline.add_stats_report(1.41, step1_4_out, refers_to=1.40, enabled=create_filter_reports)
 
     # 1.5   OPTIONAL - Check individual call quality. In filterVCF_by_ABAD.py:
     #       good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4;
@@ -1178,7 +1186,7 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 2.4.1 Generate stats report
     if outliers_available:
-        pipeline.add_stats_report(2.41, step2_4_out, refers_to=2.40)
+        pipeline.add_stats_report(2.41, step2_4_out, refers_to=2.40, enabled=create_filter_reports)
 
     # 2.5   Split SNV and InDel calls to separated files because they use different QC thresholds.
     #       Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
@@ -1213,7 +1221,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     step2_out = step2_6_out if gnomAD_filter else step2_5_1_out
 
     # 2.6.1 Generate stats report
-    pipeline.add_stats_report(2.61, step2_6_out, refers_to=2.60)
+    pipeline.add_stats_report(2.61, step2_6_out, refers_to=2.60, enabled=create_filter_reports)
 
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
 
@@ -1228,7 +1236,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 3.2   Annotate using <hgref> RefSeq:
-    step3_2_out = 'annovar/3_2.avinput.exonic_variant_function'
+    step3_2_out = 'annovar/3_1.avinput.exonic_variant_function'
     pipeline.add_action(
         'annovar', 3.20,
         f'annotate using {hgref} RefSeq',

@@ -1272,6 +1272,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         '-C query variant score -S tab -s',
         reports=[
             (Path('varidb') / 'varidb_query_report.txt', '3_4-varidb_report.log'),
+            (Path('varidb') / 'varidb_query_result_failed.csv', '3_4-varidb_failed.tsv'),
             (Path('varidb') / 'varidb_query_report_info.txt', '3_4-scoring_functions_info.log')
         ]
     )

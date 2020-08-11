@@ -841,7 +841,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
     genescorefn_available = True if pipeline.check_config('avadx.genescore.fn', is_file=True, quiet=True) else False
     variantscorefn_available = True if pipeline.check_config('avadx.variantscore.fn', is_file=True, quiet=True) else False
-    create_filter_reports = True if pipeline.config.get('avadx', 'create.filter.reports', fallback='no') == 'yes' else False
+    create_filter_reports = True if pipeline.config.get('avadx', 'create.filter.reports', fallback='yes') == 'yes' else False
     is_init = kwargs['init']
     pipeline.entrypoint = 2.40 if outliers_available else pipeline.entrypoint
     if kwargs['entrypoint'] is not None:

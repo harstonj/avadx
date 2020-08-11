@@ -99,13 +99,13 @@ class AVADxMeta:
             outdir.mkdir(parents=True, exist_ok=True)
         tasks = len(tasklist)
         bar = progressbar.ProgressBar(max_value=tasks) if tasks > 1 else None
-        if bar is not None:
-            bar.update(0)
         for tid, task in enumerate(tasklist, 1):
             args_ = list(args)
             task_info = f' [{tid}/{len(tasklist)}] ({task})' if task and tasks > 1 else ''
             self.log.info(f'|{level:.2f}| {name}{task_info}: {description}')
             self.log.debug(f'|{level:.2f}| {name}{task_info}: started {datetime.now()}')
+            if bar is not None:
+                bar.update(tid)
             timer_start = timer()
             if fns_pre:
                 fns_pre()
@@ -134,8 +134,8 @@ class AVADxMeta:
             self.reports(kwargs.get('wd'), uid, reports)
             self.log.info(f'|{level:.2f}| {name}{task_info}: took {(timer() - timer_start):.3f} seconds')
             self.check_results(kwargs.get('wd'), uid, wd_results, out_results)
-            if bar is not None:
-                bar.update(tid)
+        if bar is not None:
+            bar.finish()
 
     def reports(self, wd, uid, reports):
         for report in reports:

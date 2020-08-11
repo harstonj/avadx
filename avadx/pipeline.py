@@ -1260,7 +1260,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 3.4   Query varidb for SNAP mutations
-    step3_4_out = 'varidb/varidb_query_result.csv'
+    step3_4_out = 'varidb/varidb_query_syn.csv'
     pipeline.add_action(
         'varidb', 3.40,
         'query SNAP variants from varidb',

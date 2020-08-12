@@ -837,6 +837,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     vqsr_PASS_filter = True if pipeline.config.get('avadx', 'vqsrPASSfilter.enabled', fallback='yes') == 'yes' else False
     site_quality_filter = True if pipeline.config.get('avadx', 'sitequalityfilter.enabled', fallback='yes') == 'yes' else False
     ABAD_filter = True if pipeline.config.get('avadx', 'ABADfilter.enabled', fallback='yes') == 'yes' else False
+    MR_filter = True if pipeline.config.get('avadx', 'MRfilter.enabled', fallback='yes') == 'yes' else False
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
     genescorefn_available = True if pipeline.check_config('avadx.genescore.fn', is_file=True, quiet=True) else False
@@ -850,6 +851,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         pipeline.exitpoint = 2.40
     if kwargs['exitpoint'] is not None:
         pipeline.exitpoint = kwargs['exitpoint']
+
+    R_MAX_VSIZE = '8Gb'
 
     # 0     Init (downloads & data source preprocessing)  -------------------------------------------------------------------- #
     gnomad_base_path = Path(pipeline.config.get("DEFAULT", "annovar.humandb", fallback=WD))
@@ -1039,32 +1042,47 @@ def run_all(uid, kwargs, extra, config, daemon):
     if site_quality_filter:
         pipeline.add_stats_report(1.41, step1_4_out, refers_to=1.40, enabled=create_filter_reports)
 
-    # 1.5   OPTIONAL - Check individual call quality. In filterVCF_by_ABAD.py:
+    # 1.5   OPTIONAL - Missing Rate (MR) Filter:
+    #       only variants with MR > threshold are retained
+    if MR_filter:
+        step1_5_out = 'vcf/1_5.vcf.gz'
+        pipeline.add_action(
+            'bcftools', 1.5,
+            'filter by missing rate (MR)',
+            f'view -i \'F_MISSING<config[avadx.qc.call.MR]\' $WD/{step1_4_out} -Oz -o $WD/{step1_5_out}'
+        )
+    step1_5_out = step1_5_out if MR_filter else step1_4_out
+
+    # 1.5.1 Generate stats report
+    if MR_filter:
+        pipeline.add_stats_report(1.51, step1_5_out, refers_to=1.50, enabled=create_filter_reports)
+
+    # 1.6   OPTIONAL - Check individual call quality. In filterVCF_by_ABAD.py:
     #       good individual call qualities are: AB > 0.3 and AB < 0.7, GQ > 15, DP > 4;
     #       bad individual GTs are converted into missing "./.";
     #       low call rate is determined as a call rate < 80%,
     #       i.e. missing rate >= 20%. Variant sites with a low call rate are removed.
     if ABAD_filter:
-        step1_5_out = 'vcf/1_5.vcf.gz'
+        step1_6_out = 'vcf/1_6.vcf.gz'
         pipeline.add_action(
-            'filterVCF_by_ABAD', 1.50,
+            'filterVCF_by_ABAD', 1.60,
             'check individual call quality by allele balance and missing rate',
-            f'/app/python/avadx/filterVCF_by_ABAD.py $WD/{step1_4_out} $WD/{step1_5_out} '
+            f'/app/python/avadx/filterVCF_by_ABAD.py $WD/{step1_5_out} $WD/{step1_6_out} '
             'config[avadx.qc.call.AB_low] config[avadx.qc.call.AB_high] '
             'config[avadx.qc.call.DP] config[avadx.qc.call.GQ] config[avadx.qc.call.MR]',
             daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
-            reports=[(f'{step1_5_out}.log', '1_5-call_quality_filter.log')]
+            reports=[(f'{step1_6_out}.log', '1_6-call_quality_filter.log')]
         )
-    step1_5_out = step1_5_out if ABAD_filter else step1_4_out
+    step1_6_out = step1_6_out if ABAD_filter else step1_5_out
 
-    # 1.6   Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
-    step1_6_out = 'vcf/1_6.vcf.gz'
+    # 1.7   Convert the chromosome annotation if the chromosomes are recorded as "chr1" instead of "1":
+    step1_7_out = 'vcf/1_7.vcf.gz'
     pipeline.add_action(
-        'bcftools', 1.6,
+        'bcftools', 1.7,
         'convert the chromosome annotations',
-        f'annotate --rename-chrs $WD/tmp/chr_to_number.txt $WD/{step1_5_out} -Oz -o $WD/{step1_6_out}'
+        f'annotate --rename-chrs $WD/tmp/chr_to_number.txt $WD/{step1_6_out} -Oz -o $WD/{step1_7_out}'
     )
-    step1_out = step1_6_out
+    step1_out = step1_7_out
 
     # 2     Individual QC ----------------------------------------------------------------------- #
 
@@ -1117,8 +1135,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 2.2.3 Run EthSEQ:
-    #       Note: "export R_MAX_VSIZE=32000000000" can be used
-    #       to increase memory before running below for larger datasets
+    #       Increase memory for larger datasets
     step2_2_3_outfolder = 'EthSEQ_reports'
     pipeline.add_action(
         'ethnicity_EthSEQ', 2.23,
@@ -1127,7 +1144,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'Rscript /app/R/avadx/ethnicity_EthSEQ.R '
         f'$WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz '
         f'config[DEFAULT.ethseq.models] $WD/{step2_2_3_outfolder}/$(basename $TASK)\'',
-        daemon_args={'docker': ['--entrypoint=bash', '--env=R_MAX_VSIZE=32000000000'], 'singularity': ['exec:/bin/bash', 'env:R_MAX_VSIZE=32000000000']},
+        daemon_args={'docker': ['--entrypoint=bash', f'--env=R_MAX_VSIZE={R_MAX_VSIZE}'], 'singularity': ['exec:/bin/bash', f'env:R_MAX_VSIZE={R_MAX_VSIZE}']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
     )
 

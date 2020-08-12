@@ -25,6 +25,7 @@ setup(
         'pandas==1.1.0',
         'plotly==4.9.0',
         'progressbar2==3.51.4',
+        'psutil==5.7.2',
     ],
     entry_points={
         'console_scripts': ['avadx=avadx.__main__:main'],

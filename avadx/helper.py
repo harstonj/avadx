@@ -114,7 +114,9 @@ def check_config_ini(*additional_args):
             if args.init:
                 config_template = additional_args[0] / 'config' / 'avadx.ini'
                 shutil.copyfile(config_template, Path(values))
-            if not Path(values).exists():
+            if args.info:
+                pass
+            elif not Path(values).exists():
                 raise argparse.ArgumentError(
                     self,
                     f'\n\nConfig file not found: {values}\n'

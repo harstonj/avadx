@@ -5,8 +5,10 @@ import re
 import os
 import sys
 import csv
+import math
 import uuid
 import shutil
+import psutil
 import random
 import progressbar
 import configparser
@@ -27,7 +29,7 @@ LOG_FILE = None
 progressbar.streams.wrap_stderr()
 
 
-class AVADxMeta:
+class AVADx:
 
     IMAGES = {
         'avadx': 'bromberglab/avadx',
@@ -44,7 +46,7 @@ class AVADxMeta:
 
     @staticmethod
     def init_vm(daemon):
-        _ = AVADxMeta(None)
+        _ = AVADx(None)
         if daemon not in ['docker', 'singularity']:
             _.log.warning(f'Unknown daemon: {daemon}')
         if daemon == 'docker':
@@ -55,12 +57,12 @@ class AVADxMeta:
                 sys.exit()
             _.log.info('Checking Docker images ...')
             client = docker.from_env()
-            for image in AVADxMeta.IMAGES.values():
+            for image in AVADx.IMAGES.values():
                 _.log.info(f'Processing {image} ...')
                 client.images.pull(image)
             _.log.info('Done.')
         elif daemon == 'singularity':
-            for image in AVADxMeta.IMAGES.values():
+            for image in AVADx.IMAGES.values():
                 _.log.info(f'Processing {image} ...')
                 run_command(f'singularity pull docker://{image}')
             _.log.info('Done.')
@@ -166,6 +168,9 @@ class AVADxMeta:
         for f in out_results:
             validate(wd / str(uid) / 'out' / f)
 
+    def run_info(self, uid, **kwargs):
+        self.run_method(self.IMAGES['avadx'], 'run_info', uid, kwargs)
+
     def run_preprocess(self, uid, **kwargs):
         self.run_method(self.IMAGES['avadx'], 'run_preprocess', uid, kwargs)
 
@@ -267,6 +272,12 @@ class Pipeline:
         self.is_vm = self.check_vm()
         self.entrypoint = kwargs.get('entrypoint') if kwargs.get('entrypoint', None) is not None else 1
         self.exitpoint = kwargs.get('exitpoint', None)
+        self.resources = {
+            'cpu': psutil.cpu_count(),
+            'mem': psutil.virtual_memory().total,
+            'vm.cpu': None,
+            'vm.mem': None
+        }
 
     def get_logger(self):
         logger = Logger(self.__class__.__name__, level=LOG_LEVEL)
@@ -285,6 +296,18 @@ class Pipeline:
         else:
             return None
 
+    def get_vm_resources(self):
+        out = self.run_container(AVADx.IMAGES['avadx'], args=['--info'], mkdirs=False, mounts=mounts)
+        daemon, cpu, mem = [_.split()[1] for _ in out[1].replace('[', '').replace(']', '').split(', ')]
+        self.resources['vm.cpu'] = int(cpu)
+        self.resources['vm.mem'] = int(mem.replace('GB', ''))
+
+    def get_vm_mem(self):
+        return math.ceil(self.resources['vm.mem'] / 1024**3)
+
+    def get_splits(self):
+        return 100 * (self.get_vm_mem() // 4)
+
     def load_config(self):
         config = configparser.ConfigParser()
         if self.config_file and self.config_file.exists():
@@ -300,7 +323,9 @@ class Pipeline:
         return config
 
     def info(self):
-        print(f'AVA,Dx {__version__} {__releasedate__}')
+        cpu = self.resources['cpu' if self.is_vm else 'vm.cpu']
+        mem = self.resources['mem' if self.is_vm else 'vm.mem']
+        print(f'AVA,Dx {__version__} {__releasedate__}\n[VM.daemon: {self.daemon}, VM.cpu: {cpu}, VM.memory: {mem}GB]')
 
     def preprocess(self):
         def indices(labels, search):
@@ -400,7 +425,7 @@ class Pipeline:
                         fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
                 split_type = 'auto-generated sample'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
-            self.log.info(f'|1.01| Using {split_type} based cross-validation scheme for {split_description}')
+            self.log.info(f'|1.02| Using {split_type} based cross-validation scheme for {split_description}')
             chr_rename = chrname2single(fout_chr)
             fout_chr.writelines([f'chr{_} {_}\n' for _ in chr_rename])
 
@@ -574,15 +599,16 @@ class Pipeline:
                 self.log.debug(f'Using optional argument defaults: {flag_checked}{option_value} -> {skip}')
         return formatted
 
-    def run_container(self, container, args=[], daemon_args={}, uid=uuid.uuid1(), mounts=[], out_folder: Path = Path.cwd(), stdout=None, stderr=None):
-        if out_folder:
-            (out_folder / str(uid) / 'out').mkdir(parents=True, exist_ok=True)
-            (out_folder / str(uid) / 'out' / 'reports').mkdir(parents=True, exist_ok=True)
-        wd_folder = out_folder / str(uid) / 'wd'
-        wd_folder.mkdir(parents=True, exist_ok=True)
-        (wd_folder / 'tmp').mkdir(parents=True, exist_ok=True)
-        (wd_folder / 'vcf').mkdir(parents=True, exist_ok=True)
-        (wd_folder / 'annovar').mkdir(parents=True, exist_ok=True)
+    def run_container(self, container, args=[], daemon_args={}, uid=uuid.uuid1(), mounts=[], out_folder: Path = Path.cwd(), stdout=None, stderr=None, mkdirs=True):
+        wd_folder = (out_folder if out_folder else Path.cwd()) / str(uid) / 'wd'
+        if mkdirs:
+            if out_folder:
+                (out_folder / str(uid) / 'out').mkdir(parents=True, exist_ok=True)
+                (out_folder / str(uid) / 'out' / 'reports').mkdir(parents=True, exist_ok=True)
+            wd_folder.mkdir(parents=True, exist_ok=True)
+            (wd_folder / 'tmp').mkdir(parents=True, exist_ok=True)
+            (wd_folder / 'vcf').mkdir(parents=True, exist_ok=True)
+            (wd_folder / 'annovar').mkdir(parents=True, exist_ok=True)
         data_folder = Path(self.config.get('DEFAULT', 'datadir', fallback=wd_folder)).absolute()
         config_datadir_orig = self.config.get('DEFAULT', 'datadir')
         self.config.set('DEFAULT', 'datadir', str(data_folder))
@@ -658,9 +684,12 @@ class Pipeline:
         if stdout and out:
             if stdout == 'print':
                 print('\n'.join(out))
+            elif stdout == 'log':
+                self.log.info(' *** '.join(out))
             else:
                 with (wd_folder / stdout).open('w') as fout:
                     fout.writelines([f'{_}\n' for _ in out])
+        return out
 
     def parse_args(self, args, daemon_args):
         if self.daemon == 'docker':
@@ -791,7 +820,7 @@ def parse_arguments():
 
 
 def main(pipeline, extra):
-    app = AVADxMeta(pipeline=pipeline)
+    app = AVADx(pipeline=pipeline)
     if pipeline.kwargs.get('wd'):
         pipeline.kwargs.get('wd').mkdir(parents=True, exist_ok=True)
     timer_start = timer()
@@ -828,6 +857,9 @@ def run_init(uid, kwargs, extra, config, daemon):
 
 def run_all(uid, kwargs, extra, config, daemon):
     pipeline = Pipeline(kwargs=kwargs, uid=uid, config_file=config, daemon=daemon)
+    pipeline.get_vm_resources()
+    VM_MEM = pipeline.get_vm_mem()
+    R_MAX_VSIZE = f'{VM_MEM}Gb'
     CFG = VM_MOUNT / 'in' / 'avadx.ini'
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
@@ -838,6 +870,8 @@ def run_all(uid, kwargs, extra, config, daemon):
     site_quality_filter = True if pipeline.config.get('avadx', 'sitequalityfilter.enabled', fallback='yes') == 'yes' else False
     ABAD_filter = True if pipeline.config.get('avadx', 'ABADfilter.enabled', fallback='yes') == 'yes' else False
     MR_filter = True if pipeline.config.get('avadx', 'MRfilter.enabled', fallback='yes') == 'yes' else False
+    ethseq_splits_cfg = int(pipeline.config.get('avadx', 'ethseq.split', fallback=0))
+    ethseq_splits = ethseq_splits_cfg if ethseq_splits_cfg > 0 else pipeline.get_splits()
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
     genescorefn_available = True if pipeline.check_config('avadx.genescore.fn', is_file=True, quiet=True) else False
@@ -969,21 +1003,30 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1   Preprocess -------------------------------------------------------------------------- #
-    # 1.0.0 Extract list of samples
-    mounts_step1_0_0 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
-    step1_0_0_out = 'tmp/all_samples.txt'
+    # 1.0.0 Print Pipeline Info
+    pipeline.add_action(
+        'run_info', 1.00,
+        'AVA,Dx pipeline info',
+        f'{CFG} --info --wd $WD {("-" if LOG_LEVEL > 0 else "") + "v"*((50-LOG_LEVEL)//10)}',
+        mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
+        logs=('log', None)
+    )
+
+    # 1.0.1 Extract list of samples
+    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
+    step1_0_1_out = 'tmp/all_samples.txt'
     pipeline.add_stats_report(
-        1.00, mounts_step1_0_0[0][1], query='query -l', mounts=mounts_step1_0_0, save_as=step1_0_0_out,
+        1.01, mounts_step1_0_1[0][1], query='query -l', mounts=mounts_step1_0_1, save_as=step1_0_1_out,
         report_name='all_samples.log', report_description='extract sample list', keep=True
     )
 
-    # 1.0.1 Run pre-processing
-    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
+    # 1.0.2 Run pre-processing
+    mounts_step1_0_2 = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
     pipeline.add_action(
-        'run_preprocess', 1.01,
+        'run_preprocess', 1.02,
         'AVA,Dx pipeline preprocess',
         f'{CFG} --preprocess --wd $WD {("-" if LOG_LEVEL > 0 else "") + "v"*((50-LOG_LEVEL)//10)}',
-        mounts=mounts_step1_0_1,
+        mounts=mounts_step1_0_2,
         outdir=(avadx_base_path),
         logs=('print', None)
     )
@@ -1090,7 +1133,7 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 2.1.0 Generate stats report
     step2_1_0_out = 'tmp/qc_filters.stats.txt'
-    pipeline.add_stats_report(2.10, step1_out, refers_to=1.50, save_as=step2_1_0_out, keep=True)
+    pipeline.add_stats_report(2.10, step1_out, refers_to=1.60, save_as=step2_1_0_out, keep=True)
 
     # 2.1.1 Draw individual quality figure:
     step2_1_1_out = 'tmp/quality_control_samples_PCA.pdf'
@@ -1105,8 +1148,6 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 2.2.1 OPTIONAL: If the number of individuals exceeds certain number, "memory exhausted" error may occur.
     #  Manually divide input VCF into chunks of individuals and run EthSEQ separately for each chunk:
-    splits_cfg = int(pipeline.config.get('avadx', 'ethseq.split', fallback=0))
-    splits = splits_cfg if splits_cfg > 0 else int(10e12)
     step2_2_1_out = 'tmp/EthSEQ_split_ids.txt'
     step2_2_1_outfolder = 'tmp/EthSEQ_splits'
     step2_2_1_splits = 'tmp/EthSEQ_splits.txt'
@@ -1114,7 +1155,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         'bcftools', 2.21,
         'extract sample list',
         f'-c \'bcftools query -l $WD/{step1_out} > $WD/{step2_2_1_out}; '
-        f'SPLIT=$(SAMPLES=$(wc -l < $WD/{step2_2_1_out}); echo $((SAMPLES <= {splits} ? 0 : {splits}))); '
+        f'SPLIT=$(SAMPLES=$(wc -l < $WD/{step2_2_1_out}); echo $((SAMPLES <= {ethseq_splits} ? 0 : {ethseq_splits}))); '
         f'[[ $SPLIT -gt 0 ]] && split -d -l $SPLIT $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/split_ || cp -f $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/split_00; '
         f'(cd $WD/{step2_2_1_outfolder} && ls -f -1 split_*) > $WD/{step2_2_1_splits}\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
@@ -1420,16 +1461,16 @@ def init():
     if namespace.info:
         Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon).info()
     elif namespace.init:
-        AVADxMeta.init_vm(daemon)
+        AVADx.init_vm(daemon)
         run_init(uid, vars(namespace), extra, config, daemon)
     elif namespace.update:
         namespace.init = True
         if namespace.update == 'vm':
-            AVADxMeta.init_vm(daemon)
+            AVADx.init_vm(daemon)
         elif namespace.update == 'data':
             run_init(uid, vars(namespace), extra, config, daemon)
         else:
-            AVADxMeta.init_vm(daemon)
+            AVADx.init_vm(daemon)
             run_init(uid, vars(namespace), extra, config, daemon)
     elif namespace.preprocess:
         pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)

@@ -378,6 +378,6 @@ for (ridx in 1:nrow(cv_performance_ordered)) {
 }
 
 file.copy(paste0(k, "F-CV-", ml_method, "-performance.csv"), file.path(out_fp, "performance.csv"), overwrite=T)
-file.copy(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"), file.path(out_fp, "selectedGenes.csv"), overwrite=T)
+file.copy(paste0(k, "F-CV-", fs_method, "-selectedGenes.csv"), file.path(out_fp, "performance_folds_genes.csv"), overwrite=T)
 
 print("Done.")

@@ -12,5 +12,6 @@ ethseq.Analysis(
   model.available = "Exonic.All",
   verbose = TRUE,
   composite.model.call.rate = 1,
-  space = "3D"
+  space = "3D",
+  cores = strtoi(args[4])
 )

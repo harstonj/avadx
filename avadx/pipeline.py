@@ -864,6 +864,10 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.get_vm_resources()
     VM_CPU = pipeline.get_vm_cpu()
     VM_MEM = pipeline.get_vm_mem()
+    cpu_limit = int(pipeline.config.get('avadx', 'resources.cpu', fallback=0))
+    mem_limit = int(pipeline.config.get('avadx', 'resources.mem', fallback=0))
+    VM_CPU = min(cpu_limit, VM_CPU) if cpu_limit > 0 else VM_CPU
+    VM_MEM = min(mem_limit, VM_MEM) if mem_limit > 0 else VM_MEM
     R_MAX_VSIZE = f'{VM_MEM}Gb'
     CFG = VM_MOUNT / 'in' / 'avadx.ini'
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
@@ -1187,7 +1191,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'-c \'mkdir -p $WD/{step2_2_3_outfolder}/$(basename $TASK) && '
         'Rscript /app/R/avadx/ethnicity_EthSEQ.R '
         f'$WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz '
-        f'config[DEFAULT.ethseq.models] $WD/{step2_2_3_outfolder}/$(basename $TASK)\'',
+        f'config[DEFAULT.ethseq.models] $WD/{step2_2_3_outfolder}/$(basename $TASK) {VM_CPU}\'',
         daemon_args={'docker': ['--entrypoint=bash', f'--env=R_MAX_VSIZE={R_MAX_VSIZE}'], 'singularity': ['exec:/bin/bash', f'env:R_MAX_VSIZE={R_MAX_VSIZE}']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
     )

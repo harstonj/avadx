@@ -339,8 +339,8 @@ class Pipeline:
         def folds(samples, foldcnt):
             return [samples[i * foldcnt:(i + 1) * foldcnt] for i in range((len(samples) + foldcnt - 1) // foldcnt)]
 
-        def chrname2single(fout):
-            return [_ for _ in range(1, 23)] + ['X', 'Y', 'M']
+        def chrname2single(X=True, Y=True, M=True):
+            return [_ for _ in range(1, 23)] + (['X'] if X else []) + (['Y'] if Y else []) + (['M'] if M else [])
 
         if self.is_vm:
             wd_folder = self.kwargs.get('wd')
@@ -431,7 +431,7 @@ class Pipeline:
                 split_type = 'auto-generated sample'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
             self.log.info(f'|1.02| Using {split_type} based cross-validation scheme for {split_description}')
-            chr_rename = chrname2single(fout_chr)
+            chr_rename = chrname2single()
             fout_chr.writelines([f'chr{_} {_}\n' for _ in chr_rename])
 
     def retrieve(self, target, outfolder=None, outfile=None):
@@ -877,17 +877,19 @@ def run_all(uid, kwargs, extra, config, daemon):
     hgref = pipeline.config.get('avadx', 'hgref')
     hgref_mapped = pipeline.ASSEMBLY_MAPPING[hgref]
     gnomAD_filter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='yes') == 'yes' else False
-    vqsr_PASS_filter = True if pipeline.config.get('avadx', 'vqsrPASSfilter.enabled', fallback='yes') == 'yes' else False
-    site_quality_filter = True if pipeline.config.get('avadx', 'sitequalityfilter.enabled', fallback='yes') == 'yes' else False
-    ABAD_filter = True if pipeline.config.get('avadx', 'ABADfilter.enabled', fallback='yes') == 'yes' else False
-    MR_filter = True if pipeline.config.get('avadx', 'MRfilter.enabled', fallback='yes') == 'yes' else False
+    vqsr_PASS_filter = True if pipeline.config.get('avadx', 'filter.vqsrPASS.enabled', fallback='yes') == 'yes' else False
+    site_quality_filter = True if pipeline.config.get('avadx', 'filter.sitequality.enabled', fallback='yes') == 'yes' else False
+    ABAD_filter = True if pipeline.config.get('avadx', 'filter.ABAD.enabled', fallback='yes') == 'yes' else False
+    MR_filter = True if pipeline.config.get('avadx', 'filter.MR.enabled', fallback='yes') == 'yes' else False
+    sex_filter = True if pipeline.config.get('avadx', 'filter.sex.enabled', fallback='yes') == 'yes' else False
+    mito_filter = True if pipeline.config.get('avadx', 'filter.mito.enabled', fallback='yes') == 'yes' else False
     ethseq_splits_cfg = int(pipeline.config.get('avadx', 'ethseq.split', fallback=0))
     ethseq_splits = ethseq_splits_cfg if ethseq_splits_cfg > 0 else pipeline.get_splits()
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
     genescorefn_available = True if pipeline.check_config('avadx.genescore.fn', is_file=True, quiet=True) else False
     variantscorefn_available = True if pipeline.check_config('avadx.variantscore.fn', is_file=True, quiet=True) else False
-    create_filter_reports = True if pipeline.config.get('avadx', 'create.filter.reports', fallback='yes') == 'yes' else False
+    create_filter_reports = True if pipeline.config.get('avadx', 'filter.reports', fallback='yes') == 'yes' else False
     is_init = kwargs['init']
     pipeline.entrypoint = 2.40 if outliers_available else pipeline.entrypoint
     if kwargs['entrypoint'] is not None:
@@ -1260,40 +1262,57 @@ def run_all(uid, kwargs, extra, config, daemon):
     if outliers_available:
         pipeline.add_stats_report(2.41, step2_4_out, refers_to=2.40, enabled=create_filter_reports)
 
-    # 2.5   Split SNV and InDel calls to separated files because they use different QC thresholds.
+    # 2.5   Additional filters
+    #       - Remove sex chromosomes flag X,Y (false)
+    #       - Remove mito chromosome flag M (false)
+    run_2_5_filter = any([sex_filter, mito_filter])
+    if run_2_5_filter:
+        exclude = (['X', 'Y'] if sex_filter else []) + (['M', 'MT'] if mito_filter else [])
+        regions_flt = f'-t ^{",".join(exclude)} ' if exclude else ' '
+        step2_5_out = 'vcf/2_5.vcf.gz'
+        pipeline.add_action(
+            'bcftools', 2.5,
+            'run remaining filters',
+            f'view --threads {VM_CPU} '
+            f'{regions_flt}'
+            f'$WD/{step2_4_out} -Oz -o $WD/{step2_5_out}'
+        )
+    step2_5_out = step2_5_out if run_2_5_filter else step2_4_out
+
+    # 2.6   Split SNV and InDel calls to separated files because they use different QC thresholds.
     #       Current AVA,Dx works mainly with SNPs. InDels need another set of standards for QC.
 
-    # 2.5.1 snps
-    step2_5_1_out = 'vcf/2_5-1-snps.vcf.gz'
+    # 2.6.1 snps
+    step2_6_1_out = 'vcf/2_6-1-snps.vcf.gz'
     pipeline.add_action(
-        'bcftools', 2.51,
+        'bcftools', 2.61,
         'filter snps',
-        f'view --threads {VM_CPU} --types snps $WD/{step2_4_out} -Oz -o $WD/{step2_5_1_out}'
+        f'view --threads {VM_CPU} --types snps $WD/{step2_5_out} -Oz -o $WD/{step2_6_1_out}'
     )
-    # 2.5.2 indels
-    step2_5_2_out = 'vcf/2_5-2-indels.vcf.gz'
+    # 2.6.2 indels
+    step2_6_2_out = 'vcf/2_6-2-indels.vcf.gz'
     pipeline.add_action(
-        'bcftools', 2.52,
+        'bcftools', 2.62,
         'filter indels',
-        f'view --threads {VM_CPU} --types indels $WD/{step2_4_out} -Oz -o $WD/{step2_5_2_out}'
+        f'view --threads {VM_CPU} --types indels $WD/{step2_5_out} -Oz -o $WD/{step2_6_2_out}'
     )
 
-    # 2.6   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
+    # 2.7   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
     #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
     #       Note that tabix is required for indexing to run this script.
-    step2_6_out = 'vcf/2_6.vcf.gz'
+    step2_7_out = 'vcf/2_7.vcf.gz'
     if gnomAD_filter:
         pipeline.add_action(
-            'filterVCF_by_gnomAD', 2.6,
+            'filterVCF_by_gnomAD', 2.7,
             'filter variants missing in gnomAD database',
-            f'avadx.filterVCF_by_gnomAD $WD $WD/{step2_5_1_out} $WD/{step2_6_out} '
+            f'avadx.filterVCF_by_gnomAD $WD $WD/{step2_6_1_out} $WD/{step2_7_out} '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
         )
-    step2_out = step2_6_out if gnomAD_filter else step2_5_1_out
+    step2_out = step2_7_out if gnomAD_filter else step2_6_1_out
 
-    # 2.6.1 Generate stats report
-    pipeline.add_stats_report(2.61, step2_6_out, refers_to=2.60, enabled=create_filter_reports)
+    # 2.7.1 Generate stats report
+    pipeline.add_stats_report(2.71, step2_7_out, refers_to=2.70, enabled=create_filter_reports)
 
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
 

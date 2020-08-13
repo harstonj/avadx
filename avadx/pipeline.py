@@ -300,7 +300,7 @@ class Pipeline:
         out = self.run_container(AVADx.IMAGES['avadx'], args=['--info'], mkdirs=False, mounts=mounts)
         daemon, cpu, mem = [_.split()[1] for _ in out[1].replace('[', '').replace(']', '').split(', ')]
         self.resources['vm.cpu'] = int(cpu)
-        self.resources['vm.mem'] = int(mem)
+        self.resources['vm.mem'] = int(mem.replace('GB', ''))
 
     def get_vm_cpu(self):
         return self.resources['vm.cpu']

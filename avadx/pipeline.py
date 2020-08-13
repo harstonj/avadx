@@ -8,7 +8,6 @@ import csv
 import math
 import uuid
 import shutil
-import psutil
 import random
 import progressbar
 import configparser
@@ -273,8 +272,8 @@ class Pipeline:
         self.entrypoint = kwargs.get('entrypoint') if kwargs.get('entrypoint', None) is not None else 1
         self.exitpoint = kwargs.get('exitpoint', None)
         self.resources = {
-            'cpu': psutil.cpu_count(),
-            'mem': psutil.virtual_memory().total,
+            'cpu': None,
+            'mem': None,
             'vm.cpu': None,
             'vm.mem': None
         }
@@ -332,6 +331,15 @@ class Pipeline:
         return config
 
     def info(self, quiet=False):
+        if self.is_vm:
+            try:
+                import psutil
+                self.resources['cpu'] = psutil.cpu_count()
+                self.resources['mem'] = psutil.virtual_memory().total
+            except ImportError:
+                self.log.warning('Info requires the "psutil" package: pip install psutil')
+        else:
+            self.get_vm_resources()
         cpu = self.resources['cpu' if self.is_vm else 'vm.cpu']
         mem = self.resources['mem' if self.is_vm else 'vm.mem']
         if not quiet:
@@ -622,7 +630,7 @@ class Pipeline:
             (wd_folder / 'vcf').mkdir(parents=True, exist_ok=True)
             (wd_folder / 'annovar').mkdir(parents=True, exist_ok=True)
         data_folder = Path(self.config.get('DEFAULT', 'datadir', fallback=wd_folder)).absolute()
-        config_datadir_orig = self.config.get('DEFAULT', 'datadir')
+        config_datadir_orig = self.config.get('DEFAULT', 'datadir', fallback=str(wd_folder))
         self.config.set('DEFAULT', 'datadir', str(data_folder))
         if self.daemon not in ['docker', 'singularity']:
             self.log.warning(f'Unknown daemon: {self.daemon}')

@@ -302,6 +302,9 @@ class Pipeline:
         self.resources['vm.cpu'] = int(cpu)
         self.resources['vm.mem'] = int(mem.replace('GB', ''))
 
+    def get_vm_cpu(self):
+        return self.resources['vm.cpu']
+
     def get_vm_mem(self):
         return math.ceil(self.resources['vm.mem'] / 1024**3)
 
@@ -546,10 +549,11 @@ class Pipeline:
         return f'{pos1}_{remaining[0]}{"-" + remaining[1] if remaining[1] != "0" else ""}'
 
     def add_stats_report(
-        self, step, data, refers_to=None, query='stats -v -s -', mounts=[], save_as=None,
+        self, step, data, refers_to=None, query='stats --threads <THREADS> -v -s -', mounts=[], save_as=None,
         report_name='stats_report.log', report_description='generate stats report', check_exists=None, keep=False, enabled=True
     ):
         if enabled:
+            query = query.replace('<THREADS>', str(self.get_vm_cpu()))
             source = data if mounts else f'$WD/{data}'
             target = save_as if save_as is not None else f'tmp/{report_name}'
             pre_check = f'[[ -f "$WD/{check_exists}" && -s "$WD/{check_exists}" ]] && ' if check_exists else ''
@@ -858,6 +862,7 @@ def run_init(uid, kwargs, extra, config, daemon):
 def run_all(uid, kwargs, extra, config, daemon):
     pipeline = Pipeline(kwargs=kwargs, uid=uid, config_file=config, daemon=daemon)
     pipeline.get_vm_resources()
+    VM_CPU = pipeline.get_vm_cpu()
     VM_MEM = pipeline.get_vm_mem()
     R_MAX_VSIZE = f'{VM_MEM}Gb'
     CFG = VM_MOUNT / 'in' / 'avadx.ini'
@@ -886,8 +891,6 @@ def run_all(uid, kwargs, extra, config, daemon):
     if kwargs['exitpoint'] is not None:
         pipeline.exitpoint = kwargs['exitpoint']
 
-    R_MAX_VSIZE = '8Gb'
-
     # 0     Init (downloads & data source preprocessing)  -------------------------------------------------------------------- #
     gnomad_base_path = Path(pipeline.config.get("DEFAULT", "annovar.humandb", fallback=WD))
     avadx_base_path = Path(pipeline.config.get("DEFAULT", "avadx.data", fallback=WD))
@@ -898,7 +901,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar', 0.11,
         f'verify/download database: {hgref}_gnomad_exome',
-        f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
+        f'-c \'annotate_variation.pl -thread {VM_CPU} -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
         'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(gnomad_base_path)
@@ -908,7 +911,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar', 0.12,
         f'verify/download database: {hgref}_gnomad_genome',
-        f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
+        f'-c \'annotate_variation.pl -thread {VM_CPU} -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
         'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(gnomad_base_path)
@@ -946,7 +949,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar', 0.13,
         f'verify/download database: {hgref}_refGene',
-        f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
+        f'-c \'annotate_variation.pl -thread {VM_CPU} -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
         'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(refseq_base_path)
@@ -1043,7 +1046,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 1.10,
         'filter for individuals of interest ',
-        f'view -S $WD/tmp/sampleids.txt {mounts_step1_1[0][1]} -Oz -o $WD/{step1_1_out}',
+        f'view --threads {VM_CPU} -S $WD/tmp/sampleids.txt {mounts_step1_1[0][1]} -Oz -o $WD/{step1_1_out}',
         mounts=mounts_step1_1,
         results=([step1_1_out], [])
     )
@@ -1059,7 +1062,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         pipeline.add_action(
             'bcftools', 1.30,
             'filter variant sites < VQSR standard',
-            f'filter -i \'FILTER="PASS"\' $WD/{step1_1_out} -Oz -o $WD/{step1_3_out}'
+            f'filter --threads {VM_CPU} -i \'FILTER="PASS"\' $WD/{step1_1_out} -Oz -o $WD/{step1_3_out}'
         )
     step1_3_out = step1_3_out if vqsr_PASS_filter else step1_1_out
 
@@ -1074,7 +1077,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         pipeline.add_action(
             'bcftools', 1.40,
             'filter variant sites by site-wise quality',
-            'view -i \'QUAL>config[avadx.qc.site.quality]&'
+            f'view --threads {VM_CPU} -i \'QUAL>config[avadx.qc.site.quality]&'
             'AVG(FMT/DP)<=config[avadx.qc.site.mean_dp_upper]&'
             'AVG(FMT/DP)>=config[avadx.qc.site.mean_dp_lower]\' '
             f'$WD/{step1_3_out} -Oz -o $WD/{step1_4_out}'
@@ -1092,7 +1095,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         pipeline.add_action(
             'bcftools', 1.5,
             'filter by missing rate (MR)',
-            f'view -i \'F_MISSING<config[avadx.qc.call.MR]\' $WD/{step1_4_out} -Oz -o $WD/{step1_5_out}'
+            f'view --threads {VM_CPU} -i \'F_MISSING<config[avadx.qc.call.MR]\' $WD/{step1_4_out} -Oz -o $WD/{step1_5_out}'
         )
     step1_5_out = step1_5_out if MR_filter else step1_4_out
 
@@ -1123,7 +1126,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 1.7,
         'convert the chromosome annotations',
-        f'annotate --rename-chrs $WD/tmp/chr_to_number.txt $WD/{step1_6_out} -Oz -o $WD/{step1_7_out}'
+        f'annotate --threads {VM_CPU} --rename-chrs $WD/tmp/chr_to_number.txt $WD/{step1_6_out} -Oz -o $WD/{step1_7_out}'
     )
     step1_out = step1_7_out
 
@@ -1153,7 +1156,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     step2_2_1_splits = 'tmp/EthSEQ_splits.txt'
     pipeline.add_action(
         'bcftools', 2.21,
-        'extract sample list',
+        'create samples batches',
         f'-c \'bcftools query -l $WD/{step1_out} > $WD/{step2_2_1_out}; '
         f'SPLIT=$(SAMPLES=$(wc -l < $WD/{step2_2_1_out}); echo $((SAMPLES <= {ethseq_splits} ? 0 : {ethseq_splits}))); '
         f'[[ $SPLIT -gt 0 ]] && split -d -l $SPLIT $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/split_ || cp -f $WD/{step2_2_1_out} $WD/{step2_2_1_outfolder}/split_00; '
@@ -1167,8 +1170,8 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 2.22,
         'EthSEQ preprocessing (VCF cleanup)',
-        f'-c \'bcftools view -S $TASK $WD/{step1_out} | '
-        'bcftools annotate --remove "ID,INFO,FORMAT" | '
+        f'-c \'bcftools view --threads {VM_CPU} -S $TASK $WD/{step1_out} | '
+        f'bcftools annotate --threads {VM_CPU} --remove "ID,INFO,FORMAT" | '
         f'sed /^##/d | gzip --stdout > $WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/'),
@@ -1239,7 +1242,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         pipeline.add_action(
             'bcftools', 2.40,
             'summarize outliers',
-            f'view -S ^{mounts_step2_4[0][1]} $WD/{step1_out} -Oz -o $WD/{step2_4_out}',
+            f'view --threads {VM_CPU} -S ^{mounts_step2_4[0][1]} $WD/{step1_out} -Oz -o $WD/{step2_4_out}',
             mounts=mounts_step2_4
         )
     step2_4_out = step2_4_out if outliers_available else step1_out
@@ -1256,14 +1259,14 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'bcftools', 2.51,
         'filter snps',
-        f'view --types snps $WD/{step2_4_out} -Oz -o $WD/{step2_5_1_out}'
+        f'view --threads {VM_CPU} --types snps $WD/{step2_4_out} -Oz -o $WD/{step2_5_1_out}'
     )
     # 2.5.2 indels
     step2_5_2_out = 'vcf/2_5-2-indels.vcf.gz'
     pipeline.add_action(
         'bcftools', 2.52,
         'filter indels',
-        f'view --types indels $WD/{step2_4_out} -Oz -o $WD/{step2_5_2_out}'
+        f'view --threads {VM_CPU} --types indels $WD/{step2_4_out} -Oz -o $WD/{step2_5_2_out}'
     )
 
     # 2.6   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
@@ -1300,7 +1303,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar', 3.20,
         f'annotate using {hgref} RefSeq',
-        f'annotate_variation.pl -buildver {hgref} $WD/{step3_1_out} config[DEFAULT.annovar.humandb]/',
+        f'annotate_variation.pl -thread {VM_CPU} -buildver {hgref} $WD/{step3_1_out} config[DEFAULT.annovar.humandb]/',
         logs=('annovar/annotate_variation.log', None)
     )
 
@@ -1353,7 +1356,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'annovar', 4.20,
         'generate annovar annotation',
-        f'annotate_variation.pl -build {hgref} $TASK config[DEFAULT.annovar.humandb]/',
+        f'annotate_variation.pl -thread {VM_CPU} -build {hgref} $TASK config[DEFAULT.annovar.humandb]/',
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/')
     )
 

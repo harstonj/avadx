@@ -308,6 +308,12 @@ class Pipeline:
     def get_vm_mem(self):
         return math.ceil(self.resources['vm.mem'] / 1024**3)
 
+    def set_vm_cpu(self, cores):
+        self.resources['vm.cpu'] = cores
+
+    def set_vm_mem(self, gb):
+        self.resources['vm.mem'] = gb * (1024**3)
+
     def get_splits(self):
         return 100 * ((self.get_vm_mem() - 2) // 4)
 
@@ -868,8 +874,16 @@ def run_all(uid, kwargs, extra, config, daemon):
     VM_MEM = pipeline.get_vm_mem()
     cpu_limit = int(pipeline.config.get('avadx', 'resources.cpu', fallback=0))
     mem_limit = int(pipeline.config.get('avadx', 'resources.mem', fallback=0))
-    VM_CPU = min(cpu_limit, VM_CPU) if cpu_limit > 0 else VM_CPU
-    VM_MEM = min(mem_limit, VM_MEM) if mem_limit > 0 else VM_MEM
+    if cpu_limit > 0:
+        VM_CPU_new = min(cpu_limit, VM_CPU)
+        if VM_CPU != VM_CPU_new:
+            VM_CPU = VM_CPU_new
+            pipeline.set_vm_cpu(VM_CPU)
+    if mem_limit > 0:
+        VM_MEM_new = min(mem_limit, VM_MEM)
+        if VM_MEM != VM_MEM_new:
+            VM_MEM = VM_MEM_new
+            pipeline.set_vm_mem(VM_MEM)
     R_MAX_VSIZE = f'{VM_MEM}Gb'
     CFG = VM_MOUNT / 'in' / 'avadx.ini'
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'

@@ -327,7 +327,7 @@ class Pipeline:
 
     def info(self):
         cpu = self.resources['cpu' if self.is_vm else 'vm.cpu']
-        mem = self.resources['mem' if self.is_vm else 'vm.mem']
+        mem = self.resources['mem' if self.is_vm else 'vm.mem'] / (1 if self.is_vm else (1024**3))
         print(f'AVA,Dx {__version__} {__releasedate__}\n[VM.daemon: {self.daemon}, VM.cpu: {cpu}, VM.memory: {mem}GB]')
 
     def preprocess(self):

@@ -309,7 +309,7 @@ class Pipeline:
         return math.ceil(self.resources['vm.mem'] / 1024**3)
 
     def get_splits(self):
-        return 100 * (self.get_vm_mem() // 4)
+        return 100 * ((self.get_vm_mem() - 2) // 4)
 
     def load_config(self):
         config = configparser.ConfigParser()

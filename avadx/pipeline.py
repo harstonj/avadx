@@ -662,11 +662,10 @@ class Pipeline:
                     self.log.warning(f'Invalid bind mount: {m}')
                 else:
                     bind_mounts += ['-v', f'{m[0]}:{m[1]}']
-            cmd_base += [
-                '--rm',
-                '-v', f'{out_folder.absolute()}:{VM_MOUNT / "out"}',
-                '-v', f'{data_folder}:{data}',
-            ] + bind_mounts + daemon_args_parsed
+            cmd_base += ['--rm'] \
+                + (['-v', f'{out_folder.absolute()}:{VM_MOUNT / "out"}'] if out_folder.absolute().exists() else []) \
+                + (['-v', f'{data_folder}:{data}'] if data_folder.exists() else []) \
+                + bind_mounts + daemon_args_parsed
             cmd_base += [
                 container,
             ] + cmd_suffix
@@ -674,10 +673,10 @@ class Pipeline:
             bind_mounts = []
             for m in mounts:
                 bind_mounts += ['-B', f'{m[0]}:{m[1]}']
-            cmd_base += [
-                '-B', f'{out_folder.absolute()}:{VM_MOUNT / "out"}',
-                '-B', f'{data_folder}:{data}',
-            ] + bind_mounts + daemon_args_parsed
+            cmd_base += [] \
+                + (['-B', f'{out_folder.absolute()}:{VM_MOUNT / "out"}'] if out_folder.absolute().exists() else []) \
+                + (['-B', f'{data_folder}:{data}'] if data_folder.exists() else []) \
+                + bind_mounts + daemon_args_parsed
             cmd_base += [
                 '--containall',
                 '--pwd', '/app',

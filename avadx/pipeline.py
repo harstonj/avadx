@@ -300,13 +300,13 @@ class Pipeline:
         out = self.run_container(AVADx.IMAGES['avadx'], args=['--info'], mkdirs=False, mounts=mounts)
         daemon, cpu, mem = [_.split()[1] for _ in out[1].replace('[', '').replace(']', '').split(', ')]
         self.resources['vm.cpu'] = int(cpu)
-        self.resources['vm.mem'] = math.ceil(int(mem.replace('GB', '')) / 1024**3)
+        self.resources['vm.mem'] = int(mem)
 
     def get_vm_cpu(self):
         return self.resources['vm.cpu']
 
     def get_vm_mem(self):
-        return self.resources['vm.mem']
+        return math.ceil(self.resources['vm.mem'] / 1024**3)
 
     def get_splits(self):
         return 100 * (self.get_vm_mem() // 4)
@@ -325,10 +325,12 @@ class Pipeline:
                 config.set('DEFAULT', 'datadir', str(self.config_file.parent / data_base_path))
         return config
 
-    def info(self):
+    def info(self, quiet=False):
         cpu = self.resources['cpu' if self.is_vm else 'vm.cpu']
-        mem = int(self.resources['mem' if self.is_vm else 'vm.mem'] / (1 if self.is_vm else (1024**3)))
-        print(f'AVA,Dx {__version__} {__releasedate__}\n[VM.daemon: {self.daemon}, VM.cpu: {cpu}, VM.memory: {mem}GB]')
+        mem = self.resources['mem' if self.is_vm else 'vm.mem']
+        if not quiet:
+            print(f'AVA,Dx {__version__} {__releasedate__}\n[VM.daemon: {self.daemon}, VM.cpu: {cpu}, VM.memory: {mem}]')
+        return ('AVA,Dx', __version__, __releasedate__, self.daemon, cpu, mem)
 
     def preprocess(self):
         def indices(labels, search):
@@ -895,6 +897,16 @@ def run_all(uid, kwargs, extra, config, daemon):
     if kwargs['exitpoint'] is not None:
         pipeline.exitpoint = kwargs['exitpoint']
 
+    header = f'    AVA,Dx - {__version__} {__releasedate__}    '
+    divider = f' {"".join(["_" for _ in range(0,len(header))])}'
+    print(
+        f'\n {header} \n{divider}\n\n'
+        f'  * VM      : {pipeline.daemon}\n'
+        f'  * Threads : {pipeline.get_vm_cpu()}\n'
+        f'  * Memory  : {pipeline.get_vm_mem()}\n'
+        f'{divider}\n'
+    )
+
     # 0     Init (downloads & data source preprocessing)  -------------------------------------------------------------------- #
     gnomad_base_path = Path(pipeline.config.get("DEFAULT", "annovar.humandb", fallback=WD))
     avadx_base_path = Path(pipeline.config.get("DEFAULT", "avadx.data", fallback=WD))
@@ -1010,14 +1022,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # 1   Preprocess -------------------------------------------------------------------------- #
-    # 1.0.0 Print Pipeline Info
-    pipeline.add_action(
-        'run_info', 1.00,
-        'AVA,Dx pipeline info',
-        f'{CFG} --info --wd $WD {("-" if LOG_LEVEL > 0 else "") + "v"*((50-LOG_LEVEL)//10)}',
-        mounts=[(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')],
-        logs=('log', None)
-    )
+    # 1.0.0 POTENTIAL PREPROCESSING SLOT
 
     # 1.0.1 Extract list of samples
     mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)

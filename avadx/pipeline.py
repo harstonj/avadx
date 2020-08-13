@@ -9,7 +9,6 @@ import math
 import uuid
 import shutil
 import random
-import progressbar
 import configparser
 import multiprocessing
 from pathlib import Path
@@ -25,7 +24,14 @@ VM_MOUNT = Path('/mnt')
 SINGULARITY_LIB = Path(os.getenv('SINGULARITY_LIB', str(Path.cwd())))
 LOG_LEVEL = 'INFO'
 LOG_FILE = None
-progressbar.streams.wrap_stderr()
+USE_PROGRESS = True
+
+
+try:
+    import progressbar
+    progressbar.streams.wrap_stderr()
+except ImportError:
+    USE_PROGRESS = False
 
 
 class AVADx:
@@ -99,7 +105,7 @@ class AVADx:
         if outdir:
             outdir.mkdir(parents=True, exist_ok=True)
         tasks = len(tasklist)
-        bar = progressbar.ProgressBar(max_value=tasks) if tasks > 1 else None
+        bar = progressbar.ProgressBar(max_value=tasks) if USE_PROGRESS and tasks > 1 else None
         for tid, task in enumerate(tasklist, 1):
             args_ = list(args)
             task_info = f' [{tid}/{len(tasklist)}] ({task})' if task and tasks > 1 else ''

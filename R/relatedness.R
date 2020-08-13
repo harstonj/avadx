@@ -12,24 +12,27 @@ option_list = list(
   make_option(c("-c", "--kinship_cutoff"), type="character", default=0.3, 
               help="a numeric cutoff indicating 'related' by the kinship value; default is 0.3", metavar="character"),
   make_option(c("-o", "--output_folder_path"), type="character", default=NULL, 
+              help="the path to the output folder", metavar="character"),
+  make_option(c("-t", "--threads"), type="numeric", default=1, 
               help="the path to the output folder", metavar="character")
 )
 
 opt = parse_args(OptionParser(option_list=option_list))
 
-f <- opt$vcf_file_path
-g <- opt$gds_file_path
+f = opt$vcf_file_path
+g = opt$gds_file_path
+threads = opt$threads
 snpgdsVCF2GDS(f, g, method="biallelic.only")
 
 genofile <- snpgdsOpen(g)
 
 # Prune LD:
-snpset <- snpgdsLDpruning(genofile, ld.threshold=0.2)
+snpset <- snpgdsLDpruning(genofile, ld.threshold=0.2, num.thread=threads)
 # Get all selected snp id
 snpset.id <- unlist(snpset)
 
 # IBD (identity-by-descent):
-ibd <- snpgdsIBDMoM(genofile, snp.id=snpset.id, maf=.05, missing.rate=.05, num.thread=2)
+ibd <- snpgdsIBDMoM(genofile, snp.id=snpset.id, maf=.05, missing.rate=.05, num.thread=threads)
 
 # Make a data.frame
 ibd.coeff <- snpgdsIBDSelection(ibd)

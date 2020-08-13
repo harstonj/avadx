@@ -1279,7 +1279,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     pipeline.add_action(
         'relatedness', 2.30,
         'check relatedness using SNPRelate',
-        f'/app/R/avadx/relatedness.R -i $WD/{step1_out} -g $WD/{step2_3_out} -c config[avadx.kinship] -o $WD/{step2_3_outfolder}',
+        f'/app/R/avadx/relatedness.R -i $WD/{step1_out} -g $WD/{step2_3_out} -c config[avadx.kinship] -o $WD/{step2_3_outfolder} -t {VM_CPU}',
         outdir=(WD / step2_3_outfolder),
         reports=[(Path(step2_3_outfolder) / 'IBD_related.txt', '2_3-IBD_related.txt'), (Path(step2_3_outfolder) / 'IBD.txt', '2_3-IBD.txt')]
     )

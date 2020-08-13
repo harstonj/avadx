@@ -96,7 +96,8 @@ class AVADx:
             tasklist = [None]
         outdir = kwargs.get(name + "_outd").pop(0)
         mounts = kwargs.get(name + "_mounts").pop(0)
-        fns_pre, fns_post = kwargs.get(name + "_fns").pop(0)
+        fns = kwargs.get(name + "_fns").pop(0)
+        fns_pre, fns_post = fns.get('pre', (None, [])), fns.get('post', (None, []))
         description = kwargs.get(name + "_desc").pop(0)
         level = kwargs.get(name + "_lvl").pop(0)
         wd_results, out_results = kwargs.get(name + "_results").pop(0)
@@ -114,8 +115,8 @@ class AVADx:
             if bar is not None:
                 bar.update(tid)
             timer_start = timer()
-            if fns_pre:
-                fns_pre()
+            if fns_pre[0]:
+                fns_pre[0](*fns_pre[1])
             if task:
                 task_idxs = [i for i in range(len(args_)) if args_[i].find('$TASK') != -1]
                 for task_idx in task_idxs:
@@ -136,8 +137,8 @@ class AVADx:
                 stdout=log_stdout,
                 stderr=log_stderr
             )
-            if fns_post:
-                fns_post()
+            if fns_post[0]:
+                fns_post[0](*fns_post[1])
             self.reports(kwargs.get('wd'), uid, reports)
             self.log.info(f'|{level:.2f}| {name}{task_info}: took {(timer() - timer_start):.3f} seconds')
             self.check_results(kwargs.get('wd'), uid, wd_results, out_results)
@@ -352,7 +353,7 @@ class Pipeline:
             print(f'AVA,Dx {__version__} {__releasedate__}\n[VM.daemon: {self.daemon}, VM.cpu: {cpu}, VM.memory: {mem}]')
         return ('AVA,Dx', __version__, __releasedate__, self.daemon, cpu, mem)
 
-    def preprocess(self):
+    def preprocess(self, rerun=False):
         def indices(labels, search):
             return [i for i, x in enumerate(labels) if x == search]
 
@@ -364,6 +365,7 @@ class Pipeline:
 
         if self.is_vm:
             wd_folder = self.kwargs.get('wd')
+            out_folder = wd_folder.parent / 'out'
             samples_path = VM_MOUNT / 'in' / Path(self.config.get('avadx', 'samples')).name
             samplesids_path = wd_folder / 'tmp' / 'sampleids.txt'
             cvscheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
@@ -371,6 +373,7 @@ class Pipeline:
             samples_list = wd_folder / 'tmp' / 'all_samples.txt'
         else:
             wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
+            out_folder = self.kwargs.get('wd') / str(self.uid) / 'out'
             wd_folder.mkdir(parents=True, exist_ok=True)
             samples = self.check_config('samples', is_file=True, quiet=False)
             if not samples:
@@ -383,15 +386,25 @@ class Pipeline:
             cvscheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
             chr2num_path = wd_folder / 'tmp' / 'chr_to_number.txt'
             samples_list = wd_folder / 'tmp' / 'all_samples.txt'
-        if not samples_path.exists():
-            self.log.warning(f'No samples file found: {samples_path}. Creating this file using ALL samples and unknown class labels.\n -> IMPORTANT: You have to set class labels manually for model training! <-')
-            with samples_list.open('r') as fin, samples_path.open('w') as fout:
-                fout.write('sampleid,class\n')
-                for line in fin:
-                    fout.write(f'{line.strip()},?\n')
+        if samples_path.is_dir() or not samples_path.exists():
+            samples_path_new = out_folder / 'samples.csv'
+            if not samples_path_new.exists():
+                self.log.warning(
+                    f'No samples file found: {samples_path}. Creating file {samples_path_new.name} in output directory using ALL samples and unknown class labels.\n'
+                    '-> IMPORTANT: You have to set class labels manually for model training! <-'
+                )
+                with samples_list.open('r') as fin, samples_path_new.open('w') as fout:
+                    fout.write(
+                        '# auto generated samples class labels file\n'
+                        '# replace "?" by the respective class label for any given sample\n'
+                    )
+                    fout.write('sampleid,class\n')
+                    for line in fin:
+                        fout.write(f'{line.strip()},?\n')
+            samples_path = samples_path_new
         with samples_path.open() as fin, samplesids_path.open('w') as fout_ids, cvscheme_path.open('w') as fout_cv, chr2num_path.open('w') as fout_chr:
             samples, labels, col3 = [], [], []
-            reader = csv.reader(fin)
+            reader = csv.reader(filter(lambda row: row[0] != '#', fin))
             header = next(reader)
             has_groups = len(header) == 3 and header[2] == 'group'
             has_folds = len(header) == 3 and header[2] == 'fold'
@@ -450,7 +463,8 @@ class Pipeline:
                         fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
                 split_type = 'auto-generated sample'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
-            self.log.info(f'|1.02| Using {split_type} based cross-validation scheme for {split_description}')
+            if not rerun:
+                self.log.info(f'|1.02| Using {split_type} based cross-validation scheme for {split_description}')
             chr_rename = chrname2single()
             fout_chr.writelines([f'chr{_} {_}\n' for _ in chr_rename])
 
@@ -550,7 +564,7 @@ class Pipeline:
 
     def add_action(
             self, action, level=None, description='', args='', daemon_args={},
-            tasks=(None, None, None), fns=(None, None), outdir=None, mounts=[], results=([], []), reports=[], logs=(None, None)):
+            tasks=(None, None, None), fns={'pre': (None, []), 'post': (None, [])}, outdir=None, mounts=[], results=([], []), reports=[], logs=(None, None)):
         if level is None or (level >= self.entrypoint and (self.exitpoint is None or level < self.exitpoint)):
             self.actions += [action]
             self.kwargs[action] = self.kwargs.get(action, []) + [args]
@@ -1072,9 +1086,9 @@ def run_all(uid, kwargs, extra, config, daemon):
         logs=('print', None)
     )
 
-    # 1.0.2 Generate stats report
+    # 1.0.3 Generate stats report
     mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
-    pipeline.add_stats_report(1.02, mounts_step1_0_1[0][1], refers_to=1.00, mounts=mounts_step1_0_1, enabled=create_filter_reports)
+    pipeline.add_stats_report(1.03, mounts_step1_0_1[0][1], refers_to=1.00, mounts=mounts_step1_0_1, enabled=create_filter_reports)
 
     # 1.1-7 Variant QC -------------------------------------------------------------------------- #
 
@@ -1457,6 +1471,18 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 5.1   Cross-validation:
     step5_1_outfolder = 'results'
+
+    def check_cv_scheme(csv_file):
+        pipeline.preprocess(rerun=True)
+        with csv_file.open() as fin:
+            reader = csv.reader(filter(lambda row: row[0] != '#', fin))
+            class_labels = set()
+            for row in reader:
+                class_labels.add(row[2])
+        if len(class_labels) != 2 or '?' in class_labels:
+            pipeline.log.error(f'|5.10| No binary class labels (0/1) for Cross-Validation and Model Training. Labels found: {class_labels}')
+            sys.exit()
+
     pipeline.add_action(
         'FS_CVperf_kfold', 5.10,
         'perform model cross-validation',
@@ -1465,6 +1491,7 @@ def run_all(uid, kwargs, extra, config, daemon):
         '-l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -t config[avadx.cv.steps] '
         '-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -K config[avadx.cv.ks.pvalcutoff] '
         f'-o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder}',
+        fns={'pre': (check_cv_scheme, [WD / 'tmp' / 'cv-scheme.csv'])},
         outdir=(OUT / step5_1_outfolder)
     )
 

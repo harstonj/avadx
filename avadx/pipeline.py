@@ -876,7 +876,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
     hgref = pipeline.config.get('avadx', 'hgref')
     hgref_mapped = pipeline.ASSEMBLY_MAPPING[hgref]
-    gnomAD_filter = True if pipeline.config.get('avadx', 'gnomadfilter.enabled', fallback='yes') == 'yes' else False
+    gnomAD_filter = True if pipeline.config.get('avadx', 'filter.gnomad.enabled', fallback='yes') == 'yes' else False
     vqsr_PASS_filter = True if pipeline.config.get('avadx', 'filter.vqsrPASS.enabled', fallback='yes') == 'yes' else False
     site_quality_filter = True if pipeline.config.get('avadx', 'filter.sitequality.enabled', fallback='yes') == 'yes' else False
     ABAD_filter = True if pipeline.config.get('avadx', 'filter.ABAD.enabled', fallback='yes') == 'yes' else False

@@ -373,7 +373,7 @@ class Pipeline:
                 config.set('DEFAULT', 'datadir', str(self.config_file.parent / data_base_path))
         return config
 
-    def info(self, quiet=False):
+    def info(self, quiet=False, run_args=None):
         if self.is_vm:
             try:
                 import psutil
@@ -385,7 +385,13 @@ class Pipeline:
             self.get_vm_resources()
         cpu = self.resources['cpu' if self.is_vm else 'vm.cpu']
         mem = self.resources['mem' if self.is_vm else 'vm.mem']
-        if not quiet:
+        if run_args:
+            pipeline = run_all(*run_args)
+            for idx, action in enumerate(pipeline.actions):
+                level, description = pipeline.kwargs[f'{action}_lvl'].pop(0), pipeline.kwargs[f'{action}_desc'].pop(0)
+                print(f'[ {level:<4} ] - {action:<30} * {description}')
+            print()
+        elif not quiet:
             print(f'AVA,Dx {__version__} {__releasedate__}\n[VM.daemon: {self.daemon}, VM.cpu: {cpu}, VM.memory: {mem}]')
         return ('AVA,Dx', __version__, __releasedate__, self.daemon, cpu, mem)
 
@@ -918,6 +924,8 @@ def get_mounts(pipeline, *config, exit_on_error=False):
                     sys.exit(1)
                 else:
                     mounts += [(None, None)]
+        else:
+            mounts += [(None, None)]
     return mounts
 
 
@@ -928,7 +936,7 @@ def run_init(uid, kwargs, extra, config, daemon):
     shutil.rmtree(pipeline.get_wd())
 
 
-def run_all(uid, kwargs, extra, config, daemon):
+def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     pipeline = Pipeline(kwargs=kwargs, uid=uid, config_file=config, daemon=daemon)
     pipeline.set_host_cpu()
     pipeline.get_vm_resources()
@@ -949,7 +957,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     CFG = VM_MOUNT / 'in' / 'avadx.ini'
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
-    hgref = pipeline.config.get('avadx', 'hgref')
+    hgref = pipeline.config.get('avadx', 'hgref', fallback='hg19')
     hgref_mapped = pipeline.ASSEMBLY_MAPPING[hgref]
     gnomAD_filter = True if pipeline.config.get('avadx', 'filter.gnomad.enabled', fallback='yes') == 'yes' else False
     vqsr_PASS_filter = True if pipeline.config.get('avadx', 'filter.vqsrPASS.enabled', fallback='yes') == 'yes' else False
@@ -1471,9 +1479,9 @@ def run_all(uid, kwargs, extra, config, daemon):
 
     # 4.3   Compute gene scores
     step4_3_outfolder = 'genescores'
-    genescore_file = Path(pipeline.check_config('genescore.fn')).suffix == '.py'
+    genescore_file = Path(pipeline.check_config('genescore.fn', quiet=dry_run)).suffix == '.py'
     genescorefn_mnt = get_mounts(pipeline, ('avadx', 'genescore.fn'), exit_on_error=False if is_init else genescorefn_available) if genescore_file else []
-    variantscore_file = Path(pipeline.check_config('variantscore.fn')).suffix == '.py'
+    variantscore_file = Path(pipeline.check_config('variantscore.fn', quiet=dry_run)).suffix == '.py'
     variantscorefn_mnt = get_mounts(pipeline, ('avadx', 'variantscore.fn'), exit_on_error=False if is_init else variantscorefn_available) if variantscore_file else []
     mounts_step4_3 = genescorefn_mnt + variantscorefn_mnt
     pipeline.add_action(
@@ -1569,7 +1577,8 @@ def run_all(uid, kwargs, extra, config, daemon):
     )
 
     # RUN --------------------------------------------------------------------------------------- #
-    main(pipeline, extra)
+    if not dry_run:
+        main(pipeline, extra)
 
     return pipeline
 
@@ -1585,7 +1594,8 @@ def init():
     del namespace.daemon
     del namespace.uid
     if namespace.info:
-        Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon).info()
+        Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon) \
+            .info(quiet=False, run_args=[uid, vars(namespace), extra, config, daemon, True])
     elif namespace.init:
         AVADx.init_vm(daemon)
         run_init(uid, vars(namespace), extra, config, daemon)

@@ -332,13 +332,12 @@ class Pipeline:
         else:
             return None
 
-    def get_vm_resources(self):
-        if not self.is_vm:
+    def get_vm_resources(self, dry_run=False):
+        if dry_run:
+            cpu, mem = 1, 1
+        else:
             out = self.run_container(AVADx.IMAGES['avadx'], args=['--info'], mkdirs=False)
             daemon, cpu, mem = [_.split()[1] for _ in out[1].replace('[', '').replace(']', '').split(', ')]
-        else:
-            cpu = 1
-            mem = 1
         self.resources['vm.cpu'] = int(cpu)
         self.resources['vm.mem'] = int(mem)
 
@@ -389,7 +388,7 @@ class Pipeline:
             self.get_vm_resources()
         cpu = self.resources['cpu' if self.is_vm else 'vm.cpu']
         mem = self.resources['mem' if self.is_vm else 'vm.mem']
-        if run_args:
+        if not self.is_vm and run_args:
             pipeline = run_all(*run_args)
             for idx, action in enumerate(pipeline.actions):
                 level, description = pipeline.kwargs[f'{action}_lvl'].pop(0), pipeline.kwargs[f'{action}_desc'].pop(0)
@@ -943,7 +942,7 @@ def run_init(uid, kwargs, extra, config, daemon):
 def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     pipeline = Pipeline(kwargs=kwargs, uid=uid, config_file=config, daemon=daemon)
     pipeline.set_host_cpu()
-    pipeline.get_vm_resources()
+    pipeline.get_vm_resources(dry_run)
     VM_CPU = pipeline.get_vm_cpu()
     VM_MEM = pipeline.get_vm_mem()
     cpu_limit = int(pipeline.config.get('avadx', 'resources.cpu', fallback=0))

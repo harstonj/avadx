@@ -9,11 +9,13 @@ import math
 import uuid
 import shutil
 import random
+import threading
 import configparser
 import multiprocessing
 from pathlib import Path
 from datetime import datetime
 from timeit import default_timer as timer
+from concurrent.futures import ThreadPoolExecutor
 from .logger import Logger
 from .helper import check_config_ini, run_command, flatten, runningInDocker, runningInSingularity
 from . import __version__, __releasedate__
@@ -48,6 +50,7 @@ class AVADx:
     def __init__(self, pipeline):
         self.log = self.get_logger()
         self.pipeline = pipeline
+        self.threadLock = threading.Lock()
 
     @staticmethod
     def init_vm(daemon):
@@ -103,47 +106,74 @@ class AVADx:
         wd_results, out_results = kwargs.get(name + "_results").pop(0)
         reports = kwargs.get(name + "_reports").pop(0)
         log_stdout, log_stderr = kwargs.get(name + "_logs").pop(0)
+        resources = kwargs.get(name + "_res").pop(0)
+        cpu = resources.get('cpu', 1)
+        # mem = resources.get('mem', 0)
         if outdir:
             outdir.mkdir(parents=True, exist_ok=True)
-        tasks = len(tasklist)
-        bar = progressbar.ProgressBar(max_value=tasks) if USE_PROGRESS and tasks > 1 else None
-        for tid, task in enumerate(tasklist, 1):
-            args_ = list(args)
-            task_info = f' [{tid}/{len(tasklist)}] ({task})' if task and tasks > 1 else ''
-            self.log.info(f'|{level:.2f}| {name}{task_info}: {description}')
-            self.log.debug(f'|{level:.2f}| {name}{task_info}: started {datetime.now()}')
-            if bar is not None:
-                bar.update(tid)
-            timer_start = timer()
-            if fns_pre[0]:
-                fns_pre[0](*fns_pre[1])
-            if task:
-                task_idxs = [i for i in range(len(args_)) if args_[i].find('$TASK') != -1]
-                for task_idx in task_idxs:
-                    update = f'{taskprefix if taskprefix else ""}{task}'
-                    args_[task_idx] = update if args_[task_idx] == '$TASK' else args_[task_idx].replace('$TASK', update)
-                if taskflag:
-                    task_idxs.reverse()
-                    for task_idx_r in task_idxs:
-                        args_.insert(task_idx_r, taskflag)
-                if log_stdout:
-                    log_stdout = f'{task}_{log_stdout}'
-                if log_stderr:
-                    log_stderr = f'{task}_{log_stderr}'
-            self.pipeline.run_container(
-                container, args=args_, daemon_args=daemon_args, uid=uid,
-                mounts=mounts,
-                out_folder=kwargs.get('wd'),
-                stdout=log_stdout,
-                stderr=log_stderr
+        task_cnt = len(tasklist)
+        if task_cnt == 1:
+            self.run_task(
+                1, tasklist[0], task_cnt, level, args, name, description,
+                fns_pre, fns_post, taskprefix, taskflag, log_stdout, log_stderr,
+                container, daemon_args, uid, mounts, kwargs, reports, wd_results, out_results, None
             )
-            if fns_post[0]:
-                fns_post[0](*fns_post[1])
-            self.reports(kwargs.get('wd'), uid, reports)
-            self.log.info(f'|{level:.2f}| {name}{task_info}: took {(timer() - timer_start):.3f} seconds')
-            self.check_results(kwargs.get('wd'), uid, wd_results, out_results)
-        if bar is not None:
-            bar.finish()
+        else:
+            workers_cnt = int(self.pipeline.get_host_cpu() // cpu)
+            self.log.info(f'|{level:.2f}| {name}: Spawning {workers_cnt} threads [reserving {cpu} cores each] ...')
+            bar = progressbar.ProgressBar(max_value=task_cnt).start() if USE_PROGRESS and task_cnt > 1 else None
+            with ThreadPoolExecutor(max_workers=workers_cnt) as executor:
+                args = [
+                    (
+                        tid, task, task_cnt, level, args, name, description,
+                        fns_pre, fns_post, taskprefix, taskflag, log_stdout, log_stderr,
+                        container, daemon_args, uid, mounts, kwargs, reports, wd_results, out_results, bar
+                    ) for tid, task in enumerate(tasklist, 1)
+                ]
+                bar.update(1) if bar else None
+                executor.map(lambda a: self.run_task(*a), args)
+            bar.finish() if bar else None
+
+    def run_task(
+        self, tid, task, task_cnt, level, args, name, description,
+        fns_pre, fns_post, taskprefix, taskflag, log_stdout, log_stderr,
+        container, daemon_args, uid, mounts, kwargs, reports, wd_results, out_results, bar
+    ):
+        args_ = list(args)
+        task_info = f' [{tid}/{task_cnt}] ({task})' if task and task_cnt > 1 else ''
+        self.log.info(f'|{level:.2f}| {name}{task_info}: {description}')
+        self.log.debug(f'|{level:.2f}| {name}{task_info}: started {datetime.now()}')
+        timer_start = timer()
+        if fns_pre[0]:
+            fns_pre[0](*fns_pre[1])
+        if task:
+            task_idxs = [i for i in range(len(args_)) if args_[i].find('$TASK') != -1]
+            for task_idx in task_idxs:
+                update = f'{taskprefix if taskprefix else ""}{task}'
+                args_[task_idx] = update if args_[task_idx] == '$TASK' else args_[task_idx].replace('$TASK', update)
+            if taskflag:
+                task_idxs.reverse()
+                for task_idx_r in task_idxs:
+                    args_.insert(task_idx_r, taskflag)
+            if log_stdout:
+                log_stdout = f'{task}_{log_stdout}'
+            if log_stderr:
+                log_stderr = f'{task}_{log_stderr}'
+        self.pipeline.run_container(
+            container, args=args_, daemon_args=daemon_args, uid=uid,
+            mounts=mounts,
+            out_folder=kwargs.get('wd'),
+            stdout=log_stdout,
+            stderr=log_stderr
+        )
+        if fns_post[0]:
+            fns_post[0](*fns_post[1])
+        self.reports(kwargs.get('wd'), uid, reports)
+        self.log.info(f'|{level:.2f}| {name}{task_info}: took {(timer() - timer_start):.3f} seconds')
+        if bar:
+            with self.threadLock:
+                bar.update(bar.data()['value'] + 1)
+        self.check_results(kwargs.get('wd'), uid, wd_results, out_results)
 
     def reports(self, wd, uid, reports):
         for report in reports:
@@ -308,6 +338,12 @@ class Pipeline:
         self.resources['vm.cpu'] = int(cpu)
         self.resources['vm.mem'] = int(mem)
 
+    def set_host_cpu(self):
+        self.resources['cpu'] = multiprocessing.cpu_count()
+
+    def get_host_cpu(self):
+        return self.resources['cpu']
+
     def get_vm_cpu(self):
         return self.resources['vm.cpu']
 
@@ -320,8 +356,8 @@ class Pipeline:
     def set_vm_mem(self, gb):
         self.resources['vm.mem'] = gb * (1024**3)
 
-    def get_splits(self):
-        return 100 * ((self.get_vm_mem() - 2) // 4)
+    def get_splits(self, threads=1):
+        return 100 * (((self.get_vm_mem() / threads) - 2) // 4)
 
     def load_config(self):
         config = configparser.ConfigParser()
@@ -564,7 +600,8 @@ class Pipeline:
 
     def add_action(
             self, action, level=None, description='', args='', daemon_args={},
-            tasks=(None, None, None), fns={'pre': (None, []), 'post': (None, [])}, outdir=None, mounts=[], results=([], []), reports=[], logs=(None, None)):
+            tasks=(None, None, None), fns={'pre': (None, []), 'post': (None, [])},
+            outdir=None, mounts=[], results=([], []), reports=[], logs=(None, None), resources={'cpu': 1, 'mem': 0}):
         if level is None or (level >= self.entrypoint and (self.exitpoint is None or level < self.exitpoint)):
             self.actions += [action]
             self.kwargs[action] = self.kwargs.get(action, []) + [args]
@@ -578,6 +615,7 @@ class Pipeline:
             self.kwargs[f'{action}_results'] = self.kwargs.get(f'{action}_results', []) + [results]
             self.kwargs[f'{action}_reports'] = self.kwargs.get(f'{action}_reports', []) + [reports]
             self.kwargs[f'{action}_logs'] = self.kwargs.get(f'{action}_logs', []) + [logs]
+            self.kwargs[f'{action}_res'] = self.kwargs.get(f'{action}_res', []) + [resources]
 
     @staticmethod
     def format_step(step):
@@ -801,10 +839,6 @@ def parse_arguments():
     parser.add_argument('-u', '--uid', type=str)
     parser.add_argument('-w', '--wd', type=Path, default=Path.cwd(),
                         help='working directory')
-    parser.add_argument('-c', '--cpu', type=int, default=multiprocessing.cpu_count(),
-                        help='max cpus per thread; default: all available cores')
-    parser.add_argument('-t', '--threads', type=int, default=1,
-                        help='number of threads; default: 1')
     parser.add_argument('-d', '--daemon', type=str, default='docker', choices=['docker', 'singularity'],
                         help='container engine')
     parser.add_argument('-i', '--info', action='store_true',
@@ -896,6 +930,7 @@ def run_init(uid, kwargs, extra, config, daemon):
 
 def run_all(uid, kwargs, extra, config, daemon):
     pipeline = Pipeline(kwargs=kwargs, uid=uid, config_file=config, daemon=daemon)
+    pipeline.set_host_cpu()
     pipeline.get_vm_resources()
     VM_CPU = pipeline.get_vm_cpu()
     VM_MEM = pipeline.get_vm_mem()
@@ -911,7 +946,6 @@ def run_all(uid, kwargs, extra, config, daemon):
         if VM_MEM != VM_MEM_new:
             VM_MEM = VM_MEM_new
             pipeline.set_vm_mem(VM_MEM)
-    R_MAX_VSIZE = f'{VM_MEM}Gb'
     CFG = VM_MOUNT / 'in' / 'avadx.ini'
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
@@ -925,7 +959,9 @@ def run_all(uid, kwargs, extra, config, daemon):
     sex_filter = True if pipeline.config.get('avadx', 'filter.sex.enabled', fallback='yes') == 'yes' else False
     mito_filter = True if pipeline.config.get('avadx', 'filter.mito.enabled', fallback='yes') == 'yes' else False
     ethseq_splits_cfg = int(pipeline.config.get('avadx', 'ethseq.split', fallback=0))
-    ethseq_splits = ethseq_splits_cfg if ethseq_splits_cfg > 0 else pipeline.get_splits()
+    ethseq_threads = int(pipeline.get_host_cpu() // VM_CPU)
+    ethseq_splits = ethseq_splits_cfg if ethseq_splits_cfg > 0 else pipeline.get_splits(threads=ethseq_threads)
+    R_MAX_VSIZE_ethseq = f'{int(VM_MEM/ethseq_threads)}Gb'
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
     genescorefn_available = True if pipeline.check_config('avadx.genescore.fn', is_file=True, quiet=True) else False
@@ -945,7 +981,7 @@ def run_all(uid, kwargs, extra, config, daemon):
     print(
         f'\n {header} \n{divider}\n\n'
         f'  * VM      : {pipeline.daemon}\n'
-        f'  * Threads : {pipeline.get_vm_cpu()}\n'
+        f'  * Cores   : {pipeline.get_vm_cpu()}\n'
         f'  * Memory  : {pipeline.get_vm_mem()}\n'
         f'{divider}\n'
     )
@@ -1227,7 +1263,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'sed /^##/d | gzip --stdout > $WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/'),
-        outdir=(WD / step2_2_2_splits)
+        outdir=(WD / step2_2_2_splits),
+        resources={'cpu': VM_CPU}
     )
 
     # 2.2.3 Run EthSEQ:
@@ -1240,8 +1277,9 @@ def run_all(uid, kwargs, extra, config, daemon):
         'Rscript /app/R/avadx/ethnicity_EthSEQ.R '
         f'$WD/{step2_2_2_splits}/source_$(basename $TASK)_EthSEQinput.vcf.gz '
         f'config[DEFAULT.ethseq.models] $WD/{step2_2_3_outfolder}/$(basename $TASK) {VM_CPU}\'',
-        daemon_args={'docker': ['--entrypoint=bash', f'--env=R_MAX_VSIZE={R_MAX_VSIZE}'], 'singularity': ['exec:/bin/bash', f'env:R_MAX_VSIZE={R_MAX_VSIZE}']},
-        tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
+        daemon_args={'docker': ['--entrypoint=bash', f'--env=R_MAX_VSIZE={R_MAX_VSIZE_ethseq}'], 'singularity': ['exec:/bin/bash', f'env:R_MAX_VSIZE={R_MAX_VSIZE_ethseq}']},
+        tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/'),
+        resources={'cpu': VM_CPU}
     )
 
     # 2.2.4 Ethnicity prediction summary
@@ -1252,7 +1290,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         f'-c \'mkdir -p $WD/{step2_2_4_outfolder}/$(basename $TASK) && '
         f'Rscript /app/R/avadx/ethnicity_EthSEQ_summary.R $WD/{step2_2_3_outfolder}/$(basename $TASK)/Report.txt $WD/{step2_2_4_outfolder}/$(basename $TASK)\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
-        tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/')
+        tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/'),
+        resources={'cpu': VM_CPU}
     )
 
     # 2.2.5 Merge ethnicity prediction summaries
@@ -1426,7 +1465,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         'annovar', 4.20,
         'generate annovar annotation',
         f'annotate_variation.pl -thread {VM_CPU} -build {hgref} $TASK config[DEFAULT.annovar.humandb]/',
-        tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/')
+        tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/'),
+        resources={'cpu': VM_CPU}
     )
 
     # 4.3   Compute gene scores
@@ -1447,7 +1487,8 @@ def run_all(uid, kwargs, extra, config, daemon):
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/'),
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
         mounts=mounts_step4_3,
-        outdir=(WD / step4_3_outfolder)
+        outdir=(WD / step4_3_outfolder),
+        resources={'cpu': 1}
     )
 
     # 4.4   Merge gene scores:

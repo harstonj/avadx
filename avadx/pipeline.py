@@ -333,8 +333,12 @@ class Pipeline:
             return None
 
     def get_vm_resources(self):
-        out = self.run_container(AVADx.IMAGES['avadx'], args=['--info'], mkdirs=False)
-        daemon, cpu, mem = [_.split()[1] for _ in out[1].replace('[', '').replace(']', '').split(', ')]
+        if not self.is_vm:
+            out = self.run_container(AVADx.IMAGES['avadx'], args=['--info'], mkdirs=False)
+            daemon, cpu, mem = [_.split()[1] for _ in out[1].replace('[', '').replace(']', '').split(', ')]
+        else:
+            cpu = 1
+            mem = 1
         self.resources['vm.cpu'] = int(cpu)
         self.resources['vm.mem'] = int(mem)
 

@@ -255,6 +255,9 @@ class AVADx:
     def generate_SNAP_query(self, uid, **kwargs):
         self.run_method(self.IMAGES['R'], 'generate_SNAP_query', uid, kwargs)
 
+    def varidb_prefilter(self, uid, **kwargs):
+        self.run_method(self.IMAGES['avadx'], 'varidb_prefilter', uid, kwargs)
+
     def varidb(self, uid, **kwargs):
         self.run_method(self.IMAGES['varidb'], 'varidb', uid, kwargs)
 
@@ -1439,21 +1442,31 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         ]
     )
 
-    # 3.4   Query varidb for SNAP mutations
-    step3_4_out = 'varidb/varidb_query_result.csv'
+    # 3.4   Run varidb pre-filter
+    step3_4_outfolder = 'varidb'
     pipeline.add_action(
-        'varidb', 3.40,
+        'varidb_prefilter', 3.40,
+        'check variants for SNAP length limit and correct sequence mapping',
+        f'/app/python/avadx/filter_vars.py $WD/{step3_4_outfolder}',
+        daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
+        reports=[(Path(step3_4_outfolder) / 'varidb_prefilter_report.log', '3_4-varidb_prefilter.log')]
+    )
+
+    # 3.5   Query varidb for SNAP mutations
+    step3_5_out = 'varidb/varidb_query_result.csv'
+    pipeline.add_action(
+        'varidb', 3.50,
         'query SNAP variants from varidb',
         '-D config[DEFAULT.avadx.data]/varidb.db '
-        f'-Q $WD/{step3_3_outfolder}/varidb_query_nonsyn.ids '
-        f'-f $WD/{step3_3_outfolder}/varidb_query_nonsyn.fa '
-        f'-o $WD/{step3_4_out} '
+        f'-Q $WD/{step3_3_outfolder}/varidb_query_nonsyn_filtered.ids '
+        f'-f $WD/{step3_3_outfolder}/varidb_query_nonsyn_filtered.fa '
+        f'-o $WD/{step3_5_out} '
         '-R $WD/varidb/varidb_query_report.txt '
         '-C query variant score -S tab -s',
         reports=[
-            (Path('varidb') / 'varidb_query_report.txt', '3_4-varidb_report.log'),
-            (Path('varidb') / 'varidb_query_result_failed.csv', '3_4-varidb_failed.tsv'),
-            (Path('varidb') / 'varidb_query_report_info.txt', '3_4-scoring_functions_info.log')
+            (Path('varidb') / 'varidb_query_report.txt', '3_5-varidb_report.log'),
+            (Path('varidb') / 'varidb_query_result_failed.csv', '3_5-varidb_failed.tsv'),
+            (Path('varidb') / 'varidb_query_report_info.txt', '3_5-scoring_functions_info.log')
         ]
     )
 
@@ -1491,7 +1504,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         'cal_genescore_make_genescore', 4.30,
         'calculate gene score',
         '/app/python/avadx/genescore.py -a $TASK.exonic_variant_function '
-        f'-s $WD/{step3_4_out} -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
+        f'-s $WD/{step3_5_out} -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
         f'-g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
         f'-v {variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn"}] '
         f'-t config[avadx.varidb.predictors] -n config[avadx.normalizeby] -o $WD/{step4_3_outfolder}',

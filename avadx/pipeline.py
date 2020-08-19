@@ -736,7 +736,10 @@ class Pipeline:
         elif self.daemon == "singularity":
             bind_mounts = []
             for m in mounts:
-                bind_mounts += ['-B', f'{m[0]}:{m[1]}']
+                if m[0] is None or m[0] is None:
+                    self.log.warning(f'Invalid bind mount: {m}')
+                else:
+                    bind_mounts += ['-B', f'{m[0]}:{m[1]}']
             cmd_base += [] \
                 + (['-B', f'{out_folder.absolute()}:{VM_MOUNT / "out"}'] if out_folder.absolute().exists() else []) \
                 + (['-B', f'{data_folder}:{data}'] if data_folder.exists() else []) \

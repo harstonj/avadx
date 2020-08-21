@@ -975,6 +975,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     MR_filter = True if pipeline.config.get('avadx', 'filter.MR.enabled', fallback='yes') == 'yes' else False
     sex_filter = True if pipeline.config.get('avadx', 'filter.sex.enabled', fallback='yes') == 'yes' else False
     mito_filter = True if pipeline.config.get('avadx', 'filter.mito.enabled', fallback='yes') == 'yes' else False
+    analyze_indels = True if pipeline.config.get('avadx', 'analyze.indels', fallback='no') == 'yes' else False
     ethseq_splits_cfg = int(pipeline.config.get('avadx', 'ethseq.split', fallback=0))
     ethseq_threads = int(pipeline.get_host_cpu() // VM_CPU)
     ethseq_splits = ethseq_splits_cfg if ethseq_splits_cfg > 0 else pipeline.get_splits(threads=ethseq_threads)
@@ -1386,13 +1387,16 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         'filter snps',
         f'view --threads {VM_CPU} --types snps $WD/{step2_5_out} -Oz -o $WD/{step2_6_1_out}'
     )
+
     # 2.6.2 indels
-    step2_6_2_out = 'vcf/2_6-2-indels.vcf.gz'
-    pipeline.add_action(
-        'bcftools', 2.62,
-        'filter indels',
-        f'view --threads {VM_CPU} --types indels $WD/{step2_5_out} -Oz -o $WD/{step2_6_2_out}'
-    )
+    if analyze_indels:
+        step2_6_2_out = 'vcf/2_6-2-indels.vcf.gz'
+        pipeline.add_action(
+            'bcftools', 2.62,
+            'filter indels',
+            f'view --threads {VM_CPU} --types indels $WD/{step2_5_out} -Oz -o $WD/{step2_6_2_out}'
+        )
+    step2_indels_out = step2_6_2_out if analyze_indels else None
 
     # 2.7   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
     #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
@@ -1406,7 +1410,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_exome_allAFabove0.txt.gz '
             f'config[DEFAULT.avadx.data]/{hgref}_gnomad_genome_allAFabove0.txt.gz'
         )
-    step2_out = step2_7_out if gnomAD_filter else step2_6_1_out
+    step2_snps_out = step2_7_out if gnomAD_filter else step2_6_1_out
 
     # 2.7.1 Generate stats report
     pipeline.add_stats_report(2.71, step2_7_out, refers_to=2.70, enabled=create_filter_reports)
@@ -1418,8 +1422,8 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     pipeline.add_action(
         'annovar', 3.10,
         'convert VCF file to ANNOVAR input format',
-        f'convert2annovar.pl -format vcf4old $WD/{step2_out} -outfile $WD/{step3_1_out}',
-        reports=[('annovar/convert2annovar.log', '3_3-convert2annovar.log')],
+        f'convert2annovar.pl -format vcf4old $WD/{step2_snps_out} -outfile $WD/{step3_1_out}',
+        reports=[('annovar/convert2annovar.log', '3_1-convert2annovar.log')],
         logs=('annovar/convert2annovar.log', None)
     )
 
@@ -1481,11 +1485,23 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     pipeline.add_action(
         'annovar', 4.10,
         'convert cleaned VCF to single annovar annotation files',
-        f'-c \'convert2annovar.pl -format vcf4 $WD/{step2_out} -outfile $WD/{step4_1_outfolder}/sample -allsample; '
+        f'-c \'convert2annovar.pl -format vcf4 $WD/{step2_snps_out} -outfile $WD/{step4_1_outfolder}/sample -allsample; '
         f'(cd $WD/{step4_1_outfolder} && ls -f -1 sample.*.avinput) > $WD/{step4_1_out}\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(WD / step4_1_outfolder)
     )
+
+    if analyze_indels:
+        step4_1_1_outfolder = 'annovar/annotations_indels'
+        step4_1_1_out = 'tmp/annovar_annotations_indels.txt'
+        pipeline.add_action(
+            'annovar', 4.11,
+            'convert cleaned VCF to single annovar annotation files (indels)',
+            f'-c \'convert2annovar.pl -format vcf4 $WD/{step2_indels_out} -outfile $WD/{step4_1_1_outfolder}/sample -allsample; '
+            f'(cd $WD/{step4_1_1_outfolder} && ls -f -1 sample.*.avinput) > $WD/{step4_1_1_out}\'',
+            daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
+            outdir=(WD / step4_1_1_outfolder)
+        )
 
     # 4.2   Annotate all sample*.avinput files
     pipeline.add_action(
@@ -1495,6 +1511,15 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/'),
         resources={'cpu': VM_CPU}
     )
+
+    if analyze_indels:
+        pipeline.add_action(
+            'annovar', 4.21,
+            'generate annovar annotation (indels)',
+            f'annotate_variation.pl -thread {VM_CPU} -build {hgref} $TASK config[DEFAULT.annovar.humandb]/',
+            tasks=(None, WD / step4_1_1_out, f'$WD/{step4_1_1_outfolder}/'),
+            resources={'cpu': VM_CPU}
+        )
 
     # 4.3   Compute gene scores
     step4_3_outfolder = 'genescores'
@@ -1510,7 +1535,8 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         f'-s $WD/{step3_5_out} -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
         f'-g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
         f'-v {variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn"}] '
-        f'-t config[avadx.varidb.predictors] -n config[avadx.normalizeby] -o $WD/{step4_3_outfolder}',
+        f'-t config[avadx.varidb.predictors] -n config[avadx.normalizeby] {"--indels " if analyze_indels else ""}'
+        f'-o $WD/{step4_3_outfolder}',
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/'),
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
         mounts=mounts_step4_3,

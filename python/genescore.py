@@ -14,7 +14,9 @@ class ScoringFunction:
         return self.variant.score_variant(row)
 
     def score_gene(self, series):
-        return self.gene.score_gene(series)
+        series_missing_removed = series.dropna()
+        aggregated_score = np.nan if series_missing_removed.empty else self.gene.score_gene(series_missing_removed)
+        return aggregated_score
 
     def import_modules(self, name, package: str = None, variant: Path = None, gene: Path = None):
         variant_file = variant if variant else Path(variant.replace('.', os.sep))
@@ -34,17 +36,17 @@ class ScoringFunction:
 def extract_neutrality(row):
     label = np.nan
     score = row['snapfun.score']
-    var_class = row['type']
-    if score > 0 and var_class == 'nonsynonymous SNV':
+    var_type = row['type']
+    if score > 0 and var_type == 'nonsynonymous SNV':
         label = 'NonNeutral'
-    elif score <= 0 and var_class == 'nonsynonymous SNV':
+    elif score <= 0 and var_type == 'nonsynonymous SNV':
         label = 'Neutral'
     else:
         label = np.nan
     return label
 
 
-def run(annotations, scoretable, metadata, tools, variantfn, genefn, normalize, out):
+def run(annotations, indels, scoretable, metadata, tools, variantfn, genefn, normalize, out):
     sample_name = Path(annotations.name.replace('.exonic_variant_function', '')).stem
 
     # load scoring functions
@@ -54,7 +56,15 @@ def run(annotations, scoretable, metadata, tools, variantfn, genefn, normalize, 
     protL = pd.read_csv(metadata).rename(columns={'Transcript': 'transcript', 'Prot_length': 'prot_length'})
 
     # parser annotations file
-    exonic = pd.read_table(annotations, header=None)
+    exonic_snp = pd.read_table(annotations, header=None)
+    exonic_snp['class'] = 'snp'
+    if indels:
+        indel_annotations = annotations.parent.parent / (annotations.parent.name + '_indels') / annotations.name
+        exonic_indels = pd.read_table(indel_annotations, header=None)
+        exonic_indels['class'] = 'indel'
+        exonic_all = pd.concat([exonic_snp, exonic_indels], ignore_index=True)
+    else:
+        exonic_all = exonic_snp
 
     score_table = pd.DataFrame(columns=['transcript', 'variant'])
     for tool in tools:
@@ -65,9 +75,10 @@ def run(annotations, scoretable, metadata, tools, variantfn, genefn, normalize, 
         score_table = pd.merge(score_table, tool_score_table, on=['transcript', 'variant'], how='outer')  # join with protein length information
 
     # preprocess annotations
-    exonic_flted = exonic[[1, 2, 8]]  # subset columns of interest
-    exonic_flted.columns = ['type', 'detail', 'zygosity']  # rename columns
-    exonic_flted = exonic_flted[exonic_flted.detail != 'UNKNOWN']  # drop all where annotations is not known
+    exonic_flted = exonic_all[[1, 2, 8, 'class']]  # subset columns of interest
+    exonic_flted.columns = ['type', 'detail', 'zygosity', 'class']  # rename columns
+    # NOTE: removed filtering of unknowns - those are set to NaN or an actual value using the plugin scoring function
+    # exonic_flted = exonic_flted[exonic_flted.detail != 'UNKNOWN']  # drop all where annotations is not known
     exonic_flted = exonic_flted.assign(detail=exonic_flted.detail.str.split(',')).explode('detail')  # split multiple annotations into single rows
     exonic_flted = exonic_flted.dropna(subset=['detail'])  # drop all rows with missing detail caused by explode
     exonic_flted[['gene', 'transcript', 'exon', 'nu_change', 'aa_change']] = exonic_flted.detail.str.split(':', expand=True)  # seperate annotation details into rows
@@ -108,7 +119,7 @@ def run(annotations, scoretable, metadata, tools, variantfn, genefn, normalize, 
 
 
 def main(args):
-    run(args.annotations, args.scoretable, args.metadata, [_.strip() for _ in args.tools.split(',')], args.variantfn, args.genefn, args.normalize, args.out)
+    run(args.annotations, args.indels, args.scoretable, args.metadata, [_.strip() for _ in args.tools.split(',')], args.variantfn, args.genefn, args.normalize, args.out)
 
 
 if __name__ == "__main__":
@@ -116,6 +127,10 @@ if __name__ == "__main__":
     parser.add_argument(
         '-a', '--annotations', type=Path,
         help='Single sample ANNOVAR annotations (.exonic_variant_function)'
+    )
+    parser.add_argument(
+        '-i', '--indels', action='store_true',
+        help='Also use ANNOVAR annotations for indels (.exonic_variant_function)'
     )
     parser.add_argument(
         '-s', '--scoretable', type=Path,

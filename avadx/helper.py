@@ -173,7 +173,7 @@ def fasta_header_count(fname):
     return header_count
 
 
-def run_command(command, shell=False, print_output=False, env_exports={}, wait=True, logger=None, auto_escape=True):
+def run_command(command, shell=False, print_output=False, env_exports={}, wait=True, logger=None, auto_escape=True, poll=False):
     print_ = logger.info if logger else print
     current_env = os.environ.copy()
     merged_env = {**current_env, **env_exports}
@@ -189,20 +189,30 @@ def run_command(command, shell=False, print_output=False, env_exports={}, wait=T
         stdout=subprocess.PIPE if wait else None, stderr=subprocess.STDOUT if wait else None
     )
     if wait:
-        stdout = []
-        stdout_data, stderr_data = process.communicate()
-        for line in stdout_data.splitlines():
-            line = line.rstrip().decode('utf8')
-            if print_output:
-                print_(f'shell> {line}')
-            stdout.append(line)
+        if poll:
+            stdout, stderr = [], []
+            while True:
+                stdout_poll, stderr_poll = process.stdout.readline(), process.stderr.readline() if process.stderr else None
+                if process.poll() is not None:
+                    break
+                if stdout_poll:
+                    line = stdout_poll.rstrip().decode('utf8')
+                    print_(f'shell> {line}')
+                    stdout.append(line)
+                if stderr_poll:
+                    line = stderr_poll.rstrip().decode('utf8')
+                    print_(f'shell> {line}')
+                    stderr.append(line)
+                rc = process.poll()
+        else:
+            stdout_data, stderr_data = process.communicate()
+            stdout = [line.rstrip().decode('utf8') for line in stdout_data.splitlines()]
+            stderr = [line.rstrip().decode('utf8') for line in stderr_data.splitlines()] if stderr_data else []
+            for line in stdout:
+                if print_output:
+                    print_(f'shell> {line}')
         if process.returncode != 0:
             print_ = logger.error if logger else print
-            stderr = []
-            stderr_data = "" if not stderr_data else stderr_data
-            for line in stderr_data.splitlines():
-                line = line.rstrip().decode('utf8')
-                stderr.append(line)
             error_msg = stderr if stderr else stderr + stdout
             for msg in error_msg:
                 print_(msg)

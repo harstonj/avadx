@@ -772,7 +772,7 @@ class Pipeline:
         ]
         self.config.set('DEFAULT', 'datadir', config_datadir_orig)
         cmd = cmd_base + [_.replace('//', '/') if _.startswith('/') else _ for _ in args_parsed]
-        out = run_command(cmd, env_exports=env_exports_parsed, logger=self.log)
+        out = run_command(cmd, env_exports=env_exports_parsed, logger=self.log, poll=(LOG_LEVEL <= 10))
         if stdout and out:
             if stdout == 'print':
                 print('\n'.join(out))

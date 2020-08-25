@@ -22,7 +22,7 @@ records = parse_fasta(non_syn_fa)
 with (wd_path / report_name).open('wt') as fout_report, \
         (wd_path / excluded_name).open('wt') as fout_excluded, \
         non_syn_fa_filtered.open('wt') as fout_seqs:
-    failed, missing_seq, error_length, error_mismatch, error_reverse = {}, [], 0, 0, 0
+    failed, missing_seq, error_length, error_index, error_mismatch, error_reverse = {}, [], 0, 0, 0, 0
     for refseqid in queries:
         variants = non_syn_vars[non_syn_vars.refseqid == refseqid].variant
         seq = records.get(refseqid, None)
@@ -38,7 +38,10 @@ with (wd_path / report_name).open('wt') as fout_report, \
                 reason = 'length'
                 error_length += 1
             elif pos > seq_len or wt != seq[pos - 1]:
-                if mut == seq[pos - 1]:
+                if pos > seq_len:
+                    reason = 'index'
+                    error_index += 1
+                elif mut == seq[pos - 1]:
                     reason = 'reverse'
                     error_reverse += 1
                 else:
@@ -50,12 +53,13 @@ with (wd_path / report_name).open('wt') as fout_report, \
     remaining_refseqids = set(non_syn_vars.refseqid)
     out = [
         ('# variants excluded from varidb query', '\n'),
-        ('variants excluded   :', error_length + error_mismatch + error_reverse),
+        ('variants excluded   :', error_length + error_index + error_mismatch + error_reverse),
         ('affected sequences  :', len(failed)),
         ('removed sequences   :', len(records) - len(remaining_refseqids)),
         ('remaining sequences :', len(remaining_refseqids)),
         ('\n------ REASONS ------', '\n'),
         (' - length   :', error_length),
+        (' - index    :', error_index),
         (' - mismatch :', error_mismatch),
         (' - reverse  :', error_reverse),
     ] + ([(' - missing  seq :', len(missing_seq))] if missing_seq else [])

@@ -1538,7 +1538,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         '/app/python/avadx/genescore.py -a $TASK.exonic_variant_function '
         f'-s $WD/{step3_5_out} -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
         f'-g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
-        f'-v {variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn"}] '
+        f'-v {variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn"} '
         f'-t config[avadx.varidb.predictors] -n config[avadx.normalizeby] {"--indels " if analyze_indels else ""}'
         f'-o $WD/{step4_3_outfolder}',
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/'),

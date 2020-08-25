@@ -722,7 +722,9 @@ class Pipeline:
         if self.daemon == "docker":
             bind_mounts = []
             for m in mounts:
-                if m[0] is None or m[0] is None:
+                if m[0] is None and m[1] is None:
+                    self.log.debug(f'Invalid bind mount: {m}')
+                elif m[0] is None or m[1] is None:
                     self.log.warning(f'Invalid bind mount: {m}')
                 else:
                     bind_mounts += ['-v', f'{m[0]}:{m[1]}']
@@ -736,7 +738,9 @@ class Pipeline:
         elif self.daemon == "singularity":
             bind_mounts = []
             for m in mounts:
-                if m[0] is None or m[0] is None:
+                if m[0] is None and m[1] is None:
+                    self.log.debug(f'Invalid bind mount: {m}')
+                elif m[0] is None or m[1] is None:
                     self.log.warning(f'Invalid bind mount: {m}')
                 else:
                     bind_mounts += ['-B', f'{m[0]}:{m[1]}']

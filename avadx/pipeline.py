@@ -1205,7 +1205,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         pipeline.add_action(
             'bcftools', 1.5,
             'filter by missing rate (MR)',
-            f'view --threads {VM_CPU} -i \'F_MISSING<config[avadx.qc.call.MR]\' $WD/{step1_4_out} -Oz -o $WD/{step1_5_out}'
+            f'view --threads {VM_CPU} -i \'F_MISSING<=config[avadx.qc.call.MR]\' $WD/{step1_4_out} -Oz -o $WD/{step1_5_out}'
         )
     step1_5_out = step1_5_out if MR_filter else step1_4_out
 
@@ -1417,7 +1417,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     step2_snps_out = step2_7_out if gnomAD_filter else step2_6_1_out
 
     # 2.7.1 Generate stats report
-    pipeline.add_stats_report(2.71, step2_7_out, refers_to=2.70, enabled=create_filter_reports)
+    pipeline.add_stats_report(2.71, step2_snps_out, refers_to=2.70, enabled=create_filter_reports)
 
     # 3     Query/Calculate SNAP scores for all variants ------------------------------------------ #
 

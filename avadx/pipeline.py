@@ -267,8 +267,8 @@ class AVADx:
     def merge_genescore(self, uid, **kwargs):
         self.run_method(self.IMAGES['R'], 'merge_genescore', uid, kwargs)
 
-    def FS_CVperf_kfold(self, uid, **kwargs):
-        self.run_method(self.IMAGES['R'], 'FS_CVperf_kfold', uid, kwargs)
+    def ava_model(self, uid, **kwargs):
+        self.run_method(self.IMAGES['avadx'], 'ava_model', uid, kwargs)
 
     def FS_CVgeneOverRep_kfold(self, uid, **kwargs):
         self.run_method(self.IMAGES['R'], 'FS_CVgeneOverRep_kfold', uid, kwargs)
@@ -921,7 +921,7 @@ def main(pipeline, extra):
     app.log.info(f'Total runtime: {(timer() - timer_start):.3f} seconds')
 
 
-def get_mounts(pipeline, *config, exit_on_error=False):
+def get_mounts(pipeline, *config, exit_on_error=False, mount_as=None):
     mounts = []
     for section, option in config:
         cfg = pipeline.config.get(section, option, fallback=None)
@@ -930,7 +930,11 @@ def get_mounts(pipeline, *config, exit_on_error=False):
             if not cfg_path.is_absolute():
                 cfg_path = pipeline.config_file.parent / cfg_path
             if cfg_path.exists():
-                mounts += [(cfg_path.absolute(), VM_MOUNT / 'in' / cfg_path.name)]
+                if mount_as is None:
+                    mount_path = cfg_path.name
+                else:
+                    mount_path = mount_as if Path(mount_as).is_absolute() else mount_as
+                mounts += [(cfg_path.absolute(), VM_MOUNT / 'in' / mount_path)]
             else:
                 pipeline.log.warning(f'Could not mount {cfg_path}. Path not found.')
                 if exit_on_error:
@@ -986,8 +990,11 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     R_MAX_VSIZE_ethseq = f'{int(VM_MEM/ethseq_threads)}Gb'
     outliers_available = True if pipeline.check_config('outliers', is_file=True, quiet=True) else False
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
-    genescorefn_available = True if pipeline.check_config('avadx.genescore.fn', is_file=True, quiet=True) else False
-    variantscorefn_available = True if pipeline.check_config('avadx.variantscore.fn', is_file=True, quiet=True) else False
+    genescorefn_available = True if pipeline.check_config('genescore.fn', is_file=True, quiet=True) else False
+    variantscorefn_available = True if pipeline.check_config('variantscore.fn', is_file=True, quiet=True) else False
+    fselectionclass_available = True if pipeline.check_config('fselection.class', is_file=True, quiet=True) else False
+    modelclass_available = True if pipeline.check_config('model.class', is_file=True, quiet=True) else False
+    featurelist_available = True if pipeline.check_config('featurelist', is_file=True, quiet=True) else False
     create_filter_reports = True if pipeline.config.get('avadx', 'filter.reports', fallback='yes') == 'yes' else False
     is_init = kwargs['init']
     pipeline.entrypoint = 2.40 if outliers_available else pipeline.entrypoint
@@ -1581,15 +1588,24 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
             pipeline.log.error(f'|5.10| No binary class labels (0/1) for Cross-Validation and Model Training. Labels found: {class_labels}')
             sys.exit()
 
+    fselection_file = Path(pipeline.check_config('fselection.class', quiet=dry_run)).suffix == '.py'
+    fselectionclass_mnt = get_mounts(pipeline, ('avadx', 'fselection.class'), exit_on_error=False if is_init else fselectionclass_available, mount_as='/app/python/avadx/feature_selections/fselection_avadx.py') if fselection_file else []
+    model_file = Path(pipeline.check_config('model.class', quiet=dry_run)).suffix == '.py'
+    modelclass_mnt = get_mounts(pipeline, ('avadx', 'model.class'), exit_on_error=False if is_init else modelclass_available, mount_as='/app/python/avadx/models/models_avadx.py') if model_file else []
+    featurelist_mnt = get_mounts(pipeline, ('avadx', 'featurelist'), exit_on_error=False if is_init else featurelist_available) if featurelist_available else []
+    use_featurelist = f' -F {featurelist_mnt[0][1]}' if featurelist_mnt else ''
+    mounts_step5_1 = fselectionclass_mnt + modelclass_mnt + featurelist_mnt
     pipeline.add_action(
-        'FS_CVperf_kfold', 5.10,
+        'ava_model', 5.10,
         'perform model cross-validation',
-        f'/app/R/avadx/FS-CVperf-kfold.R -f $OUT/{step4_4_outfolder}/GeneScoreTable_normalized.csv '
-        '-m config[avadx.cv.featureselection] -M config[avadx.cv.model] -s $WD/tmp/cv-scheme.csv '
-        '-l config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -t config[avadx.cv.steps] '
-        '-n config[avadx.cv.topgenes] -v config[avadx.cv.varcutoff] -K config[avadx.cv.ks.pvalcutoff] '
-        f'-o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder}',
+        f'/app/python/avadx/model.py -g $OUT/{step4_4_outfolder}/GeneScoreTable_normalized.csv '
+        '-f config[avadx.cv.featureselection] -m config[avadx.cv.model] -c $WD/tmp/cv-scheme.csv '
+        '-p config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -v config[avadx.cv.varcutoff] -V config[avadx.cv.sklearnvariance] '
+        '-P config[avadx.cv.ks.pvalcutoff] -G config[avadx.cv.topgenes] -S config[avadx.cv.steps] '
+        f'-o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder} -C {VM_CPU}{use_featurelist}',
         fns={'pre': (check_cv_scheme, [WD / 'tmp' / 'cv-scheme.csv'])},
+        daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
+        mounts=mounts_step5_1,
         outdir=(OUT / step5_1_outfolder)
     )
 

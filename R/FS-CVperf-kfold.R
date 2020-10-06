@@ -5,6 +5,7 @@ suppressMessages(library(ggplot2))
 suppressMessages(library(caret))
 suppressMessages(library(PRROC))
 suppressMessages(library(xlsx))
+library(parallel)
 
 # This script takes in GeneScoreTable_normalized.txt, cv-scheme1.txt, and an output folder path
 # It outputs 10-fold cross-validation performance with randomforest the enriched gene lists with KS test as FS
@@ -57,6 +58,7 @@ out_fp <- opt$out
 wd_fp <- opt$wd
 k <- opt$k_fold
 ks_pval_cutoff <- opt$ks_pval_cutoff
+numCores <- detectCores()
 
 dir.create(file.path(wd_fp), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(out_fp), recursive = TRUE, showWarnings = FALSE)
@@ -149,13 +151,11 @@ if(fs_method %in% c("ks", "KS")){
       return(p_values)
     }
     
-    ks_fs_res <- list()
-    for(i in 1:k){
+    ks_fs_parallel = function(i) {
       print(paste0("Performing k-fold KS FS: fold ", i, " ..."))
-      ks_fs <- ks_FS(df_input[rownames(df_input) %in% cvsch$sample_id[cvsch$fold %in% setdiff(c(1:k), c(i))],])
-      ks_fs_res[[i]] <- ks_fs
-      rm(ks_fs)
+      return(ks_FS(df_input[rownames(df_input) %in% cvsch$sample_id[cvsch$fold %in% setdiff(c(1:k), c(i))],]))
     }
+    ks_fs_res = mclapply(1:k, ks_fs_parallel, mc.cores = numCores)
     
     ks_FS_result <- as.data.frame(do.call("cbind", ks_fs_res))
     ks_FS_result <- cbind(colnames(df_input)[-ncol(df_input)], ks_FS_result)
@@ -202,15 +202,13 @@ if(fs_method %in% c("ks", "KS")){
 }
 
 # Cross-validation with FS genes:
-cv_performance_results <- list()
-
-genes_considered = seq(0, opt$number_of_top_genes, opt$step_of_top_genes)
+genes_considered = seq(opt$step_of_top_genes, opt$number_of_top_genes, opt$step_of_top_genes)
 remaining = opt$number_of_top_genes - genes_considered[length(genes_considered)]
 if (remaining > 0) {
   genes_considered[length(genes_considered) + 1] = opt$number_of_top_genes + remaining
 }
 
-for(gn in genes_considered){
+genes_considered_parallel = function(gn) {
   if(gn>=2){
     print(paste0("Now running cross-validation with ", gn, " genes ..."))
 
@@ -281,7 +279,7 @@ for(gn in genes_considered){
       roc_rf <- roc.curve(pred_res_rf.df$prediction[pred_res_rf.df$status=="Positive"],
                           pred_res_rf.df$prediction[pred_res_rf.df$status=="Negative"])
       # print(paste0(gn, " genes: ", roc_rf$auc))
-      cv_performance_results[[paste0("GeneNumber.", gn)]] <- roc_rf$auc
+      return(roc_rf$auc)
       
     }else if(ml_method %in% c("svm", "SVM")){
       pred_res_svm <- list()
@@ -311,11 +309,12 @@ for(gn in genes_considered){
 
           model_svm <- svm(x=train_dat[, c(ks_FS_result$Gene[genes_subset])],
                            y=train_dat[, "status"],
+                           probability=T,
                            class.weights = 100 / table(train_dat$status)
           )
           pred_svm <- predict(model_svm, 
                               test_dat[, c(ks_FS_result$Gene[genes_subset])],
-                              decision.values=T)
+                              decision.values=T, probability=T)
           
         }else if(fs_method %in% c("DKM", "DKMcost")){
           model_svm <- svm(x=train_dat[, c(cl_fs_result$Gene[order(cl_fs_result[, paste0("Merit_fold", i, "out")], decreasing=T)][1:gn])],
@@ -341,19 +340,20 @@ for(gn in genes_considered){
       roc_svm <- roc.curve(pred_res_svm.df$Positive[pred_res_svm.df$status==1],
                            pred_res_svm.df$Positive[pred_res_svm.df$status==0])
       # print(paste0(gn, " genes: ", roc_svm$auc))
-      cv_performance_results[[paste0("GeneNumber.", gn)]] <- roc_svm$auc
+      return(roc_svm$auc)
     }
   }
 }
 
+cv_performance_results = mclapply(genes_considered, genes_considered_parallel, mc.cores = numCores)
 cv_performance_results.df <- as.data.frame(do.call("rbind", cv_performance_results))
 colnames(cv_performance_results.df)[1] <- "AUC"
 
 #write.xlsx(cv_performance_results.df, paste0(k, "F-CV-", ml_method, "-performance.xlsx"), sheetName=fs_method, append=T)
 
 cv_performance_ordered = setDT(cv_performance_results.df, keep.rownames = TRUE)
+cv_performance_ordered$rn = genes_considered
 cv_performance_ordered = cv_performance_ordered[order(-cv_performance_ordered$AUC),]
-cv_performance_ordered[, rn:=as.numeric(gsub(rn, pattern="GeneNumber\\.", replacement=""))]
 setnames(cv_performance_ordered, "rn", "selected_genes")
 write.table(cv_performance_ordered, paste0(k, "F-CV-", ml_method, "-performance.csv"), quote=F, row.names=F, col.names=T, sep=",")
 for (ridx in 1:nrow(cv_performance_ordered)) {

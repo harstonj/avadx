@@ -26,9 +26,13 @@ class Figure:
             if dataset == 'genescores':
                 self.in_file = out_folder / Path('genescores/GeneScoreTable_normalized_variation_filtered.csv')
                 selector_file = out_folder / Path('results/AUC_rank.1-genes.csv')
+                cv_scheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
                 self.out_file = out_folder / Path('genescores/heatmap.html')
                 if (self.in_file and self.in_file.exists()) and (selector_file and selector_file.exists()):
-                    data_raw = pd.read_csv(self.in_file).T
+                    data_raw = pd.read_csv(self.in_file)
+                    cv_scheme = pd.read_csv(cv_scheme_path, header=None, names=['sampleid', 'fold', 'status'])
+                    data_raw = data_raw.merge(cv_scheme[['sampleid', 'status']], how='left', on=['sampleid'])
+                    data_raw = data_raw.T
                     selector = pd.read_csv(selector_file, header=None, names=['gene', 'count'])
                     data_subset = data_raw.loc[data_raw.index.isin(selector.gene.values)]
                     self.data = data_subset.append(data_raw.loc['status']).T
@@ -74,7 +78,7 @@ class Figure:
 
     def heatmap_clust_dend(self):
         df = self.data.copy()
-        class_labels = ['1' if _ == 'Positive' else '0' for _ in df.status.values]
+        class_labels = df.status.values
         df.drop('status', axis=1, inplace=True)
         df_array = df.to_numpy()
         genes = df.columns.values

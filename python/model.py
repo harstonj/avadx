@@ -55,7 +55,6 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
 
     # load datasets
     cvscheme = pd.read_csv(cvscheme_path, header=None, names=['sampleid', 'fold', 'class'], dtype={'sampleid': str, 'fold': int, 'class': int})
-    cvscheme.sampleid = cvscheme.sampleid.map('sample.{}'.format)
     cvscheme = cvscheme.set_index('sampleid')
     kfold_is_set = False if kfold is None else True
     kfold = kfold if kfold_is_set else len(cvscheme.fold.unique())

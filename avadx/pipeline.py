@@ -454,13 +454,19 @@ class Pipeline:
             samples, labels, col3 = [], [], []
             reader = csv.reader(filter(lambda row: row[0] != '#', fin))
             header = next(reader)
+            header_ncol = len(header)
             has_groups = len(header) == 3 and header[2] == 'group'
             has_folds = len(header) == 3 and header[2] == 'fold'
             for row in reader:
+                if len(row) != header_ncol:
+                    self.log.warning(f'|1.02| Format error in sample file, skipping: {",".join(row)}')
+                    continue
                 samples += [row[0]]
                 labels += [row[1]]
                 if has_groups or has_folds:
                     col3 += [row[2]]
+            if not samples:
+                self.log.error(f'|1.02| No samples recognized, please check valid content/format of: {samples_path.name}')
             fout_ids.writelines([f'{_}\n' for _ in samples])
             cv_folds_config = int(self.config.get('avadx', 'cv.folds'))
             if has_groups:
@@ -480,7 +486,7 @@ class Pipeline:
                     auto_folds += [flatten([grouped_samples.get(g) for g in gfold])]
                 auto_folds = adjust_splits(auto_folds, cv_folds)
                 if len(auto_folds) != cv_folds:
-                    self.log.warn(f'Auto-generated cross-validation folds ({len(auto_folds)}) differ from specified folds ({cv_folds})')
+                    self.log.warning(f'Auto-generated cross-validation folds ({len(auto_folds)}) differ from specified folds ({cv_folds})')
                 for idx, fold in enumerate(auto_folds, 1):
                     for sidx in fold:
                         fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
@@ -505,7 +511,7 @@ class Pipeline:
                 auto_folds = folds(samples_indices, len(samples_indices) // cv_folds)
                 auto_folds = adjust_splits(auto_folds, cv_folds)
                 if len(auto_folds) != cv_folds:
-                    self.log.warn(f'Auto-generated cross-validation folds ({len(auto_folds)}) differ from specified folds ({cv_folds})')
+                    self.log.warning(f'Auto-generated cross-validation folds ({len(auto_folds)}) differ from specified folds ({cv_folds})')
                 for idx, fold in enumerate(auto_folds, 1):
                     for sidx in fold:
                         fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
@@ -728,7 +734,7 @@ class Pipeline:
                     self.log.warning(f'Invalid bind mount: {m}')
                 else:
                     bind_mounts += ['-v', f'{m[0]}:{m[1]}']
-            cmd_base += ['--rm'] \
+            cmd_base += ['--tty', '--rm'] \
                 + (['-v', f'{out_folder.absolute()}:{VM_MOUNT / "out"}'] if out_folder.absolute().exists() else []) \
                 + (['-v', f'{data_folder}:{data}'] if data_folder.exists() else []) \
                 + bind_mounts + daemon_args_parsed

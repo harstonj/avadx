@@ -1614,10 +1614,10 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     pipeline.add_action(
         'FS_CVgeneOverRep_kfold', 5.20,
         'check pathway over-representation',
-        f'/app/R/avadx/FS-CVgeneOverRep-kfold.R -f $OUT/{step5_1_outfolder}/performance_folds_genes.csv '
+        f'/app/R/avadx/FS-CVgeneOverRep-kfold.R -f $OUT/{step5_1_outfolder}/featureselection_genes_per_fold_ordered.csv '
         f'-t $WD/{step5_1_outfolder}/AUC_rank.1-genes-list.csv -b $OUT/{step4_4_outfolder}/GeneScoreTable_normalized_variation_filtered.csv '
         '-n config[avadx.pathways.topgenes] -d config[DEFAULT.avadx.data]/CPDB_pathways_genesymbol.tab '
-        f'-m config[avadx.cv.featureselection] -o $OUT/{step5_2_outfolder}',
+        f'-o $OUT/{step5_2_outfolder}',
         outdir=(OUT / step5_2_outfolder)
     )
 

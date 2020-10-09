@@ -3,12 +3,14 @@ from sklearn.ensemble import RandomForestClassifier
 
 
 class Model:
-    def __init__(self, name, kwargs, fselection, seed=42):
+    def __init__(self, name, kwargs, fselection, final=False, seed=42):
         self.name = name.upper()
         self.kwargs = kwargs
         self.fselection = fselection
+        self.final = final
         self.seed = seed
         self.fn = getattr(self, self.name, None)
+        self.model = None
 
     def run(self, kwargs):
         if self.fn:
@@ -20,9 +22,12 @@ class Model:
         return self.kwargs.get(arg, None)
 
     def split_train_test(self, dataset, k):
-        train = dataset.drop(self.fselection.cvscheme[self.fselection.cvscheme.fold == k].index)
-        test = dataset.loc[self.fselection.cvscheme[self.fselection.cvscheme.fold == k].index]
-        return train, test
+        if self.final:
+            return dataset.copy(), dataset.copy()
+        else:
+            train = dataset.drop(self.fselection.cvscheme[self.fselection.cvscheme.fold == k].index)
+            test = dataset.loc[self.fselection.cvscheme[self.fselection.cvscheme.fold == k].index]
+            return train, test
 
     def get_class_weights(self, train):
         train_class_weights = 1 / train.groupby('class')['class'].count()
@@ -44,6 +49,8 @@ class Model:
             class_weight=train_class_weights.to_dict()
         )
         rf_classifier.fit(X_train, y_train)
+        if self.final:
+            self.model = rf_classifier
         classes = list(rf_classifier.classes_)
         y_pred = rf_classifier.predict_proba(X_test)
         y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
@@ -61,6 +68,8 @@ class Model:
             class_weight=train_class_weights.to_dict()
         )
         svm_classifier.fit(X_train, y_train)
+        if self.final:
+            self.model = svm_classifier
         classes = list(svm_classifier.classes_)
         y_pred = svm_classifier.predict_proba(X_test)
         y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]

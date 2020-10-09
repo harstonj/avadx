@@ -4,6 +4,7 @@ import pandas as pd
 # from timeit import default_timer as timer
 from pathlib import Path
 from multiprocessing import Pool
+from joblib import dump, load
 from sklearn import metrics
 from sklearn.feature_selection import VarianceThreshold
 
@@ -22,6 +23,22 @@ def get_model(model, kwargs_dict, fselection):
     return Model(model, kwargs_dict, fselection)
 
 
+def load_model(filename):
+    return load(filename)
+
+
+def save_model(model, filename):
+    dump(model, filename)
+
+
+def load_features(filename):
+    return pd.read_csv(filename, header=None)
+
+
+def save_features(features, filename):
+    features.to_csv(filename, columns=[], header=False)
+
+
 def main(args, kwargs):
     run(args.genescores, args.featureselection, args.featurelist, args.model, args.cvscheme, args.protlength, args.kfold, args.variance, args.variation, args.pvalue, args.maxgenes, args.stepsize, args.out, args.wd, args.cores, kwargs)
 
@@ -33,6 +50,8 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     # create output directories
     out_path.mkdir(exist_ok=True)
     wd_path.mkdir(exist_ok=True)
+    model_path = out_path / 'model.joblib'
+    features_path = out_path / 'model_features.txt'
 
     # load datasets
     cvscheme = pd.read_csv(cvscheme_path, header=None, names=['sampleid', 'fold', 'class'], dtype={'sampleid': str, 'fold': int, 'class': int})
@@ -70,7 +89,6 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         dataset = dataset[dataset.columns[var_selector.get_support(indices=True)]]
     except ValueError as err:
         print(f'Error at variance filter step: {err}')
-    dataset.to_csv(genescores_path.parent / f'{genescores_path.stem }_variation_filtered.csv')
 
     # variation filtering
     gene_variation_across_samples = (dataset.nunique() / dataset.shape[0]) * 100
@@ -79,6 +97,9 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         dataset = dataset[gene_variation_subset]
     else:
         print(f'Error at variation filter step: no feature met the required threshold of <= {variation_cutoff}%')
+
+    # save filtered dataset
+    dataset.to_csv(genescores_path.parent / f'{genescores_path.stem }_variation_filtered.csv')
 
     # change maxgenes after filtering
     maxgenes = min(maxgenes, dataset.shape[1])
@@ -109,29 +130,33 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         if remaining:
             genes_considered += [maxgenes + remaining]
 
+    # save order list (descending) of best scoring features (genes) as determimed by Feature Selection step
+    pd.DataFrame(dict([(k, v.index.to_series(index=range(1, v.shape[0] + 1))) for k, v in fselection.selected.items()])).rename_axis('pos', axis='rows').to_csv(out_path / 'featureselection_genes_per_fold_ordered.csv')
+
     # run model training and performance evaluation
-    model = get_model(model, kwargs_dict, fselection)
+    model_eval = get_model(model, kwargs_dict, fselection)
     with Pool(processes=cores) as model_pool:
         performances_roc = {}
         performances_auc = {}
         for max_genes in genes_considered:
-            print(f'{model.name}/{model.fselection.name}: {max_genes} genes...')
-            model_pooled = [model_pool.apply_async(model.fn, args=(dataset, max_genes, k)) for k in kfold_steps]
+            print(f'{model_eval.name}/{model_eval.fselection.name}: {max_genes} genes...')
+            model_pooled = [model_pool.apply_async(model_eval.fn, args=(dataset, max_genes, k)) for k in kfold_steps]
             model_res = [p.get() for p in model_pooled]
             model_predictions = pd.DataFrame.from_dict({k: v for d in model_res for k, v in d.items()}, orient='index', columns=['0', '1']).sort_index()
             roc_all = metrics.roc_curve(dataset['class'], model_predictions['1'])
             roc_auc = metrics.roc_auc_score(dataset['class'], model_predictions['1'])
             performances_roc[max_genes] = roc_all
             performances_auc[max_genes] = roc_auc
-            print(f'{model.name}/{model.fselection.name}: {max_genes} genes AUC: {roc_auc}')
+            print(f'{model_eval.name}/{model_eval.fselection.name}: {max_genes} genes AUC: {roc_auc}')
         max_auc_genes = max(performances_auc, key=lambda key: performances_auc[key])
-        print(f'{model.name}/{model.fselection.name}: max AUC for {max_auc_genes} genes = {performances_auc[max_auc_genes]}')
+        print(f'{model_eval.name}/{model_eval.fselection.name}: max AUC for {max_auc_genes} genes = {performances_auc[max_auc_genes]}')
         model_df = pd.DataFrame.from_dict(performances_auc, orient='index', columns=['AUC']).rename_axis('selected_genes', axis='rows').sort_values(by='AUC', ascending=False)
-        model_df.to_csv(wd_path / f'{kfold}F-CV-{model.name}-performance.csv')
+        model_df.to_csv(wd_path / f'{kfold}F-CV-{model_eval.name}-performance.csv')
         model_df.to_csv(out_path / 'performance.csv')
 
     # get list of selected genes for best AUC over all folds (merge)
     genes_best_merged = {}
+    rank1_df = None
     for rank, max_genes in enumerate(model_df.index, 1):
         genes_best_folds = {}
         for k in kfold_steps:
@@ -143,8 +168,25 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         genes_best_df = pd.DataFrame.from_dict(genes_best_folds, orient='index', columns=['frequency']).sort_values(by='frequency', ascending=False)
         genes_best_df.to_csv(wd_path / f'AUC_rank.{rank}_top.{max_genes}_{kfold}F-CV-{fselection.name}-selectedGenes.csv')
         if rank == 1:
-            genes_best_df.to_csv(wd_path / 'AUC_rank.1-genes-list.csv', columns=[], header=False)
-            genes_best_df.to_csv(out_path / 'AUC_rank.1-genes.csv', header=False)
+            rank1_df = genes_best_df
+            rank1_df.to_csv(wd_path / 'AUC_rank.1-genes-list.csv', columns=[], header=False)
+            rank1_df.to_csv(out_path / 'AUC_rank.1-genes.csv', header=False)
+
+    # build and save final model
+    maxgenes_final = rank1_df.shape[0]
+    fselection_final = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes_final)
+    fselection_final.final = True
+    fselection_final_res = fselection_final.fn(dataset, 'all')
+    fselection_final.selected = {fselection_final_res[1].name: fselection_final_res[1]}
+    model_final = get_model(model, kwargs_dict, fselection_final)
+    model_final.final = True
+    model_final_res = model_final.fn(dataset, maxgenes_final, 'all')
+    model_final_predictions = pd.DataFrame.from_dict({k: v for k, v in model_final_res.items()}, orient='index', columns=['0', '1']).sort_index()
+    # roc_final_all = metrics.roc_curve(dataset['class'], model_final_predictions['1'])
+    roc_final_auc = metrics.roc_auc_score(dataset['class'], model_final_predictions['1'])
+    save_model(model_final.model, model_path)
+    save_features(model_final.get_selected_genes(maxgenes_final, 'all'), features_path)
+    print(f'FINAL - {model_final.name}/{model_eval.fselection.name}: {maxgenes_final} genes AUC: {roc_final_auc}')
 
 
 if __name__ == "__main__":

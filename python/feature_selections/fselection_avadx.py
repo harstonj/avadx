@@ -7,12 +7,13 @@ from sklearn.feature_selection import VarianceThreshold
 
 
 class FSelection:
-    def __init__(self, name, kwargs, cvscheme, max_genes=200, fold_variance_filter=0, seed=42):
+    def __init__(self, name, kwargs, cvscheme, max_genes=200, fold_variance_filter=0, final=False, seed=42):
         self.name = name.upper()
         self.kwargs = kwargs
         self.cvscheme = cvscheme
         self.max_genes = max_genes
         self.fold_variance_filter = fold_variance_filter
+        self.final = final
         self.seed = seed
         self.fn = getattr(self, self.name, None)
         self.selected = None
@@ -27,17 +28,28 @@ class FSelection:
         return self.kwargs.get(arg, None)
 
     def split_train_test(self, dataset, k):
-        train = dataset.drop(self.cvscheme[self.cvscheme.fold == k].index)
-        test = dataset.loc[self.cvscheme[self.cvscheme.fold == k].index]
-        if self.fold_variance_filter is not None:
-            var_selector = VarianceThreshold(self.fold_variance_filter)
-            try:
-                var_selector.fit(train)
-                train = train[train.columns[var_selector.get_support(indices=True)]]
-                test = test[test.columns[var_selector.get_support(indices=True)]]
-            except ValueError as err:
-                print(f'Error at fold variance filter step: {err}')
-        return train, test
+        if self.final:
+            dataset_ = dataset.copy()
+            if self.fold_variance_filter is not None:
+                var_selector = VarianceThreshold(self.fold_variance_filter)
+                try:
+                    var_selector.fit(dataset_)
+                    dataset_ = dataset_[dataset_.columns[var_selector.get_support(indices=True)]]
+                except ValueError as err:
+                    print(f'Error at fold variance filter step: {err}')
+            return dataset_, None
+        else:
+            train = dataset.drop(self.cvscheme[self.cvscheme.fold == k].index)
+            test = dataset.loc[self.cvscheme[self.cvscheme.fold == k].index]
+            if self.fold_variance_filter is not None:
+                var_selector = VarianceThreshold(self.fold_variance_filter)
+                try:
+                    var_selector.fit(train)
+                    train = train[train.columns[var_selector.get_support(indices=True)]]
+                    test = test[test.columns[var_selector.get_support(indices=True)]]
+                except ValueError as err:
+                    print(f'Error at fold variance filter step: {err}')
+            return train, test
 
     def KS(self, dataset, k):
         print(f'{self.name}: fold {k}...')
@@ -66,7 +78,7 @@ class FSelection:
 
     def RFE(self, dataset, k):
         print(f'{self.name}: fold {k}...')
-        train, test = self.split_train_test(dataset, k)
+        train, _ = self.split_train_test(dataset, k)
         y_train = train.pop('class')
         X_train = train
         model = LogisticRegression(solver='lbfgs')

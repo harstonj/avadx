@@ -27,7 +27,7 @@ setwd(opt$input_file_folder)
 gs_list <- list.files(pattern=".gs")
 gs <- list()
 for(f in gs_list){
-  gs[[gsub(".gs", "", f)]] <- fread(f, data.table=F)
+  gs[[gsub('sample.', '', gsub('.gs', '', f))]] <- fread(f, data.table=F)
   rm(f)
 }
 

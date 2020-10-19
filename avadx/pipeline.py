@@ -279,6 +279,9 @@ class AVADx:
     def run_visualization(self, uid, **kwargs):
         self.run_method(self.IMAGES['avadx'], 'run_visualization', uid, kwargs)
 
+    def run_prediction(self, uid, **kwargs):
+        self.run_method(self.IMAGES['avadx'], 'run_prediction', uid, kwargs)
+
 
 class Pipeline:
 
@@ -616,6 +619,62 @@ class Pipeline:
         fig = Figure(vis, dataset, wd_folder, out_folder)
         fig.create()
 
+    def predict(self, uid, kwargs, extra, config, daemon):
+        model_path, features_path = None, None
+        # wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
+        out_folder = self.kwargs.get('wd') / str(self.uid) / 'out'
+        model_pipeline = out_folder / 'results' / 'model.joblib'
+        features_pipeline = out_folder / 'results' / 'model_features.txt'
+        prediction_folder = out_folder / 'predictions'
+        prediction_folder.mkdir(parents=True, exist_ok=True)
+        if kwargs['model'] is not None:
+            if not kwargs['model'].exists():
+                self.log.warn(f'Could not find user model file: {kwargs["model"].absolute()}')
+            else:
+                self.log.info(f'Loading user model file: {kwargs["model"].absolute()}')
+                model_path = kwargs["model"]
+                features_path = kwargs["model"].parent / f'{kwargs["model"].stem}_features.txt'
+        if model_path is None:
+            if model_pipeline.exists():
+                self.log.info('Loading pipeline model file...')
+                model_path = model_pipeline
+                features_path = features_pipeline
+        train_model = model_path is None
+        if train_model:
+            self.log.info('Please apply the AVA,Dx pipeline first to train a model.')
+            return
+
+        input_samples = kwargs['sampleprediction']
+        if not input_samples.exists():
+            self.log.error(f'Could not find sample prediction file: {input_samples.absolute()}. Aborting.')
+            return
+        features_samples = prediction_folder / f'{input_samples.stem}_genescores.csv'
+        extract_features = not features_samples.exists()
+        if not extract_features:
+            self.log.info(f'Using existing genescores from: {features_samples}')
+        else:
+            features_uid = input_samples.stem
+            features_wd = self.kwargs.get('wd') / str(self.uid) / 'wd' / 'prediction'
+            features_config = prediction_folder / f'{input_samples.stem}_config.ini'
+            with features_config.open('w') as configfile:
+                configp = configparser.ConfigParser()
+                configp.read(str(config))
+                configp.set('avadx', 'vcf', str(input_samples.absolute()))
+                configp.set('avadx', 'samples', '')
+                configp.write(configfile)
+            features_kwargs = {k: v for k, v in kwargs.items()}
+            features_kwargs['wd'] = features_wd
+            features_kwargs['exitpoint'] = 5
+            pipeline_features = run_all(features_uid, features_kwargs, extra, features_config, daemon)
+            shutil.rmtree(pipeline_features.get_wd())
+            shutil.copy(features_wd / features_uid / 'out' / 'genescores' / 'GeneScoreTable_normalized.csv', features_samples)
+
+        prediction_kwargs = {k: v for k, v in kwargs.items()}
+        prediction_kwargs['entrypoint'] = 8
+        prediction_extra = [_ for _ in extra]
+        prediction_extra += [f'pred_id={input_samples.stem}', f'features={features_path if features_path.exists() else "None"}', f'model={model_path}', f'genescores={features_samples}']
+        run_all(uid, prediction_kwargs, prediction_extra, config, daemon)
+
     def add_action(
             self, action, level=None, description='', args='', daemon_args={},
             tasks=(None, None, None), fns={'pre': (None, []), 'post': (None, [])},
@@ -875,9 +934,13 @@ def parse_arguments():
     parser.add_argument('-p', '--preprocess', action='store_true',
                         help='run input pre-processing')
     parser.add_argument('-P', '--postprocess', action='store_true',
-                        help='run pipleine post-processing')
+                        help='run pipeline post-processing')
     parser.add_argument('-V', '--visualize', type=str,
                         help='create visualizations / result plots')
+    parser.add_argument('-s', '--sampleprediction', type=Path,
+                        help='path to samples file for which predictions should be generated')
+    parser.add_argument('-M', '--model', type=Path,
+                        help='path to joblib model file other then the default when using -s/--sampleprediction')
     parser.add_argument('-r', '--retrieve', type=str,
                         help='retrieve data source')
     parser.add_argument('-S', '--steps', type=str,
@@ -1647,6 +1710,25 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         logs=('print', None)
     )
 
+    # 8   Prediction ---------------------------------------------------------------------------- #
+    predictions_outfolder = 'predictions'
+    mounts_predictions = [
+        (get_extra(extra, 'model'), VM_MOUNT / 'in' / 'model.joblib'),
+        (get_extra(extra, 'genescores'), VM_MOUNT / 'in' / 'genescores.csv'),
+    ]
+    pred_features = Path(get_extra(extra, 'features')).exists()
+    mounts_predictions += [(get_extra(extra, 'features'), VM_MOUNT / 'in' / 'features.txt')] if pred_features else []
+    pred_id = Path(get_extra(extra, 'pred_id'))
+    pipeline.add_action(
+        'run_prediction', 8.00,
+        'AVA,Dx predictions',
+        f'/app/python/avadx/model.py -M {pred_id} {mounts_predictions[0][1]} {mounts_predictions[1][1]} {mounts_predictions[2][1] if pred_features else "None"} '
+        f'-o $OUT/{predictions_outfolder} -C {VM_CPU}',
+        daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
+        mounts=mounts_predictions,
+        outdir=(OUT / predictions_outfolder)
+    )
+
     # RUN --------------------------------------------------------------------------------------- #
     if not dry_run:
         main(pipeline, extra)
@@ -1692,6 +1774,10 @@ def init():
         namespace.init = True
         pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
         pipeline.visualization(namespace.visualize)
+    elif namespace.sampleprediction:
+        namespace.init = False
+        pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
+        pipeline.predict(uid, vars(namespace), extra, config, daemon)
     elif actions is None:
         run_all(uid, vars(namespace), extra, config, daemon)
     else:

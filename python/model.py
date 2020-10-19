@@ -40,7 +40,11 @@ def save_features(features, filename):
 
 
 def main(args, kwargs):
-    run(args.genescores, args.featureselection, args.featurelist, args.model, args.cvscheme, args.protlength, args.kfold, args.variance, args.variation, args.pvalue, args.maxgenes, args.stepsize, args.out, args.wd, args.cores, kwargs)
+    if args.makepredictions:
+        pred_id, model, genescores, features = kwargs
+        predict(pred_id, model, genescores, features, args.out)
+    else:
+        run(args.genescores, args.featureselection, args.featurelist, args.model, args.cvscheme, args.protlength, args.kfold, args.variance, args.variation, args.pvalue, args.maxgenes, args.stepsize, args.out, args.wd, args.cores, kwargs)
 
 
 def run(genescores_path, featureselection, featurelist, model, cvscheme_path, protlength_path, kfold, variance_cutoff, variation_cutoff, pval_cutoff, maxgenes, stepsize, out_path, wd_path, cores, kwargs):
@@ -188,8 +192,50 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     print(f'FINAL - {model_final.name}/{model_eval.fselection.name}: {maxgenes_final} genes AUC: {roc_final_auc}')
 
 
+def predict(pred_id, model, genescores, features, outfolder):
+    predictor = load(model)
+    model = Path(model)
+    features = Path(features)
+    genescores = Path(genescores)
+    genescores_df = pd.read_csv(genescores)
+    if not features.exists():
+        print(
+            'No features files found, omitting features validation and using all features supplied in dataset. '
+            'Make sure all features used in training are provided and sorted accordingly.'
+        )
+        features_list = []
+    else:
+        features_s = pd.read_csv(features, header=None)[0]
+        features_list = features_s.to_list()
+        features_availability = features_s.isin(genescores_df.Gene)
+        if sum(features_availability) != features_s.shape[0]:
+            missing = features_s[~features_availability].values
+            print(f'{len(missing)} missing feature(s): {missing}. Aborting.')
+            return
+        genescores_df = genescores_df[genescores_df.Gene.isin(features_list)]
+
+    genescores_df = genescores_df.fillna(0)
+    dataset = genescores_df.drop('Transcript', axis=1).set_index('Gene').T.rename_axis('sampleid', axis='rows')
+    if features_list:
+        dataset = dataset[features_list]
+
+    classes = list(predictor.classes_)
+    try:
+        y_pred = predictor.predict_proba(dataset)
+    except ValueError as err:
+        print(f'ERROR: {err}')
+        return
+    y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
+    y_pred_ordered_dict = dict(zip(dataset.index.tolist(), list(y_pred_ordered)))
+    pd.DataFrame.from_dict(y_pred_ordered_dict, orient='index', columns=['0', '1']).to_csv(outfolder / f'{pred_id}_predictions.csv')
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-M', '--makepredictions', action='store_true',
+        help='predict samples using specified model'
+    )
     parser.add_argument(
         '-g', '--genescores', type=Path,
         help='path to the genescores file'

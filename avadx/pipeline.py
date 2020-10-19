@@ -880,12 +880,13 @@ class Pipeline:
             return cmd_base, cmd_suffix, parsed_args, parsed_daemon_args, env_exports
 
 
-def get_extra(x, y):
+def get_extra(x, y, fallback=None):
     res = [_.split('=')[1] for _ in x if _.startswith(y)]
     if len(res) == 1:
         return res[0]
-    else:
+    elif res:
         return res
+    return fallback
 
 
 def adjust_splits(auto_folds, cv_folds):
@@ -1712,17 +1713,16 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
 
     # 8   Prediction ---------------------------------------------------------------------------- #
     predictions_outfolder = 'predictions'
-    mounts_predictions = [
-        (get_extra(extra, 'model'), VM_MOUNT / 'in' / 'model.joblib'),
-        (get_extra(extra, 'genescores'), VM_MOUNT / 'in' / 'genescores.csv'),
-    ]
-    pred_features = Path(get_extra(extra, 'features')).exists()
-    mounts_predictions += [(get_extra(extra, 'features'), VM_MOUNT / 'in' / 'features.txt')] if pred_features else []
-    pred_id = Path(get_extra(extra, 'pred_id'))
+    predictions_pred_id, predictions_model, predictions_genescores, predictions_features = get_extra(extra, 'pred_id', 'null'), get_extra(extra, 'model', False), get_extra(extra, 'genescores', False), get_extra(extra, 'features', False)
+    mounts_predictions = []
+    mounts_predictions += [(predictions_model, VM_MOUNT / 'in' / 'model.joblib')] if predictions_model else []
+    mounts_predictions += [(predictions_genescores, VM_MOUNT / 'in' / 'genescores.csv')] if predictions_genescores else []
+    pred_features = Path(predictions_features).exists() if predictions_features else False
+    mounts_predictions += [(predictions_features, VM_MOUNT / 'in' / 'features.txt')] if pred_features else []
     pipeline.add_action(
         'run_prediction', 8.00,
         'AVA,Dx predictions',
-        f'/app/python/avadx/model.py -M {pred_id} {mounts_predictions[0][1]} {mounts_predictions[1][1]} {mounts_predictions[2][1] if pred_features else "None"} '
+        f'/app/python/avadx/model.py -M {predictions_pred_id} {mounts_predictions[0][1] if predictions_model else "None"} {mounts_predictions[1][1] if predictions_genescores else "None"} {mounts_predictions[2][1] if pred_features else "None"} '
         f'-o $OUT/{predictions_outfolder} -C {VM_CPU}',
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
         mounts=mounts_predictions,

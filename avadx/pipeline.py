@@ -307,10 +307,10 @@ class Pipeline:
         self.log = self.get_logger()
         self.actions = actions
         self.kwargs = kwargs
-        self.uid = uid if uid is not None else uuid.uuid1()
         self.config_file = config_file
-        self.config = self.load_config()
         self.daemon = daemon
+        self.uid = self.get_uid(uid)
+        self.config = self.load_config()
         self.is_vm = self.check_vm()
         self.entrypoint = kwargs.get('entrypoint') if kwargs.get('entrypoint', None) is not None else 1
         self.exitpoint = kwargs.get('exitpoint', None)
@@ -329,6 +329,13 @@ class Pipeline:
 
     def get_wd(self):
         return self.kwargs['wd'] / str(self.uid)
+
+    def get_uid(self, uid):
+        if uid is None:
+            uid = self.config_file.stem
+            if Path(self.kwargs['wd'] / uid).exists():
+                uid = f'{uid}_{uuid.uuid1()}'
+        return uid
 
     def check_vm(self):
         if runningInDocker():
@@ -988,7 +995,8 @@ def main(pipeline, extra):
     timer_start = timer()
     for action in pipeline.actions:
         app.run(action, pipeline.uid, pipeline.kwargs, extra)
-    app.log.info(f'Total runtime: {(timer() - timer_start):.3f} seconds')
+    app.log.info(f'Runtime: {(timer() - timer_start):.3f} seconds')
+    app.log.info(f'Results: {pipeline.get_wd().absolute()}')
 
 
 def get_mounts(pipeline, *config, exit_on_error=False, mount_as=None):

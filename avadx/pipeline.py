@@ -387,6 +387,12 @@ class Pipeline:
         if data_base_path is not None:
             if not Path(data_base_path).is_absolute():
                 config.set('DEFAULT', 'datadir', str(self.config_file.parent / data_base_path))
+        configoverride = {_.split('=')[0]: _.split('=')[1] for _ in self.kwargs['configoverride']} if self.kwargs['configoverride'] is not None else {}
+        for k, v in configoverride.items():
+            if config.get('avadx', k, fallback=None) is not None:
+                config.set('avadx', k, v)
+            else:
+                self.log.warning(f'No entry in [avadx] config for "{k}" - no override possible.')
         return config
 
     def info(self, quiet=False, run_args=None):
@@ -927,6 +933,7 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument('config', nargs='?', type=Path, default=Path('avadx.ini'), action=check_config_ini(Path(__file__).parent))
+    parser.add_argument('-c', '--configoverride', action='append')
     parser.add_argument('-a', '--action', action='append')
     parser.add_argument('-u', '--uid', type=str)
     parser.add_argument('-w', '--wd', type=Path, default=Path.cwd(),

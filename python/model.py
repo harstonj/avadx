@@ -1,7 +1,6 @@
 import argparse
 import pandas as pd
-# import matplotlib.pyplot as plt
-# from timeit import default_timer as timer
+import matplotlib.pyplot as plt
 from pathlib import Path
 from multiprocessing import Pool
 from joblib import dump, load
@@ -37,6 +36,21 @@ def load_features(filename):
 
 def save_features(features, filename):
     features.to_csv(filename, columns=[], header=False)
+
+
+def plot_curve(x, y, save_as, color='darkorange', label='Label', x_lab='x', y_lab='y', title='Plot', x_lim=[0.0, 1.0], y_lim=[0.0, 1.05], lw=2, legend_loc='lower right', show_diag_col='navy', show_diag_ln='--'):
+    plt.figure()
+    plt.plot(x, y, color=color, lw=lw, label=label)
+    if show_diag_col not in [False, None]:
+        plt.plot([0, 1], [0, 1], color=show_diag_col, lw=lw, linestyle=show_diag_ln)
+    plt.xlim(x_lim)
+    plt.ylim(y_lim)
+    plt.xlabel(x_lab)
+    plt.ylabel(y_lab)
+    plt.title(title)
+    plt.legend(loc=legend_loc)
+    plt.savefig(save_as)
+    plt.close()
 
 
 def main(args, kwargs):
@@ -139,28 +153,42 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     # run model training and performance evaluation
     model_eval = get_model(model, kwargs_dict, fselection)
     with Pool(processes=cores) as model_pool:
-        performances_roc = {}
-        performances_auc = {}
+        predictions_all, performances_roc_data, performances_roc_auc, performances_prc_data, performances_prc_avg = {}, {}, {}, {}, {}
         for max_genes in genes_considered:
             print(f'{model_eval.name}/{model_eval.fselection.name}: {max_genes} genes...')
             model_pooled = [model_pool.apply_async(model_eval.fn, args=(dataset, max_genes, k)) for k in kfold_steps]
             model_res = [p.get() for p in model_pooled]
             model_predictions = pd.DataFrame.from_dict({k: v for d in model_res for k, v in d.items()}, orient='index', columns=['0', '1']).sort_index()
-            roc_all = metrics.roc_curve(dataset['class'], model_predictions['1'])
-            roc_auc = metrics.roc_auc_score(dataset['class'], model_predictions['1'])
-            performances_roc[max_genes] = roc_all
-            performances_auc[max_genes] = roc_auc
+            y_true, y_scores = dataset['class'], model_predictions['1']
+            roc_data = metrics.roc_curve(y_true, y_scores)
+            roc_auc = metrics.roc_auc_score(y_true, y_scores)
+            prc_data = metrics.precision_recall_curve(y_true, y_scores)
+            prc_auc = metrics.average_precision_score(y_true, y_scores)
+            predictions_all[max_genes] = model_predictions
+            performances_roc_data[max_genes] = roc_data
+            performances_roc_auc[max_genes] = roc_auc
+            performances_prc_data[max_genes] = prc_data
+            performances_prc_avg[max_genes] = prc_auc
             print(f'{model_eval.name}/{model_eval.fselection.name}: {max_genes} genes AUC: {roc_auc}')
-        max_auc_genes = max(performances_auc, key=lambda key: performances_auc[key])
-        print(f'{model_eval.name}/{model_eval.fselection.name}: max AUC for {max_auc_genes} genes = {performances_auc[max_auc_genes]}')
-        model_df = pd.DataFrame.from_dict(performances_auc, orient='index', columns=['AUC']).rename_axis('selected_genes', axis='rows').sort_values(by='AUC', ascending=False)
-        model_df.to_csv(wd_path / f'{kfold}F-CV-{model_eval.name}-performance.csv')
-        model_df.to_csv(out_path / 'performance.csv')
+        max_auc_genes = max(performances_roc_auc, key=lambda key: performances_roc_auc[key])
+        print(f'{model_eval.name}/{model_eval.fselection.name}: max AUC for {max_auc_genes} genes = {performances_roc_auc[max_auc_genes]}')
+        pd.DataFrame(predictions_all[max_auc_genes]).rename_axis('sampleid', axis='rows').to_csv(out_path / 'AUC_rank.1-predictions.csv')
+        roc_auc_df = pd.DataFrame.from_dict(performances_roc_auc, orient='index', columns=['AUC']).rename_axis('selected_genes', axis='rows').sort_values(by='AUC', ascending=False)
+        roc_auc_df.to_csv(wd_path / f'{kfold}F-CV-{model_eval.name}-performance.csv')
+        roc_auc_df.to_csv(out_path / 'performances_ROC-AUC.csv')
+        prc_avg_df = pd.DataFrame.from_dict(performances_prc_avg, orient='index', columns=['AVGpr']).rename_axis('selected_genes', axis='rows').sort_values(by='AVGpr', ascending=False)
+        prc_avg_df.to_csv(out_path / 'performances_PRC-AVGpr.csv')
+        roc_df = pd.DataFrame(performances_roc_data[max_auc_genes], index=['fpr', 'tpr', 'thresholds']).T
+        roc_df.to_csv(out_path / 'AUC_rank.1-ROC.csv', index=False)
+        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / 'AUC_rank.1-ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {performances_roc_auc[max_auc_genes]:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
+        prc_df = pd.DataFrame(performances_prc_data[max_auc_genes], index=['precision', 'recall', 'thresholds']).T
+        prc_df.to_csv(out_path / 'AUC_rank.1-PRC.csv', index=False)
+        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / 'AUC_rank.1-PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {performances_prc_avg[max_auc_genes]:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
 
     # get list of selected genes for best AUC over all folds (merge)
     genes_best_merged = {}
     rank1_df = None
-    for rank, max_genes in enumerate(model_df.index, 1):
+    for rank, max_genes in enumerate(roc_auc_df.index, 1):
         genes_best_folds = {}
         for k in kfold_steps:
             genes_selected = fselection.selected[k]
@@ -185,11 +213,20 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     model_final.final = True
     model_final_res = model_final.fn(dataset, maxgenes_final, 'all')
     model_final_predictions = pd.DataFrame.from_dict({k: v for k, v in model_final_res.items()}, orient='index', columns=['0', '1']).sort_index()
-    # roc_final_all = metrics.roc_curve(dataset['class'], model_final_predictions['1'])
-    roc_final_auc = metrics.roc_auc_score(dataset['class'], model_final_predictions['1'])
+    pd.DataFrame(model_final_predictions).rename_axis('sampleid', axis='rows').to_csv(wd_path / 'final_model-predictions.csv')
+    y_final_true, y_final_scores = dataset['class'], model_final_predictions['1']
+    roc_final_data = metrics.roc_curve(y_final_true, y_final_scores)
+    roc_final_auc = metrics.roc_auc_score(y_final_true, y_final_scores)
+    prc_final_data = metrics.precision_recall_curve(y_final_true, y_final_scores)
+    prc_final_auc = metrics.average_precision_score(y_final_true, y_final_scores)
     save_model(model_final.model, model_path)
     save_features(model_final.get_selected_genes(maxgenes_final, 'all'), features_path)
-    print(f'FINAL - {model_final.name}/{model_eval.fselection.name}: {maxgenes_final} genes AUC: {roc_final_auc}')
+    roc_final_df = pd.DataFrame(roc_final_data, index=['fpr', 'tpr', 'thresholds']).T
+    roc_final_df.to_csv(wd_path / 'final_model-ROC.csv', index=False)
+    plot_curve(roc_final_df.dropna().fpr, roc_final_df.dropna().tpr, wd_path / 'final_model-ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {roc_final_auc:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for final model using {maxgenes_final} genes [{model_eval.name}/{model_eval.fselection.name}]')
+    prc_final_df = pd.DataFrame(prc_final_data, index=['precision', 'recall', 'thresholds']).T
+    prc_final_df.to_csv(wd_path / 'final_model-PRC.csv', index=False)
+    plot_curve(prc_final_df.dropna().recall, prc_final_df.dropna().precision, wd_path / 'final_model-PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_auc:.2f}', title=f'Precision-Recall curve (PRC) for final model using {maxgenes_final} genes [{model_eval.name}/{model_eval.fselection.name}]')
 
 
 def predict(pred_id, model, genescores, features, outfolder):

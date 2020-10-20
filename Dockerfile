@@ -22,7 +22,7 @@ FROM base
 COPY --from=builder /install /usr/local
 COPY --from=builder /app /app
 
-RUN apk --no-cache add bash zip p7zip outils-md5 openblas-dev lapack-dev
+RUN apk --no-cache add bash zip p7zip outils-md5 openblas-dev lapack-dev libjpeg-turbo
 
 # setup bio-node
 LABEL bio-node=v1.0

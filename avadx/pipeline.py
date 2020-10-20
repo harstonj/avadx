@@ -395,6 +395,16 @@ class Pipeline:
                 self.log.warning(f'No entry in [avadx] config for "{k}" - no override possible.')
         return config
 
+    def save_run_config(self):
+        with (self.get_wd() / 'out' / 'pipeline_config.ini').open('w') as configfile:
+            self.config.write(configfile)
+
+    def save_run_info(self):
+        cpu = self.resources['cpu' if self.is_vm else 'vm.cpu']
+        mem = self.resources['mem' if self.is_vm else 'vm.mem']
+        with (self.get_wd() / 'out' / 'pipeline_info.txt').open('w') as infofile:
+            infofile.write(f' --- AVA,Dx {__version__} {__releasedate__} ---\n\n + VM.daemon: {self.daemon}\n + VM.cpu: {cpu}\n + VM.memory: {mem}\n\n - Started: [{datetime.now()}] -\n')
+
     def info(self, quiet=False, run_args=None):
         if self.is_vm:
             try:
@@ -1056,6 +1066,8 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         if VM_MEM != VM_MEM_new:
             VM_MEM = VM_MEM_new
             pipeline.set_vm_mem(VM_MEM)
+    pipeline.save_run_config()
+    pipeline.save_run_info()
     CFG = VM_MOUNT / 'in' / 'avadx.ini'
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'

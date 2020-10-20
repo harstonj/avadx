@@ -76,10 +76,12 @@ if(any(is.na(gene_mRNA$prot_length))){
 #print("Generating SNAP input files...")
 
 # For the same line, keep only the mutation in the longest protein:
+# -> if gene has multiple transcripts of identical lengths, keep the one with "smaller" NM accesion number as ordered by dplyr->arrange
 #gene_mRNA <- gene_mRNA[gene_mRNA$Exist==F, ]
 gene_mRNA_nodup <- gene_mRNA %>%
   group_by(line) %>%
   filter(prot_length == max(prot_length)) %>%
+  arrange(Gene, Transcript) %>%
   filter(row_number()==1)
 logs = c(logs, paste("\nFinal variants retained (longest isoform; primary annovar isoform if same length):", nrow(gene_mRNA_nodup)))
 

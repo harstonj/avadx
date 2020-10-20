@@ -265,7 +265,7 @@ class AVADx:
         self.run_method(self.IMAGES['avadx'], 'cal_genescore_make_genescore', uid, kwargs)
 
     def merge_genescore(self, uid, **kwargs):
-        self.run_method(self.IMAGES['R'], 'merge_genescore', uid, kwargs)
+        self.run_method(self.IMAGES['avadx'], 'merge_genescore', uid, kwargs)
 
     def ava_model(self, uid, **kwargs):
         self.run_method(self.IMAGES['avadx'], 'ava_model', uid, kwargs)
@@ -1647,7 +1647,12 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     pipeline.add_action(
         'merge_genescore', 4.40,
         'merge single gene score result files',
-        f'/app/R/avadx/merge_genescore.R -f $WD/{step4_3_outfolder} -o $OUT/{step4_4_outfolder}',
+        f'/app/python/avadx/genescore.py -M -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
+        f'-g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
+        f'-v {variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn]"} '
+        f'-n config[avadx.normalizeby] -r $WD/{step4_3_outfolder} -o $OUT/{step4_4_outfolder} ',
+        daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
+        mounts=mounts_step4_3,
         outdir=(OUT / step4_4_outfolder)
     )
 

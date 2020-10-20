@@ -1,6 +1,10 @@
 from functools import reduce
 
 
+# gene score if no variants scores are available
+NA_SCORE = 1
+
+
 def score_gene(variant_scores):
     """ Alternative AVA,Dx variant score aggregation function (product)
 

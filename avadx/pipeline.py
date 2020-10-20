@@ -1066,8 +1066,9 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         if VM_MEM != VM_MEM_new:
             VM_MEM = VM_MEM_new
             pipeline.set_vm_mem(VM_MEM)
-    pipeline.save_run_config()
-    pipeline.save_run_info()
+    if not dry_run:
+        pipeline.save_run_config()
+        pipeline.save_run_info()
     CFG = VM_MOUNT / 'in' / 'avadx.ini'
     WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = kwargs['wd'] / str(pipeline.uid) / 'out'

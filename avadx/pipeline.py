@@ -1067,6 +1067,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
             VM_MEM = VM_MEM_new
             pipeline.set_vm_mem(VM_MEM)
     if not dry_run:
+        (pipeline.get_wd() / 'out').mkdir(parents=True, exist_ok=True)
         pipeline.save_run_config()
         pipeline.save_run_info()
     CFG = VM_MOUNT / 'in' / 'avadx.ini'

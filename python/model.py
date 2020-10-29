@@ -64,6 +64,7 @@ def main(args, kwargs):
 def run(genescores_path, featureselection, featurelist, model, cvscheme_path, protlength_path, kfold, variance_cutoff, variation_cutoff, pval_cutoff, maxgenes, stepsize, out_path, wd_path, cores, kwargs):
     kwargs_dict = {_.split('=')[0]: _.split('=')[1] for _ in kwargs}
     kwargs_dict['pval_cutoff'] = pval_cutoff
+    bar_prefix = '[     INFO ] --- |5.10| '
 
     # create output directories
     out_path.mkdir(exist_ok=True)
@@ -136,8 +137,10 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     else:
         fselection = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes)
         with Pool(processes=cores) as fselection_pool:
+            print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{fselection.name}')
             fselection_pooled = [fselection_pool.apply_async(fselection.fn, args=(dataset, k)) for k in kfold_steps]
             fselection_res = [p.get() for p in fselection_pooled]
+            print(f'progress:end:{fselection.name}')
             fselection.selected = {genes.name: genes for res, genes in fselection_res}
             fselection_df = pd.DataFrame([res for res, genes in fselection_res]).rename_axis('folds', axis='rows')
             fselection_df.to_csv(wd_path / f'{kfold}F-CV-{fselection.name}-selectedGenes.csv')
@@ -155,7 +158,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     with Pool(processes=cores) as model_pool:
         predictions_all, performances_roc_data, performances_roc_auc, performances_prc_data, performances_prc_avg = {}, {}, {}, {}, {}
         for max_genes in genes_considered:
-            print(f'{model_eval.name}/{model_eval.fselection.name}: {max_genes} genes...')
+            print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{model_eval.name}/{model_eval.fselection.name} {max_genes} genes')
             model_pooled = [model_pool.apply_async(model_eval.fn, args=(dataset, max_genes, k)) for k in kfold_steps]
             model_res = [p.get() for p in model_pooled]
             model_predictions = pd.DataFrame.from_dict({k: v for d in model_res for k, v in d.items()}, orient='index', columns=['0', '1']).sort_index()
@@ -169,9 +172,9 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
             performances_roc_auc[max_genes] = roc_auc
             performances_prc_data[max_genes] = prc_data
             performances_prc_avg[max_genes] = prc_auc
-            print(f'{model_eval.name}/{model_eval.fselection.name}: {max_genes} genes AUC: {roc_auc}')
+            print(f'progress:end:{model_eval.name}')
         max_auc_genes = max(performances_roc_auc, key=lambda key: performances_roc_auc[key])
-        print(f'{model_eval.name}/{model_eval.fselection.name}: max AUC for {max_auc_genes} genes = {performances_roc_auc[max_auc_genes]}')
+        print(f'|5.10| {model_eval.name}/{model_eval.fselection.name}: bestAUC for {max_auc_genes} genes = {performances_roc_auc[max_auc_genes]}')
         pd.DataFrame(predictions_all[max_auc_genes]).rename_axis('sampleid', axis='rows').to_csv(out_path / 'crossval_bestAUC_predictions.csv')
         roc_auc_df = pd.DataFrame.from_dict(performances_roc_auc, orient='index', columns=['AUC']).rename_axis('selected_genes', axis='rows').sort_values(by='AUC', ascending=False)
         roc_auc_df.to_csv(wd_path / f'{kfold}F-CV-{model_eval.name}-performance.csv')

@@ -52,7 +52,6 @@ class FSelection:
             return train, test
 
     def KS(self, dataset, k):
-        print(f'{self.name}: fold {k}...')
         class_0_idx = dataset[dataset['class'] == 0].index
         class_1_idx = dataset[dataset['class'] == 1].index
         class_0_idx_k = class_0_idx.drop(self.cvscheme[self.cvscheme.fold == k].index, errors='ignore')
@@ -63,10 +62,10 @@ class FSelection:
             .rename_axis(k, axis='rows')\
             .loc['pvalue'].rename(k)
         selected = res[res < self.get_arg('pval_cutoff')].sort_values() if self.get_arg('pval_cutoff') is not None else res.sort_values()
+        print(f'progress:update:{self.name} - fold {k}...')
         return (res, selected)
 
     def KBEST(self, dataset, k):
-        print(f'{self.name}: fold {k}...')
         train, _ = self.split_train_test(dataset, k)
         y_train = train.pop('class')
         X_train = train
@@ -74,10 +73,10 @@ class FSelection:
         kbest.fit(X_train, y_train)
         res = pd.DataFrame(kbest.scores_, X_train.columns.tolist(), columns=[k])[k]
         selected = res[kbest.get_support(indices=True)].sort_values(ascending=False)
+        print(f'progress:update:{self.name} - fold {k}...')
         return (res, selected)
 
     def RFE(self, dataset, k):
-        print(f'{self.name}: fold {k}...')
         train, _ = self.split_train_test(dataset, k)
         y_train = train.pop('class')
         X_train = train
@@ -86,10 +85,10 @@ class FSelection:
         rfe.fit(X_train.to_numpy(), y_train.to_numpy())
         res = pd.DataFrame(rfe.ranking_, X_train.columns, columns=[k])[k]
         selected = res[rfe.get_support(indices=True)].sort_values()
+        print(f'progress:update:{self.name} - fold {k}...')
         return (res, selected)
 
     def RELIEFF(self, dataset, k):
-        print(f'{self.name}: fold {k}...')
         train, _ = self.split_train_test(dataset, k)
         y_train = train.pop('class')
         X_train = train
@@ -97,4 +96,5 @@ class FSelection:
         fs_relieff.fit(X_train.to_numpy(), y_train.to_numpy())
         res = pd.DataFrame(fs_relieff.feature_importances_, X_train.columns, columns=[k])[k]
         selected = res.sort_values()[0:self.max_genes]
+        print(f'progress:update:{self.name} - fold {k}...')
         return (res, selected)

@@ -54,6 +54,7 @@ class Model:
         classes = list(rf_classifier.classes_)
         y_pred = rf_classifier.predict_proba(X_test)
         y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
+        print(f'progress:update:{self.name}')
         return dict(zip(y_test.index.tolist(), list(y_pred_ordered)))
 
     def SVM(self, dataset, max_genes, k):
@@ -73,4 +74,5 @@ class Model:
         classes = list(svm_classifier.classes_)
         y_pred = svm_classifier.predict_proba(X_test)
         y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
+        print(f'progress:update:{self.name}')
         return dict(zip(y_test.index.tolist(), list(y_pred_ordered)))

@@ -18,6 +18,14 @@ ERROR_STATE = False
 VALID_FILETYPES = ["fasta", "fa", "fna", "fastq", "fq"]
 VALID_ARCHIVETYPES = ["zip", "bzip2", "xz", "tar", "tar.gz", "gz", "bz2"]
 VALID_URLS = ("http://", "https://", "ftp://", "ftps://")
+USE_PROGRESS = True
+
+
+try:
+    import progressbar
+    progressbar.streams.wrap_stderr()
+except ImportError:
+    USE_PROGRESS = False
 
 
 def flatten(list):
@@ -173,7 +181,7 @@ def fasta_header_count(fname):
     return header_count
 
 
-def run_command(command, shell=False, print_output=False, env_exports={}, wait=True, logger=None, auto_escape=True, poll=False):
+def run_command(command, shell=False, print_output=False, env_exports={}, wait=True, logger=None, auto_escape=True, poll=False, progress=False):
     print_ = logger.info if logger else print
     current_env = os.environ.copy()
     merged_env = {**current_env, **env_exports}
@@ -190,20 +198,36 @@ def run_command(command, shell=False, print_output=False, env_exports={}, wait=T
     )
     if wait:
         if poll:
-            stdout, stderr = [], []
+            bar, bar_active, stdout, stderr = None, False, [], []
             while True:
                 stdout_poll, stderr_poll = process.stdout.readline(), process.stderr.readline() if process.stderr else None
                 if process.poll() is not None:
                     break
                 if stdout_poll:
                     line = stdout_poll.rstrip().decode('utf8')
-                    print_(f'shell> {line}')
-                    stdout.append(line)
+                    if USE_PROGRESS and progress:
+                        if line.startswith('progress:start'):
+                            bar_info = line.split(':')
+                            max_value = int(bar_info[2])
+                            prefix = f'{bar_info[3]} - '
+                            bar, bar_active = progressbar.ProgressBar(prefix=prefix) if USE_PROGRESS and progress else None, False
+                            bar.start(progressbar.UnknownLength if max_value == 0 else max_value)
+                            bar_active = True
+                        elif bar_active and line.startswith('progress:update'):
+                            bar.update(bar.data()['value'] + 1, force=True)
+                        elif line.startswith('progress:end'):
+                            bar.finish()
+                            bar_active = False
+                        elif not line.startswith('progress:'):
+                            print_(f'{line}')
+                    else:
+                        print_(f'shell> {line}')
+                        stdout.append(line)
                 if stderr_poll:
                     line = stderr_poll.rstrip().decode('utf8')
                     print_(f'shell> {line}')
                     stderr.append(line)
-                rc = process.poll()
+            _ = process.poll()
         else:
             stdout_data, stderr_data = process.communicate()
             stdout = [line.rstrip().decode('utf8') for line in stdout_data.splitlines()]

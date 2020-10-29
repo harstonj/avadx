@@ -99,6 +99,7 @@ class AVADx:
             tasklist = [None]
         outdir = kwargs.get(name + "_outd").pop(0)
         mounts = kwargs.get(name + "_mounts").pop(0)
+        progress = kwargs.get(name + "_progress").pop(0)
         fns = kwargs.get(name + "_fns").pop(0)
         fns_pre, fns_post = fns.get('pre', (None, [])), fns.get('post', (None, []))
         description = kwargs.get(name + "_desc").pop(0)
@@ -116,7 +117,7 @@ class AVADx:
             self.run_task(
                 1, tasklist[0], task_cnt, level, args, name, description,
                 fns_pre, fns_post, taskprefix, taskflag, log_stdout, log_stderr,
-                container, daemon_args, uid, mounts, kwargs, reports, wd_results, out_results, None
+                container, daemon_args, uid, mounts, kwargs, reports, wd_results, out_results, None, progress
             )
         else:
             workers_cnt = int(self.pipeline.get_host_cpu() // cpu)
@@ -127,7 +128,7 @@ class AVADx:
                     (
                         tid, task, task_cnt, level, args, name, description,
                         fns_pre, fns_post, taskprefix, taskflag, log_stdout, log_stderr,
-                        container, daemon_args, uid, mounts, kwargs, reports, wd_results, out_results, bar
+                        container, daemon_args, uid, mounts, kwargs, reports, wd_results, out_results, bar, progress
                     ) for tid, task in enumerate(tasklist, 1)
                 ]
                 bar.update(1) if bar else None
@@ -137,7 +138,7 @@ class AVADx:
     def run_task(
         self, tid, task, task_cnt, level, args, name, description,
         fns_pre, fns_post, taskprefix, taskflag, log_stdout, log_stderr,
-        container, daemon_args, uid, mounts, kwargs, reports, wd_results, out_results, bar
+        container, daemon_args, uid, mounts, kwargs, reports, wd_results, out_results, bar, progress
     ):
         args_ = list(args)
         task_info = f' [{tid}/{task_cnt}] ({task})' if task and task_cnt > 1 else ''
@@ -164,7 +165,8 @@ class AVADx:
             mounts=mounts,
             out_folder=kwargs.get('wd'),
             stdout=log_stdout,
-            stderr=log_stderr
+            stderr=log_stderr,
+            progress=progress
         )
         if fns_post[0]:
             fns_post[0](*fns_post[1])
@@ -350,7 +352,7 @@ class Pipeline:
             cpu, mem = 1, 1
         else:
             out = self.run_container(AVADx.IMAGES['avadx'], args=['--info'], mkdirs=False)
-            daemon, cpu, mem = [_.split()[1] for _ in out[1].replace('[', '').replace(']', '').split(', ')]
+            daemon, cpu, mem = [_.split()[1] for _ in out[1].replace('[', '').replace(']', '').split(', ')] if out is not None else [None, 1, 0]
         self.resources['vm.cpu'] = int(cpu)
         self.resources['vm.mem'] = int(mem)
 
@@ -704,7 +706,7 @@ class Pipeline:
     def add_action(
             self, action, level=None, description='', args='', daemon_args={},
             tasks=(None, None, None), fns={'pre': (None, []), 'post': (None, [])},
-            outdir=None, mounts=[], results=([], []), reports=[], logs=(None, None), resources={'cpu': 1, 'mem': 0}):
+            outdir=None, mounts=[], progress=False, results=([], []), reports=[], logs=(None, None), resources={'cpu': 1, 'mem': 0}):
         if level is None or (level >= self.entrypoint and (self.exitpoint is None or level < self.exitpoint)):
             self.actions += [action]
             self.kwargs[action] = self.kwargs.get(action, []) + [args]
@@ -715,6 +717,7 @@ class Pipeline:
             self.kwargs[f'{action}_fns'] = self.kwargs.get(f'{action}_fns', []) + [fns]
             self.kwargs[f'{action}_outd'] = self.kwargs.get(f'{action}_outd', []) + [outdir]
             self.kwargs[f'{action}_mounts'] = self.kwargs.get(f'{action}_mounts', []) + [mounts]
+            self.kwargs[f'{action}_progress'] = self.kwargs.get(f'{action}_progress', []) + [progress]
             self.kwargs[f'{action}_results'] = self.kwargs.get(f'{action}_results', []) + [results]
             self.kwargs[f'{action}_reports'] = self.kwargs.get(f'{action}_reports', []) + [reports]
             self.kwargs[f'{action}_logs'] = self.kwargs.get(f'{action}_logs', []) + [logs]
@@ -780,7 +783,7 @@ class Pipeline:
                 self.log.debug(f'Using optional argument defaults: {flag_checked}{option_value} -> {skip}')
         return formatted
 
-    def run_container(self, container, args=[], daemon_args={}, uid=uuid.uuid1(), mounts=[], out_folder: Path = Path.cwd(), stdout=None, stderr=None, mkdirs=True):
+    def run_container(self, container, args=[], daemon_args={}, uid=uuid.uuid1(), mounts=[], out_folder: Path = Path.cwd(), stdout=None, stderr=None, mkdirs=True, progress=False):
         wd_folder = (out_folder if out_folder else Path.cwd()) / str(uid) / 'wd'
         if mkdirs:
             if out_folder:
@@ -867,7 +870,7 @@ class Pipeline:
         ]
         self.config.set('DEFAULT', 'datadir', config_datadir_orig)
         cmd = cmd_base + [_.replace('//', '/') if _.startswith('/') else _ for _ in args_parsed]
-        out = run_command(cmd, env_exports=env_exports_parsed, logger=self.log, poll=(LOG_LEVEL <= 10))
+        out = run_command(cmd, env_exports=env_exports_parsed, logger=self.log, poll=(LOG_LEVEL <= 10) or progress, progress=progress)
         if stdout and out:
             if stdout == 'print':
                 print('\n'.join(out))
@@ -1714,6 +1717,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         fns={'pre': (check_cv_scheme, [WD / 'tmp' / 'cv-scheme.csv'])},
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
         mounts=mounts_step5_1,
+        progress=True,
         outdir=(OUT / step5_1_outfolder)
     )
 

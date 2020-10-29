@@ -135,4 +135,4 @@ write.table(cpdb_overrep_pathway,
 auc_rank1 = data.table(cpdb_analysis_parallel(0))
 auc_rank1[, overlapping.genes:=gsub(overlapping.genes, pattern=",", replacement=";")]
 auc_rank1[, hgnc_symbol_ids:=gsub(hgnc_symbol_ids, pattern=",", replacement=";")]
-write.table(auc_rank1, "PathwayOverRepresentation_AUC_rank.1-genes.csv", quote=F, row.names=F, col.names=T, sep=",")
+write.table(auc_rank1, "PathwayOverRepresentation_crossval_bestAUC_genes.csv", quote=F, row.names=F, col.names=T, sep=",")

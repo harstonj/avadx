@@ -91,12 +91,12 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     # in case of multiple transcripts for the same gene only keep the longest one
     if sum(genescores.Gene.duplicated()):
         genescores = genescores.merge(protlength, how='left', on=['Gene', 'Transcript'])
-        genescores = genescores.loc[genescores.Prot_length.eq(genescores.groupby('Gene').Prot_length.transform(max).fillna(0), fill_value=0)]
+        genescores = genescores.loc[genescores.Prot_length.eq(genescores.groupby('Gene').Prot_length.transform(max), fill_value=0)]
         genescores.drop('Prot_length', axis=1, inplace=True)
         genescores.reset_index(drop=True, inplace=True)
 
     # set all NaN to 0 and transpose to create the final dataset
-    genescores = genescores[['Gene', 'Transcript'] + cvscheme.index.tolist()].fillna(0)
+    genescores = genescores[['Gene', 'Transcript'] + cvscheme.index.tolist()]
     dataset = genescores.drop('Transcript', axis=1).set_index('Gene').T.rename_axis('sampleid', axis='rows')
 
     # variance filtering
@@ -116,7 +116,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         print(f'Error at variation filter step: no feature met the required threshold of <= {variation_cutoff}%')
 
     # save filtered dataset
-    dataset.to_csv(genescores_path.parent / f'{genescores_path.stem }_variation_filtered.csv')
+    dataset.to_csv(genescores_path.parent / f'{genescores_path.stem}_variation_filtered.csv')
 
     # change maxgenes after filtering
     maxgenes = min(maxgenes, dataset.shape[1])
@@ -251,7 +251,6 @@ def predict(pred_id, model, genescores, features, outfolder):
             return
         genescores_df = genescores_df[genescores_df.Gene.isin(features_list)]
 
-    genescores_df = genescores_df.fillna(0)
     dataset = genescores_df.drop('Transcript', axis=1).set_index('Gene').T.rename_axis('sampleid', axis='rows')
     if features_list:
         dataset = dataset[features_list]

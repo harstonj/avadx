@@ -38,11 +38,11 @@ def save_features(features, filename):
     features.to_csv(filename, columns=[], header=False)
 
 
-def plot_curve(x, y, save_as, color='darkorange', label='Label', x_lab='x', y_lab='y', title='Plot', x_lim=[0.0, 1.0], y_lim=[0.0, 1.05], lw=2, legend_loc='lower right', show_diag_col='navy', show_diag_ln='--'):
+def plot_curve(x, y, save_as, color='darkorange', label='Label', x_lab='x', y_lab='y', title='Plot', x_lim=[0.0, 1.0], y_lim=[0.0, 1.05], lw=2, legend_loc='lower right', show_diag_col='navy', show_diag_ln='--', diag_x=[0, 1], diag_y=[0, 1]):
     plt.figure()
     plt.plot(x, y, color=color, lw=lw, label=label)
     if show_diag_col not in [False, None]:
-        plt.plot([0, 1], [0, 1], color=show_diag_col, lw=lw, linestyle=show_diag_ln)
+        plt.plot(diag_x, diag_y, color=show_diag_col, lw=lw, linestyle=show_diag_ln)
     plt.xlim(x_lim)
     plt.ylim(y_lim)
     plt.xlabel(x_lab)
@@ -186,7 +186,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / 'crossval_bestAUC_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {performances_roc_auc[max_auc_genes]:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
         prc_df = pd.DataFrame(performances_prc_data[max_auc_genes], index=['precision', 'recall', 'thresholds']).T
         prc_df.to_csv(out_path / 'crossval_bestAUC_PRC.csv', index=False)
-        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / 'crossval_bestAUC_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {performances_prc_avg[max_auc_genes]:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
+        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / 'crossval_bestAUC_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {performances_prc_avg[max_auc_genes]:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[1, 0], diag_y=[1, 0])
 
     # get list of selected genes for best AUC over all folds (merge)
     genes_best_merged = {}
@@ -229,7 +229,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     plot_curve(roc_final_df.dropna().fpr, roc_final_df.dropna().tpr, wd_path / 'complete_model_reprediction_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {roc_final_auc:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for final model using {maxgenes_final} genes [{model_eval.name}/{model_eval.fselection.name}]')
     prc_final_df = pd.DataFrame(prc_final_data, index=['precision', 'recall', 'thresholds']).T
     prc_final_df.to_csv(wd_path / 'complete_model_reprediction_PRC.csv', index=False)
-    plot_curve(prc_final_df.dropna().recall, prc_final_df.dropna().precision, wd_path / 'complete_model_reprediction_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_auc:.2f}', title=f'Precision-Recall curve (PRC) for final model using {maxgenes_final} genes [{model_eval.name}/{model_eval.fselection.name}]')
+    plot_curve(prc_final_df.dropna().recall, prc_final_df.dropna().precision, wd_path / 'complete_model_reprediction_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_auc:.2f}', title=f'Precision-Recall curve (PRC) for final model using {maxgenes_final} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[1, 0], diag_y=[1, 0])
 
 
 def predict(pred_id, model, genescores, features, outfolder):

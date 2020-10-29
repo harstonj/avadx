@@ -639,7 +639,8 @@ class Pipeline:
         else:
             wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
             out_folder = self.kwargs.get('wd') / str(self.uid) / 'out'
-        fig = Figure(vis, dataset, wd_folder, out_folder)
+        genescore_normalize = True if self.config.get('avadx', 'genescore.normalize', fallback='no') == 'yes' else False
+        fig = Figure(vis, dataset, genescore_normalize, wd_folder, out_folder)
         fig.create()
 
     def predict(self, uid, kwargs, extra, config, daemon):
@@ -690,7 +691,9 @@ class Pipeline:
             features_kwargs['exitpoint'] = 5
             pipeline_features = run_all(features_uid, features_kwargs, extra, features_config, daemon)
             shutil.rmtree(pipeline_features.get_wd())
-            shutil.copy(features_wd / features_uid / 'out' / 'genescores' / 'GeneScoreTable_normalized.csv', features_samples)
+            genescore_normalize = True if pipeline_features.config.get('avadx', 'genescore.normalize', fallback='no') == 'yes' else False
+            genescores_suffix = 'normalized' if genescore_normalize else 'raw'
+            shutil.copy(features_wd / features_uid / 'out' / 'genescores' / f'GeneScoreTable_{genescores_suffix}.csv', features_samples)
 
         prediction_kwargs = {k: v for k, v in kwargs.items()}
         prediction_kwargs['entrypoint'] = 8
@@ -1091,6 +1094,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
     genescorefn_available = True if pipeline.check_config('genescore.fn', is_file=True, quiet=True) else False
     variantscorefn_available = True if pipeline.check_config('variantscore.fn', is_file=True, quiet=True) else False
+    genescore_normalize = True if pipeline.config.get('avadx', 'genescore.normalize', fallback='no') == 'yes' else False
     fselectionclass_available = True if pipeline.check_config('fselection.class', is_file=True, quiet=True) else False
     modelclass_available = True if pipeline.check_config('model.class', is_file=True, quiet=True) else False
     featurelist_available = True if pipeline.check_config('featurelist', is_file=True, quiet=True) else False
@@ -1645,7 +1649,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         f'-s $WD/{step3_5_out} -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
         f'-g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
         f'-v {variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn]"} '
-        f'-t config[avadx.varidb.predictors] -n config[avadx.normalizeby] {"--indels " if analyze_indels else ""}'
+        f'-t config[avadx.varidb.predictors] -n config[avadx.genescore.normalize] {"--indels " if analyze_indels else ""}'
         f'-o $WD/{step4_3_outfolder}',
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/'),
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
@@ -1664,7 +1668,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         f'/app/python/avadx/genescore.py -M -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
         f'-g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
         f'-v {variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn]"} '
-        f'-n config[avadx.normalizeby] -r $WD/{step4_3_outfolder} -o $OUT/{step4_4_outfolder} ',
+        f'-n config[avadx.genescore.normalize] -r $WD/{step4_3_outfolder} -o $OUT/{step4_4_outfolder} ',
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
         mounts=mounts_step4_3,
         outdir=(OUT / step4_4_outfolder)
@@ -1702,7 +1706,7 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     pipeline.add_action(
         'ava_model', 5.10,
         'perform model cross-validation',
-        f'/app/python/avadx/model.py -g $OUT/{step4_4_outfolder}/GeneScoreTable_normalized.csv '
+        f'/app/python/avadx/model.py -g $OUT/{step4_4_outfolder}/GeneScoreTable_{"normalized" if genescore_normalize else "raw"}.csv '
         '-f config[avadx.cv.featureselection] -m config[avadx.cv.model] -c $WD/tmp/cv-scheme.csv '
         '-p config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -v config[avadx.cv.varcutoff] -V config[avadx.cv.sklearnvariance] '
         '-P config[avadx.cv.ks.pvalcutoff] -G config[avadx.cv.topgenes] -S config[avadx.cv.steps] '

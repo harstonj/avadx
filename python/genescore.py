@@ -110,12 +110,8 @@ def run(annotations, indels, scoretable, metadata, tools, variantfn, genefn, nor
     # set precision and rename columns
     df_gs = df_gs.round({'gene_score': 4, 'gene_score_normalized': 4}).rename(columns={'gene': 'Gene', 'transcript': 'Transcript'})
 
-    if normalize == 'n':
-        df_gs.to_csv(out / f'{sample_name}.gs', columns=['Gene', 'Transcript', 'gene_score'], index=False)
-    elif normalize == 'y':
-        df_gs.to_csv(out / f'{sample_name}.gs', columns=['Gene', 'Transcript', 'gene_score_normalized'], index=False)
-    elif normalize == 'both':
-        df_gs.to_csv(out / f'{sample_name}.gs', columns=['Gene', 'Transcript', 'gene_score', 'gene_score_normalized'], index=False)
+    # save genescores
+    df_gs.to_csv(out / f'{sample_name}.gs', columns=['Gene', 'Transcript', 'gene_score', 'gene_score_normalized'], index=False)
 
 
 def merge(results, metadata, variantfn, genefn, normalize, out):
@@ -132,13 +128,13 @@ def merge(results, metadata, variantfn, genefn, normalize, out):
     protL = pd.read_csv(metadata).rename(columns={'Transcript': 'transcript', 'Prot_length': 'prot_length'})
 
     # filter by and save raw and/pr normalized scores and process missing values
-    if normalize in ['n', 'both']:
+    if normalize == 'no':
         merged_out_path = out / 'GeneScoreTable_raw.csv'
         genescores_merged_r = genescores_merged.filter(regex='Gene|Transcript|_r$', axis=1)
         genescores_merged_r.columns = genescores_merged_r.columns.str.rstrip('_r')
         genescores_merged_r = genescores_merged_r.fillna(scoring_functions.gene.NA_SCORE)
         genescores_merged_r.to_csv(merged_out_path, index=False, float_format='%.4g')
-    if normalize in ['y', 'both']:
+    elif normalize == 'yes':
         merged_out_path = out / 'GeneScoreTable_normalized.csv'
         genescores_merged_n = genescores_merged.filter(regex='Gene|Transcript|_n$', axis=1)
         genescores_merged_n.columns = genescores_merged_n.columns.str.rstrip('_n')
@@ -193,8 +189,8 @@ if __name__ == "__main__":
         help='module name to compute single variant score'
     )
     parser.add_argument(
-        '-n', '--normalize', type=str, default='both', choices=['y', 'n', 'both'],
-        help='compute absolute [n], normalized [y] or both [both] gene scores. Normalization is [0-1] using: (gene_score * 100 / protein_length)'
+        '-n', '--normalize', type=str, default='no', choices=['yes', 'no'],
+        help='compute raw [no] or normalized [y] gene scores. Normalization is [0-1] using: (gene_score * 100 / protein_length)'
     )
     parser.add_argument(
         '-o', '--out', type=Path,

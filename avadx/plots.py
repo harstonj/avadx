@@ -13,10 +13,11 @@ LOG_FILE = None
 
 class Figure:
 
-    def __init__(self, vis, dataset, wd_folder, out_folder):
+    def __init__(self, vis, dataset, genescore_normalize, wd_folder, out_folder):
 
         self.vis = vis
         self.dataset = dataset
+        self.genescore_normalize = genescore_normalize
         self.in_file = None
         self.out_file = None
         self.data = None
@@ -24,6 +25,7 @@ class Figure:
 
         if vis == 'heatmap_clust_dend':
             if dataset == 'genescores':
+                self.in_file = out_folder / Path(f'genescores/GeneScoreTable_{"normalized" if self.genescore_normalize else "raw"}_variation_filtered.csv')
                 selector_file = out_folder / Path('results/crossval_bestAUC_genes.csv')
                 cv_scheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
                 self.out_file = out_folder / Path('genescores/heatmap.html')

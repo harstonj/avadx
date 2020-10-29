@@ -3,6 +3,7 @@ from functools import reduce
 
 # gene score if no variants scores are available
 NA_SCORE = 0
+MAX_SCORE = 3
 
 
 def score_gene(variant_scores):
@@ -18,4 +19,4 @@ def score_gene(variant_scores):
     gene_score : float
     """
 
-    return reduce(lambda x, y: x + y, variant_scores)
+    return max(reduce(lambda x, y: x + y, variant_scores), MAX_SCORE)

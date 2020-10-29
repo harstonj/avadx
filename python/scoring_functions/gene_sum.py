@@ -19,4 +19,4 @@ def score_gene(variant_scores):
     gene_score : float
     """
 
-    return max(reduce(lambda x, y: x + y, variant_scores), MAX_SCORE)
+    return min(reduce(lambda x, y: x + y, variant_scores), MAX_SCORE)

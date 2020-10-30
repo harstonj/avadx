@@ -122,7 +122,8 @@ class AVADx:
         else:
             workers_cnt = int(self.pipeline.get_host_cpu() // cpu)
             self.log.info(f'|{level:.2f}| {name}: Spawning {workers_cnt} threads [reserving {cpu} cores each] ...')
-            bar = progressbar.ProgressBar(max_value=task_cnt).start() if USE_PROGRESS and task_cnt > 1 else None
+            bar_prefix = f'[     INFO ] --- |{level:.2f}| {name}: '
+            bar = progressbar.ProgressBar(max_value=task_cnt, prefix=bar_prefix).start() if USE_PROGRESS and task_cnt > 1 else None
             with ThreadPoolExecutor(max_workers=workers_cnt) as executor:
                 args = [
                     (
@@ -142,8 +143,7 @@ class AVADx:
     ):
         args_ = list(args)
         task_info = f' [{tid}/{task_cnt}] ({task})' if task and task_cnt > 1 else ''
-        self.log.info(f'|{level:.2f}| {name}{task_info}: {description}')
-        self.log.debug(f'|{level:.2f}| {name}{task_info}: started {datetime.now()}')
+        self.log.debug(f'|{level:.2f}| {name}{task_info}: {description} - started {datetime.now()}')
         timer_start = timer()
         if fns_pre[0]:
             fns_pre[0](*fns_pre[1])
@@ -171,10 +171,10 @@ class AVADx:
         if fns_post[0]:
             fns_post[0](*fns_post[1])
         self.reports(kwargs.get('wd'), uid, reports)
-        self.log.info(f'|{level:.2f}| {name}{task_info}: took {(timer() - timer_start):.3f} seconds')
+        self.log.debug(f'|{level:.2f}| {name}{task_info}: took {(timer() - timer_start):.3f} seconds')
         if bar:
             with self.threadLock:
-                bar.update(bar.data()['value'] + 1)
+                bar.update(bar.data()['value'] + 1, force=True)
         self.check_results(kwargs.get('wd'), uid, wd_results, out_results)
 
     def reports(self, wd, uid, reports):

@@ -9,12 +9,14 @@ class Model:
         self.fselection = fselection
         self.final = final
         self.seed = seed
-        self.fn = getattr(self, self.name, None)
+        self.train = getattr(self, f'{self.name}_train', None)
+        self.predict = getattr(self, f'{self.name}_predict', None)
         self.model = None
+        self.features = None
 
     def run(self, kwargs):
-        if self.fn:
-            self.fn(**kwargs)
+        if self.train:
+            self.train(**kwargs)
         else:
             print(f'ERROR: {self.name}() not available.')
 
@@ -38,7 +40,7 @@ class Model:
         genes_count = min(max_genes, genes_selected.shape[0])
         return genes_selected[0:genes_count]
 
-    def RF(self, dataset, max_genes, k):
+    def RF_train(self, dataset, max_genes, k, predict=False):
         train, test = self.split_train_test(dataset, k)
         train_class_weights = self.get_class_weights(train)
         genes_selected = self.get_selected_genes(max_genes, k)
@@ -51,13 +53,18 @@ class Model:
         rf_classifier.fit(X_train, y_train)
         if self.final:
             self.model = rf_classifier
+            self.features = list(X_train.columns)
         classes = list(rf_classifier.classes_)
         y_pred = rf_classifier.predict_proba(X_test)
         y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
         print(f'progress:update:{self.name}')
         return dict(zip(y_test.index.tolist(), list(y_pred_ordered)))
 
-    def SVM(self, dataset, max_genes, k):
+    def RF_predict(self, dataset):
+        y_pred = self.model.predict_proba(dataset)
+        return y_pred
+
+    def SVM_train(self, dataset, max_genes, k):
         train, test = self.split_train_test(dataset, k)
         train_class_weights = self.get_class_weights(train)
         genes_selected = self.get_selected_genes(max_genes, k)
@@ -71,8 +78,13 @@ class Model:
         svm_classifier.fit(X_train, y_train)
         if self.final:
             self.model = svm_classifier
+            self.features = list(X_train.columns)
         classes = list(svm_classifier.classes_)
         y_pred = svm_classifier.predict_proba(X_test)
         y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
         print(f'progress:update:{self.name}')
         return dict(zip(y_test.index.tolist(), list(y_pred_ordered)))
+
+    def SVM_predict(self, dataset):
+        y_pred = self.model.predict_proba(dataset)
+        return y_pred

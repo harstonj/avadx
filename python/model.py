@@ -178,7 +178,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         predictions_all, performances_roc_data, performances_roc_auc, performances_prc_data, performances_prc_avg = {}, {}, {}, {}, {}
         for max_genes in genes_considered:
             print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{model_eval.name}/{model_eval.fselection.name} {max_genes} genes')
-            model_pooled = [model_pool.apply_async(model_eval.fn, args=(dataset, max_genes, k)) for k in kfold_steps]
+            model_pooled = [model_pool.apply_async(model_eval.train, args=(dataset, max_genes, k)) for k in kfold_steps]
             model_res = [p.get() for p in model_pooled]
             model_predictions = pd.DataFrame.from_dict({k: v for d in model_res for k, v in d.items()}, orient='index', columns=['0', '1']).sort_index()
             y_true, y_scores = dataset['class'], model_predictions['1']
@@ -237,7 +237,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     fselection_final.selected = {fselection_final_res[1].name: fselection_final_res[1]}
     model_final = get_model(model, kwargs_dict, fselection_final)
     model_final.final = True
-    model_final_res = model_final.fn(dataset, maxgenes_final, 'all')
+    model_final_res = model_final.train(dataset, maxgenes_final, 'all')
     model_final_predictions = pd.DataFrame.from_dict({k: v for k, v in model_final_res.items()}, orient='index', columns=['0', '1']).sort_index()
     pd.DataFrame(model_final_predictions).rename_axis('sampleid', axis='rows').to_csv(wd_path / 'complete_model_reprediction_predictions.csv')
     y_final_true, y_final_scores = dataset['class'], model_final_predictions['1']
@@ -245,7 +245,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     roc_final_auc = metrics.roc_auc_score(y_final_true, y_final_scores)
     prc_final_data = metrics.precision_recall_curve(y_final_true, y_final_scores)
     prc_final_auc = metrics.average_precision_score(y_final_true, y_final_scores)
-    save_model(model_final.model, model_path)
+    save_model(model_final, model_path)
     save_features(model_final.get_selected_genes(maxgenes_final, 'all'), features_path)
     roc_final_df = pd.DataFrame(roc_final_data, index=['fpr', 'tpr', 'thresholds']).T
     roc_final_df.to_csv(wd_path / 'complete_model_reprediction_ROC.csv', index=False)
@@ -255,15 +255,15 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     plot_curve(prc_final_df.dropna().recall, prc_final_df.dropna().precision, wd_path / 'complete_model_reprediction_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_auc:.2f}', title=f'Precision-Recall curve (PRC) for final model using {maxgenes_final} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
 
 
-def predict(pred_id, model, genescores, features, outfolder):
-    predictor = load(model)
-    model = Path(model)
+def predict(pred_id, model_file, genescores, features, outfolder):
+    model_file = Path(model_file)
+    model = load_model(model_file)
     features = Path(features)
     genescores = Path(genescores)
     genescores_df = pd.read_csv(genescores)
     if not features.exists():
         print(
-            'No features files found, omitting features validation and using all features supplied in dataset. '
+            'No features file found, omitting features validation and using all features supplied in dataset. '
             'Make sure all features used in training are provided and sorted accordingly.'
         )
         features_list = []
@@ -273,23 +273,33 @@ def predict(pred_id, model, genescores, features, outfolder):
         features_availability = features_s.isin(genescores_df.Gene)
         if sum(features_availability) != features_s.shape[0]:
             missing = features_s[~features_availability].values
-            print(f'|8.00| {len(missing)} missing feature(s): {missing}. Aborting.')
+            print(f'|8.00| {len(missing)} missing feature(s) compared with features file: {missing}. Aborting.')
             exit(1)
         genescores_df = genescores_df[genescores_df.Gene.isin(features_list)]
+
+    features_s = pd.Series(model.features)
+    features_availability = features_s.isin(genescores_df.Gene)
+    if sum(features_availability) != features_s.shape[0]:
+        missing = features_s[~features_availability].values
+        print(f'|8.00| {len(missing)} missing feature(s) compared with model features: {missing}. Aborting.')
+        exit(1)
+    if features_list and not (model.features == features_list):
+        print('|8.00| Model features order not consistent with information found in features file. Aborting.')
+        exit(1)
 
     dataset = genescores_df.drop('Transcript', axis=1).set_index('Gene').T.rename_axis('sampleid', axis='rows')
     if features_list:
         dataset = dataset[features_list]
 
-    classes = list(predictor.classes_)
+    classes = list(model.model.classes_)
     try:
-        y_pred = predictor.predict_proba(dataset)
+        y_pred = model.predict(dataset)
     except ValueError as err:
         print(f'|8.00|ERROR: {err}')
         exit(1)
     y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
     y_pred_ordered_dict = dict(zip(dataset.index.tolist(), list(y_pred_ordered)))
-    pd.DataFrame.from_dict(y_pred_ordered_dict, orient='index', columns=['0', '1']).to_csv(outfolder / f'{pred_id}_predictions.csv')
+    pd.DataFrame.from_dict(y_pred_ordered_dict, orient='index', columns=['0', '1']).rename_axis('sampleid', axis='rows').rename(columns={'0': 'score_0', '1': 'score_1'}).to_csv(outfolder / f'{pred_id}_predictions.csv')
 
 
 if __name__ == "__main__":

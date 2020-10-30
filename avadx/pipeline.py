@@ -316,12 +316,23 @@ class Pipeline:
         self.is_vm = self.check_vm()
         self.entrypoint = kwargs.get('entrypoint') if kwargs.get('entrypoint', None) is not None else 1
         self.exitpoint = kwargs.get('exitpoint', None)
+        self.skip = kwargs.get('skip', None)
         self.resources = {
             'cpu': None,
             'mem': None,
             'vm.cpu': None,
             'vm.mem': None
         }
+
+    def reset(self, actions=[], kwargs=None, uid=None, config_file=None):
+        self.actions = actions
+        self.kwargs = kwargs if kwargs is not None else self.kwargs
+        self.config_file = config_file if config_file is not None else self.config_file
+        self.uid = self.get_uid(uid) if uid is not None else self.uid
+        self.config = self.load_config() if config_file is not None else self.config
+        self.entrypoint = self.kwargs.get('entrypoint') if self.kwargs.get('entrypoint', None) is not None else 1
+        self.exitpoint = self.kwargs.get('exitpoint', None)
+        self.skip = self.kwargs.get('skip', None)
 
     def get_logger(self):
         logger = Logger(self.__class__.__name__, level=LOG_LEVEL)
@@ -676,9 +687,7 @@ class Pipeline:
             return
         features_samples = prediction_folder / f'{input_samples.stem}_genescores.csv'
         extract_features = not features_samples.exists()
-        if not extract_features:
-            self.log.info(f'Using existing genescores from: {features_samples}')
-        else:
+        if extract_features:
             features_uid = input_samples.stem
             features_wd = self.kwargs.get('wd') / str(self.uid) / 'wd' / 'prediction'
             features_config = prediction_folder / f'{input_samples.stem}_config.ini'
@@ -691,26 +700,32 @@ class Pipeline:
             features_kwargs = {k: v for k, v in kwargs.items()}
             features_kwargs['wd'] = features_wd
             exitpoint_main = features_kwargs['exitpoint']
-            features_kwargs['exitpoint'] = 5
-            pipeline_features = run_all(features_uid, features_kwargs, extra, features_config, daemon)
-            genescore_normalize = True if pipeline_features.config.get('avadx', 'genescore.normalize', fallback='no') == 'yes' else False
+            features_kwargs['skip'] = [5, 7]
+            features_kwargs['exitpoint'] = None
+            genescore_normalize = True if configp.get('avadx', 'genescore.normalize', fallback='no') == 'yes' else False
             genescores_suffix = 'normalized' if genescore_normalize else 'raw'
-            shutil.copy(features_wd / features_uid / 'out' / 'genescores' / f'GeneScoreTable_{genescores_suffix}.csv', features_samples)
+            features_generated = features_wd / features_uid / 'out' / 'genescores' / f'GeneScoreTable_{genescores_suffix}.csv'
+            extra += [f'pred_id={input_samples.stem}', f'features={features_path if features_path.exists() else "None"}', f'model={model_path}', f'genescores={features_generated}']
+            self.reset(kwargs=features_kwargs, uid=features_uid, config_file=features_config)
+            run_all_p(self, extra)
+            shutil.copy(features_generated, features_samples)
             if exitpoint_main is None:
-                shutil.rmtree(pipeline_features.get_wd())
-
-        prediction_kwargs = {k: v for k, v in kwargs.items()}
-        prediction_kwargs['entrypoint'] = 8
-        prediction_kwargs['exitpoint'] = None
-        prediction_extra = [_ for _ in extra]
-        prediction_extra += [f'pred_id={input_samples.stem}', f'features={features_path if features_path.exists() else "None"}', f'model={model_path}', f'genescores={features_samples}']
-        run_all(uid, prediction_kwargs, prediction_extra, config, daemon)
+                shutil.rmtree(self.get_wd())
+        else:
+            self.log.info(f'Using existing genescores from: {features_samples}')
+            extra += [f'pred_id={input_samples.stem}', f'features={features_path if features_path.exists() else "None"}', f'model={model_path}', f'genescores={features_samples}']
+            kwargs_prediction = {k: v for k, v in kwargs.items()}
+            kwargs_prediction['entrypoint'], kwargs_prediction['exitpoint'] = 8, None
+            self.reset(kwargs=kwargs_prediction)
+            run_all_p(self, extra)
 
     def add_action(
             self, action, level=None, description='', args='', daemon_args={},
             tasks=(None, None, None), fns={'pre': (None, []), 'post': (None, [])},
             outdir=None, mounts=[], progress=False, results=([], []), reports=[], logs=(None, None), resources={'cpu': 1, 'mem': 0}):
         if level is None or (level >= self.entrypoint and (self.exitpoint is None or level < self.exitpoint)):
+            if self.skip is not None and (level >= self.skip[0] and level <= self.skip[1]):
+                return
             self.actions += [action]
             self.kwargs[action] = self.kwargs.get(action, []) + [args]
             self.kwargs[f'{action}_lvl'] = self.kwargs.get(f'{action}_lvl', []) + [level]
@@ -1059,6 +1074,10 @@ def run_init(uid, kwargs, extra, config, daemon):
 
 def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     pipeline = Pipeline(kwargs=kwargs, uid=uid, config_file=config, daemon=daemon)
+    return run_all_p(pipeline, extra, dry_run)
+
+
+def run_all_p(pipeline, extra, dry_run=False):
     pipeline.set_host_cpu()
     pipeline.get_vm_resources(dry_run)
     VM_CPU = pipeline.get_vm_cpu()
@@ -1080,8 +1099,8 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
         pipeline.save_run_config()
         pipeline.save_run_info()
     CFG = VM_MOUNT / 'in' / 'avadx.ini'
-    WD = kwargs['wd'] / str(pipeline.uid) / 'wd'
-    OUT = kwargs['wd'] / str(pipeline.uid) / 'out'
+    WD = pipeline.kwargs['wd'] / str(pipeline.uid) / 'wd'
+    OUT = pipeline.kwargs['wd'] / str(pipeline.uid) / 'out'
     hgref = pipeline.config.get('avadx', 'hgref', fallback='hg19')
     hgref_mapped = pipeline.ASSEMBLY_MAPPING[hgref]
     gnomAD_filter = True if pipeline.config.get('avadx', 'filter.gnomad.enabled', fallback='yes') == 'yes' else False
@@ -1105,14 +1124,14 @@ def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
     modelclass_available = True if pipeline.check_config('model.class', is_file=True, quiet=True) else False
     featurelist_available = True if pipeline.check_config('featurelist', is_file=True, quiet=True) else False
     create_filter_reports = True if pipeline.config.get('avadx', 'filter.reports', fallback='yes') == 'yes' else False
-    is_init = kwargs['init']
+    is_init = pipeline.kwargs['init']
     pipeline.entrypoint = 2.40 if outliers_available else pipeline.entrypoint
-    if kwargs['entrypoint'] is not None:
-        pipeline.entrypoint = kwargs['entrypoint']
+    if pipeline.kwargs['entrypoint'] is not None:
+        pipeline.entrypoint = pipeline.kwargs['entrypoint']
     if outliers_break and not outliers_available:
         pipeline.exitpoint = 2.40
-    if kwargs['exitpoint'] is not None:
-        pipeline.exitpoint = kwargs['exitpoint']
+    if pipeline.kwargs['exitpoint'] is not None:
+        pipeline.exitpoint = pipeline.kwargs['exitpoint']
 
     header = f'    AVA,Dx - {__version__} {__releasedate__}    '
     divider = f' {"".join(["_" for _ in range(0,len(header))])}'

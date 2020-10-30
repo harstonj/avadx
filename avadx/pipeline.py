@@ -450,6 +450,8 @@ class Pipeline:
         def chrname2single(X=True, Y=True, M=True):
             return [_ for _ in range(1, 23)] + (['X'] if X else []) + (['Y'] if Y else []) + (['M'] if M else [])
 
+        is_prediction = True if self.config.get('DEFAULT', 'predict', fallback='no') == 'yes' else False
+
         if self.is_vm:
             wd_folder = self.kwargs.get('wd')
             out_folder = wd_folder.parent / 'out'
@@ -476,10 +478,11 @@ class Pipeline:
         if samples_path.is_dir() or not samples_path.exists():
             samples_path_new = out_folder / 'samples.csv'
             if not samples_path_new.exists():
-                self.log.warning(
-                    f'No samples file found: {samples_path}. Creating file {samples_path_new.name} in output directory using ALL samples and unknown class labels.\n'
-                    '-> IMPORTANT: You have to set class labels manually for model training! <-'
-                )
+                if not is_prediction:
+                    self.log.warning(
+                        f'No samples file found: {samples_path}. Creating file {samples_path_new.name} in output directory using ALL samples and unknown class labels.\n'
+                        '-> IMPORTANT: You have to set class labels manually for model training! <-'
+                    )
                 with samples_list.open('r') as fin, samples_path_new.open('w') as fout:
                     fout.write(
                         '# auto generated samples class labels file\n'
@@ -542,9 +545,10 @@ class Pipeline:
                 cv_folds_max = len(samples)
                 cv_folds = min(cv_folds_config, cv_folds_max) if cv_folds_config > 1 else cv_folds_max
                 if cv_folds_config > cv_folds_max:
-                    self.log.warning(
-                        f'Too few samples ({cv_folds_max}) for specified {cv_folds_config}-fold cross-validation'
-                        f' - proceeding with {cv_folds}-fold split')
+                    if not is_prediction:
+                        self.log.warning(
+                            f'Too few samples ({cv_folds_max}) for specified {cv_folds_config}-fold cross-validation'
+                            f' - proceeding with {cv_folds}-fold split')
                 samples_indices = [_ for _ in range(cv_folds_max)]
                 random.shuffle(samples_indices)
                 auto_folds = folds(samples_indices, len(samples_indices) // cv_folds)
@@ -556,7 +560,7 @@ class Pipeline:
                         fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
                 split_type = 'auto-generated sample'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
-            if not rerun:
+            if not rerun and not is_prediction:
                 self.log.info(f'|1.02| Using {split_type} based cross-validation scheme for {split_description}')
             chr_rename = chrname2single()
             fout_chr.writelines([f'chr{_} {_}\n' for _ in chr_rename])
@@ -696,6 +700,9 @@ class Pipeline:
                 configp.read(str(config))
                 configp.set('avadx', 'vcf', str(input_samples.absolute()))
                 configp.set('avadx', 'samples', '')
+                configp.set('avadx', 'filter.MR.enabled', 'no')
+                configp.set('avadx', 'qc.call.MR', '1')
+                configp.set('DEFAULT', 'predict', 'yes')
                 configp.write(configfile)
             features_kwargs = {k: v for k, v in kwargs.items()}
             features_kwargs['wd'] = features_wd
@@ -1787,9 +1794,10 @@ def run_all_p(pipeline, extra, dry_run=False):
         'run_prediction', 8.00,
         'AVA,Dx predictions',
         f'/app/python/avadx/model.py -M {predictions_pred_id} {mounts_predictions[0][1] if predictions_model else "None"} {mounts_predictions[1][1] if predictions_genescores else "None"} {mounts_predictions[2][1] if pred_features else "None"} '
+        f'{variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn]"} {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
         f'-o $OUT/{predictions_outfolder} -C {VM_CPU}',
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
-        mounts=mounts_predictions,
+        mounts=mounts_predictions + mounts_step4_3,
         outdir=(OUT / predictions_outfolder)
     )
 

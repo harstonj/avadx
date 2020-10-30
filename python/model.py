@@ -7,6 +7,7 @@ from multiprocessing import Pool
 from joblib import dump, load
 from sklearn import metrics
 from sklearn.feature_selection import VarianceThreshold
+from genescore import ScoringFunction
 
 
 def flatten(list):
@@ -37,6 +38,11 @@ def load_features(filename):
 
 def save_features(features, filename):
     features.to_csv(filename, columns=[], header=False)
+
+
+def get_NA_score(variantfn, genefn):
+    scoring_functions = ScoringFunction(variantfn, genefn)
+    return scoring_functions.gene.NA_SCORE
 
 
 def plot_curve(x, y, save_as, color='darkorange', label='Label', x_lab='x', y_lab='y', title='Plot', x_lim=[0.0, 1.0], y_lim=[0.0, 1.05], lw=2, legend_loc='lower right', show_diag_col='navy', show_diag_ln='--', diag_x=[0, 1], diag_y=[0, 1]):
@@ -74,8 +80,8 @@ def plot_jitter(data, save_as, colors=['blue', 'red'], width=0.4, label='Label',
 
 def main(args, kwargs):
     if args.makepredictions:
-        pred_id, model, genescores, features = kwargs
-        predict(pred_id, model, genescores, features, args.out)
+        pred_id, model, genescores, features, variantfn, genefn = kwargs
+        predict(pred_id, model, genescores, features, variantfn, genefn, args.out)
     else:
         run(args.genescores, args.featureselection, args.featurelist, args.model, args.cvscheme, args.protlength, args.kfold, args.variance, args.variation, args.pvalue, args.maxgenes, args.stepsize, args.out, args.wd, args.cores, kwargs)
 
@@ -255,12 +261,13 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     plot_curve(prc_final_df.dropna().recall, prc_final_df.dropna().precision, wd_path / 'complete_model_reprediction_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_auc:.2f}', title=f'Precision-Recall curve (PRC) for final model using {maxgenes_final} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
 
 
-def predict(pred_id, model_file, genescores, features, outfolder):
+def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfolder):
     model_file = Path(model_file)
     model = load_model(model_file)
     features = Path(features)
     genescores = Path(genescores)
     genescores_df = pd.read_csv(genescores)
+    missing_features_list = []
     if not features.exists():
         print(
             'No features file found, omitting features validation and using all features supplied in dataset. '
@@ -273,29 +280,36 @@ def predict(pred_id, model_file, genescores, features, outfolder):
         features_availability = features_s.isin(genescores_df.Gene)
         if sum(features_availability) != features_s.shape[0]:
             missing = features_s[~features_availability].values
-            print(f'|8.00| {len(missing)} missing feature(s) compared with features file: {missing}. Aborting.')
-            exit(1)
+            print(f'|8.00| {len(missing)} missing feature(s) compared with features file: {missing}. Using default NA score.')
+            missing_features_list = missing
         genescores_df = genescores_df[genescores_df.Gene.isin(features_list)]
 
     features_s = pd.Series(model.features)
     features_availability = features_s.isin(genescores_df.Gene)
     if sum(features_availability) != features_s.shape[0]:
         missing = features_s[~features_availability].values
-        print(f'|8.00| {len(missing)} missing feature(s) compared with model features: {missing}. Aborting.')
-        exit(1)
-    if features_list and not (model.features == features_list):
-        print('|8.00| Model features order not consistent with information found in features file. Aborting.')
-        exit(1)
+        missing_non_overlap = list(set(missing) - set(missing_features_list))
+        if missing_non_overlap:
+            print(f'|8.00| {len(missing_non_overlap)} additional missing feature(s) compared with model features: {missing_non_overlap}. Using default NA score.')
 
     dataset = genescores_df.drop('Transcript', axis=1).set_index('Gene').T.rename_axis('sampleid', axis='rows')
+
+    # add missing features (genes) using the default NA value from the gene_score class used to generate genescores
+    nan = get_NA_score(variantfn, genefn)
+    dataset = dataset.assign(**{col: nan for col in missing})
+
+    # select features subset in relevant order
     if features_list:
         dataset = dataset[features_list]
+
+    # save genescores used for prediction
+    dataset.to_csv(outfolder / f'{pred_id}_genescores_prediction.csv')
 
     classes = list(model.model.classes_)
     try:
         y_pred = model.predict(dataset)
     except ValueError as err:
-        print(f'|8.00|ERROR: {err}')
+        print(f'|8.00| ERROR: {err}')
         exit(1)
     y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
     y_pred_ordered_dict = dict(zip(dataset.index.tolist(), list(y_pred_ordered)))

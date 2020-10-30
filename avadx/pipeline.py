@@ -693,14 +693,15 @@ class Pipeline:
             exitpoint_main = features_kwargs['exitpoint']
             features_kwargs['exitpoint'] = 5
             pipeline_features = run_all(features_uid, features_kwargs, extra, features_config, daemon)
-            if exitpoint_main is None:
-                shutil.rmtree(pipeline_features.get_wd())
             genescore_normalize = True if pipeline_features.config.get('avadx', 'genescore.normalize', fallback='no') == 'yes' else False
             genescores_suffix = 'normalized' if genescore_normalize else 'raw'
             shutil.copy(features_wd / features_uid / 'out' / 'genescores' / f'GeneScoreTable_{genescores_suffix}.csv', features_samples)
+            if exitpoint_main is None:
+                shutil.rmtree(pipeline_features.get_wd())
 
         prediction_kwargs = {k: v for k, v in kwargs.items()}
         prediction_kwargs['entrypoint'] = 8
+        prediction_kwargs['exitpoint'] = None
         prediction_extra = [_ for _ in extra]
         prediction_extra += [f'pred_id={input_samples.stem}', f'features={features_path if features_path.exists() else "None"}', f'model={model_path}', f'genescores={features_samples}']
         run_all(uid, prediction_kwargs, prediction_extra, config, daemon)

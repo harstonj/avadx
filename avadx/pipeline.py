@@ -690,9 +690,11 @@ class Pipeline:
                 configp.write(configfile)
             features_kwargs = {k: v for k, v in kwargs.items()}
             features_kwargs['wd'] = features_wd
+            exitpoint_main = features_kwargs['exitpoint']
             features_kwargs['exitpoint'] = 5
             pipeline_features = run_all(features_uid, features_kwargs, extra, features_config, daemon)
-            shutil.rmtree(pipeline_features.get_wd())
+            if exitpoint_main is None:
+                shutil.rmtree(pipeline_features.get_wd())
             genescore_normalize = True if pipeline_features.config.get('avadx', 'genescore.normalize', fallback='no') == 'yes' else False
             genescores_suffix = 'normalized' if genescore_normalize else 'raw'
             shutil.copy(features_wd / features_uid / 'out' / 'genescores' / f'GeneScoreTable_{genescores_suffix}.csv', features_samples)

@@ -273,8 +273,8 @@ def predict(pred_id, model, genescores, features, outfolder):
         features_availability = features_s.isin(genescores_df.Gene)
         if sum(features_availability) != features_s.shape[0]:
             missing = features_s[~features_availability].values
-            print(f'{len(missing)} missing feature(s): {missing}. Aborting.')
-            return
+            print(f'|8.00| {len(missing)} missing feature(s): {missing}. Aborting.')
+            exit(1)
         genescores_df = genescores_df[genescores_df.Gene.isin(features_list)]
 
     dataset = genescores_df.drop('Transcript', axis=1).set_index('Gene').T.rename_axis('sampleid', axis='rows')
@@ -285,8 +285,8 @@ def predict(pred_id, model, genescores, features, outfolder):
     try:
         y_pred = predictor.predict_proba(dataset)
     except ValueError as err:
-        print(f'ERROR: {err}')
-        return
+        print(f'|8.00|ERROR: {err}')
+        exit(1)
     y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
     y_pred_ordered_dict = dict(zip(dataset.index.tolist(), list(y_pred_ordered)))
     pd.DataFrame.from_dict(y_pred_ordered_dict, orient='index', columns=['0', '1']).to_csv(outfolder / f'{pred_id}_predictions.csv')

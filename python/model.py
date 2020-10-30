@@ -90,6 +90,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     kwargs_dict = {_.split('=')[0]: _.split('=')[1] for _ in kwargs}
     kwargs_dict['pval_cutoff'] = pval_cutoff
     bar_prefix = '[     INFO ] --- |5.10| '
+    logs = []
 
     # create output directories
     out_path.mkdir(exist_ok=True)
@@ -112,6 +113,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         cvscheme.fold = folds_new
 
     genescores = pd.read_csv(genescores_path)
+    logs += [f'Number of features from GeneScoresTable: {genescores.shape[0]}']
     protlength = pd.read_csv(protlength_path)
 
     # in case of multiple transcripts for the same gene only keep the longest one
@@ -120,6 +122,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         genescores = genescores.loc[genescores.Prot_length.eq(genescores.groupby('Gene').Prot_length.transform(max), fill_value=0)]
         genescores.drop('Prot_length', axis=1, inplace=True)
         genescores.reset_index(drop=True, inplace=True)
+    logs += [f'Number of features after removal of duplicate transcripts: {genescores.shape[0]}']
 
     # set all NaN to 0 and transpose to create the final dataset
     genescores = genescores[['Gene', 'Transcript'] + cvscheme.index.tolist()]
@@ -132,17 +135,21 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         dataset = dataset[dataset.columns[var_selector.get_support(indices=True)]]
     except ValueError as err:
         print(f'Error at variance filter step: {err}')
+    logs += [f'Number of features after variance filtering: {dataset.shape[1]}']
 
     # variation filtering
-    gene_variation_across_samples = (dataset.nunique() / dataset.shape[0]) * 100
-    gene_variation_subset = gene_variation_across_samples[gene_variation_across_samples <= variation_cutoff].index
+    gene_ratio_most_common_score = dataset.apply(pd.Series.value_counts, axis=0, normalize=True).apply(pd.Series.max, axis=0)
+    gene_variation_subset = gene_ratio_most_common_score[gene_ratio_most_common_score <= (variation_cutoff / 100)].index
     if len(gene_variation_subset):
         dataset = dataset[gene_variation_subset]
     else:
         print(f'Error at variation filter step: no feature met the required threshold of <= {variation_cutoff}%')
+    logs += [f'Number of features after variation filtering: {dataset.shape[1]}']
 
-    # save filtered dataset
+    # save filtered dataset and report
     dataset.to_csv(genescores_path.parent / f'{genescores_path.stem}_variation_filtered.csv')
+    with (wd_path / 'genescore_filtering_report.txt').open('w') as fout:
+        fout.writelines([f'{msg}\n' for msg in logs])
 
     # change maxgenes after filtering
     maxgenes = min(maxgenes, dataset.shape[1])

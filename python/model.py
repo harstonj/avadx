@@ -1,5 +1,6 @@
 import argparse
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 from multiprocessing import Pool
@@ -49,6 +50,24 @@ def plot_curve(x, y, save_as, color='darkorange', label='Label', x_lab='x', y_la
     plt.ylabel(y_lab)
     plt.title(title)
     plt.legend(loc=legend_loc)
+    plt.savefig(save_as)
+    plt.close()
+
+
+def plot_jitter(data, save_as, colors=['blue', 'red'], width=0.4, label='Label', x_lab='x', y_lab='y', title='Plot', y_lim=[0.0, 1.05]):
+    labels = data.index
+    fig, ax = plt.subplots()
+    for i, l in enumerate(labels):
+        x = np.ones(data.iloc[l].shape[0]) * i + (np.random.rand(data.iloc[l].shape[0]) * width - width / 2.)
+        ax.scatter(x, data.iloc[l], color=colors[i], s=25)
+        mean = data.iloc[l].mean()
+        ax.plot([i - width / 2., i + width / 2.], [mean, mean], color='k')
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels)
+    plt.ylim(y_lim)
+    plt.xlabel(x_lab)
+    plt.ylabel(y_lab)
+    plt.title(title)
     plt.savefig(save_as)
     plt.close()
 
@@ -175,7 +194,11 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
             print(f'progress:end:{model_eval.name}')
         max_auc_genes = max(performances_roc_auc, key=lambda key: performances_roc_auc[key])
         print(f'|5.10| {model_eval.name}/{model_eval.fselection.name}: bestAUC for {max_auc_genes} genes = {performances_roc_auc[max_auc_genes]}')
-        pd.DataFrame(predictions_all[max_auc_genes]).rename_axis('sampleid', axis='rows').to_csv(out_path / 'crossval_bestAUC_predictions.csv')
+        predictions_all_best = pd.DataFrame(predictions_all[max_auc_genes]).rename_axis('sampleid', axis='rows')
+        predictions_all_best_samples = predictions_all_best.merge(cvscheme[['class']], how='left', left_index=True, right_index=True).rename(columns={'0': 'score_0', '1': 'score_1'})
+        predictions_all_best_samples.to_csv(out_path / 'crossval_bestAUC_predictions.csv')
+        jitter_df = predictions_all_best_samples.groupby('class').score_1.apply(np.hstack)
+        plot_jitter(jitter_df, out_path / 'crossval_bestAUC_predictions.png', title='Crossval bestAUC Predictions per class', x_lab='class', y_lab='prediction score')
         roc_auc_df = pd.DataFrame.from_dict(performances_roc_auc, orient='index', columns=['AUC']).rename_axis('selected_genes', axis='rows').sort_values(by='AUC', ascending=False)
         roc_auc_df.to_csv(wd_path / f'{kfold}F-CV-{model_eval.name}-performance.csv')
         roc_auc_df.to_csv(out_path / 'performances_ROC-AUC.csv')
@@ -329,7 +352,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '-w', '--wd', type=Path,
-        help='path to the output folder'
+        help='path to the wd folder'
     )
     parser.add_argument(
         '-C', '--cores', type=int, default=1,

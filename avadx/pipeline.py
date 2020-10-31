@@ -143,6 +143,7 @@ class AVADx:
     ):
         args_ = list(args)
         task_info = f' [{tid}/{task_cnt}] ({task})' if task and task_cnt > 1 else ''
+        self.log.info(f'|{level:.2f}| {name}{task_info}: {description}')
         self.log.debug(f'|{level:.2f}| {name}{task_info}: {description} - started {datetime.now()}')
         timer_start = timer()
         if fns_pre[0]:

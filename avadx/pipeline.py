@@ -519,7 +519,7 @@ class Pipeline:
             has_folds = len(header) == 3 and 'fold' in header
             for column, check in {'sampleid': has_sampleid, 'class': has_class}.items():
                 if not check:
-                    self.log.error(f'|1.02| Required column "{column}" not found in sample file, please check valid content/format of: {samples_path.name}')
+                    self.log.error(f'|1.02| Required column "{column}" not found in sample file header: {header}. Please check valid content/format of: {samples_path.name}')
                     return
             s_idx, c_idx = header.index('sampleid'), header.index('class')
             f_idx = header.index('fold') if has_folds else None

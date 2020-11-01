@@ -48,7 +48,8 @@ class Model:
         X_train, X_test = train[genes_selected.index], test[genes_selected.index]
         rf_classifier = RandomForestClassifier(
             random_state=self.seed,
-            class_weight=train_class_weights.to_dict()
+            class_weight=train_class_weights.to_dict(),
+            n_estimators=min(round(X_train.shape[0] * 1.5), 500)
         )
         rf_classifier.fit(X_train, y_train)
         if self.final:

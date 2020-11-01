@@ -1158,7 +1158,9 @@ def run_all_p(pipeline, extra, dry_run=False):
         (pipeline.get_wd() / 'out').mkdir(parents=True, exist_ok=True)
         pipeline.save_run_config()
         pipeline.save_run_info()
-    CFG = VM_MOUNT / 'in' / 'avadx.ini'
+        CFG = VM_MOUNT / 'out' / str(pipeline.uid) / 'out' / 'pipeline_config.ini'
+    else:
+        CFG = VM_MOUNT / 'in' / 'avadx.ini'
     WD = pipeline.kwargs['wd'] / str(pipeline.uid) / 'wd'
     OUT = pipeline.kwargs['wd'] / str(pipeline.uid) / 'out'
     hgref = pipeline.config.get('avadx', 'hgref', fallback='hg19')

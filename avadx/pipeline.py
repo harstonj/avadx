@@ -12,6 +12,7 @@ import random
 import threading
 import configparser
 import multiprocessing
+from pandas import DataFrame, Index
 from pathlib import Path
 from datetime import datetime
 from timeit import default_timer as timer
@@ -325,6 +326,7 @@ class Pipeline:
             'vm.cpu': None,
             'vm.mem': None
         }
+        self.seed = self.config.get('DEFAULT', 'random.seed', fallback=None)
 
     def reset(self, actions=[], kwargs=None, uid=None, config_file=None):
         self.actions = actions
@@ -453,6 +455,7 @@ class Pipeline:
             return [_ for _ in range(1, 23)] + (['X'] if X else []) + (['Y'] if Y else []) + (['M'] if M else [])
 
         is_prediction = True if self.config.get('DEFAULT', 'predict', fallback='no') == 'yes' else False
+        random.seed(self.seed)
 
         if self.is_vm:
             wd_folder = self.kwargs.get('wd')
@@ -499,18 +502,30 @@ class Pipeline:
             reader = csv.reader(filter(lambda row: row[0] != '#', fin))
             header = next(reader)
             header_ncol = len(header)
-            has_groups = len(header) == 3 and header[2] == 'group'
-            has_folds = len(header) == 3 and header[2] == 'fold'
+            has_sampleid = 'sampleid' in header
+            has_class = 'class' in header
+            has_groups = len(header) == 3 and 'group' in header
+            has_folds = len(header) == 3 and 'fold' in header
+            for column, check in {'sampleid': has_sampleid, 'class': has_class}.items():
+                if not check:
+                    self.log.error(f'|1.02| Required column "{column}" not found in sample file, please check valid content/format of: {samples_path.name}')
+                    return
+            s_idx, c_idx = header.index('sampleid'), header.index('class')
+            f_idx = header.index('fold') if has_folds else None
+            g_idx = header.index('group') if has_groups else None
             for row in reader:
                 if len(row) != header_ncol:
                     self.log.warning(f'|1.02| Format error in sample file, skipping: {",".join(row)}')
                     continue
-                samples += [row[0]]
-                labels += [row[1]]
-                if has_groups or has_folds:
-                    col3 += [row[2]]
+                samples += [row[s_idx]]
+                labels += [row[c_idx]]
+                if has_folds:
+                    col3 += [row[f_idx]]
+                elif has_groups:
+                    col3 += [row[g_idx]]
             if not samples:
                 self.log.error(f'|1.02| No samples recognized, please check valid content/format of: {samples_path.name}')
+                return
             fout_ids.writelines([f'{_}\n' for _ in samples])
             cv_folds_config = int(self.config.get('avadx', 'cv.folds'))
             if has_groups:
@@ -531,9 +546,12 @@ class Pipeline:
                 auto_folds = adjust_splits(auto_folds, cv_folds)
                 if len(auto_folds) != cv_folds:
                     self.log.warning(f'Auto-generated cross-validation folds ({len(auto_folds)}) differ from specified folds ({cv_folds})')
+                grouped_rows = []
                 for idx, fold in enumerate(auto_folds, 1):
                     for sidx in fold:
-                        fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
+                        grouped_rows += [(samples[sidx], idx, labels[sidx])]
+                cvscheme_df = DataFrame(grouped_rows, columns=['sampleid', 'fold', 'class']).set_index('sampleid').loc[Index(samples, name='sampleid')]
+                cvscheme_df.to_csv(fout_cv, header=False)
                 split_type = 'auto-generated group'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
             elif has_folds:
@@ -557,9 +575,12 @@ class Pipeline:
                 auto_folds = adjust_splits(auto_folds, cv_folds)
                 if len(auto_folds) != cv_folds:
                     self.log.warning(f'Auto-generated cross-validation folds ({len(auto_folds)}) differ from specified folds ({cv_folds})')
+                auto_folds_rows = []
                 for idx, fold in enumerate(auto_folds, 1):
                     for sidx in fold:
-                        fout_cv.write(f'{samples[sidx]},{idx},{labels[sidx]}\n')
+                        auto_folds_rows += [(samples[sidx], idx, labels[sidx])]
+                cvscheme_df = DataFrame(auto_folds_rows, columns=['sampleid', 'fold', 'class']).set_index('sampleid').loc[Index(samples, name='sampleid')]
+                cvscheme_df.to_csv(fout_cv, header=False)
                 split_type = 'auto-generated sample'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
             if not rerun and not is_prediction:
@@ -1134,6 +1155,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     featurelist_available = True if pipeline.check_config('featurelist', is_file=True, quiet=True) else False
     create_filter_reports = True if pipeline.config.get('avadx', 'filter.reports', fallback='yes') == 'yes' else False
     is_init = pipeline.kwargs['init']
+    is_prediction = True if pipeline.config.get('DEFAULT', 'predict', fallback='no') == 'yes' else False
     pipeline.entrypoint = 2.40 if outliers_available else pipeline.entrypoint
     if pipeline.kwargs['entrypoint'] is not None:
         pipeline.entrypoint = pipeline.kwargs['entrypoint']
@@ -1785,23 +1807,24 @@ def run_all_p(pipeline, extra, dry_run=False):
     )
 
     # 8   Prediction ---------------------------------------------------------------------------- #
-    predictions_outfolder = 'predictions'
-    predictions_pred_id, predictions_model, predictions_genescores, predictions_features = get_extra(extra, 'pred_id', 'null'), get_extra(extra, 'model', False), get_extra(extra, 'genescores', False), get_extra(extra, 'features', False)
-    mounts_predictions = []
-    mounts_predictions += [(predictions_model, VM_MOUNT / 'in' / 'model.joblib')] if predictions_model else []
-    mounts_predictions += [(predictions_genescores, VM_MOUNT / 'in' / 'genescores.csv')] if predictions_genescores else []
-    pred_features = Path(predictions_features).exists() if predictions_features else False
-    mounts_predictions += [(predictions_features, VM_MOUNT / 'in' / 'features.txt')] if pred_features else []
-    pipeline.add_action(
-        'run_prediction', 8.00,
-        'AVA,Dx predictions',
-        f'/app/python/avadx/model.py -M {predictions_pred_id} {mounts_predictions[0][1] if predictions_model else "None"} {mounts_predictions[1][1] if predictions_genescores else "None"} {mounts_predictions[2][1] if pred_features else "None"} '
-        f'{variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn]"} {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
-        f'-o $OUT/{predictions_outfolder} -C {VM_CPU}',
-        daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
-        mounts=mounts_predictions + mounts_step4_3,
-        outdir=(OUT / predictions_outfolder)
-    )
+    if is_prediction:
+        predictions_outfolder = 'predictions'
+        predictions_pred_id, predictions_model, predictions_genescores, predictions_features = get_extra(extra, 'pred_id', 'null'), get_extra(extra, 'model', False), get_extra(extra, 'genescores', False), get_extra(extra, 'features', False)
+        mounts_predictions = []
+        mounts_predictions += [(predictions_model, VM_MOUNT / 'in' / 'model.joblib')] if predictions_model else []
+        mounts_predictions += [(predictions_genescores, VM_MOUNT / 'in' / 'genescores.csv')] if predictions_genescores else []
+        pred_features = Path(predictions_features).exists() if predictions_features else False
+        mounts_predictions += [(predictions_features, VM_MOUNT / 'in' / 'features.txt')] if pred_features else []
+        pipeline.add_action(
+            'run_prediction', 8.00,
+            'AVA,Dx predictions',
+            f'/app/python/avadx/model.py -M {predictions_pred_id} {mounts_predictions[0][1] if predictions_model else "None"} {mounts_predictions[1][1] if predictions_genescores else "None"} {mounts_predictions[2][1] if pred_features else "None"} '
+            f'{variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn]"} {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
+            f'-o $OUT/{predictions_outfolder} -C {VM_CPU}',
+            daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
+            mounts=mounts_predictions + mounts_step4_3,
+            outdir=(OUT / predictions_outfolder)
+        )
 
     # RUN --------------------------------------------------------------------------------------- #
     if not dry_run:

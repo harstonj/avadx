@@ -116,7 +116,7 @@ def run(annotations, indels, scoretable, metadata, tools, variantfn, genefn, nor
 
 def merge(results, metadata, cvscheme, variantfn, genefn, normalize, out):
     # load cv-scheme
-    cvscheme_df = pd.read_csv(cvscheme, header=None, names=['sampleid', 'fold', 'class'], dtype={'sampleid': str, 'fold': int, 'class': int})
+    cvscheme_df = pd.read_csv(cvscheme, header=None, usecols=[0], names=['sampleid'], dtype={'sampleid': str})
     cvscheme_df = cvscheme_df.set_index('sampleid')
 
     # merge sample genescore files

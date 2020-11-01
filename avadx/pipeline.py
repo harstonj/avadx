@@ -12,7 +12,6 @@ import random
 import threading
 import configparser
 import multiprocessing
-from pandas import DataFrame, Index
 from pathlib import Path
 from datetime import datetime
 from timeit import default_timer as timer
@@ -458,6 +457,8 @@ class Pipeline:
         return ('AVA,Dx', __version__, __releasedate__, self.daemon, cpu, mem)
 
     def preprocess(self, rerun=False):
+        from pandas import DataFrame, Index
+
         def indices(labels, search):
             return [i for i, x in enumerate(labels) if x == search]
 

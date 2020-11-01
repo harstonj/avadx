@@ -114,7 +114,11 @@ def run(annotations, indels, scoretable, metadata, tools, variantfn, genefn, nor
     df_gs.to_csv(out / f'{sample_name}.gs', columns=['Gene', 'Transcript', 'gene_score', 'gene_score_normalized'], index=False)
 
 
-def merge(results, metadata, variantfn, genefn, normalize, out):
+def merge(results, metadata, cvscheme, variantfn, genefn, normalize, out):
+    # load cv-scheme
+    cvscheme_df = pd.read_csv(cvscheme, header=None, names=['sampleid', 'fold', 'class'], dtype={'sampleid': str, 'fold': int, 'class': int})
+    cvscheme_df = cvscheme_df.set_index('sampleid')
+
     # merge sample genescore files
     genescores_merged = pd.DataFrame(columns=['Gene', 'Transcript'])
     genescores_samples = {_.name.replace('sample.', '').replace('.gs', ''): _ for _ in results.glob('*.gs')}
@@ -133,19 +137,19 @@ def merge(results, metadata, variantfn, genefn, normalize, out):
         genescores_merged_r = genescores_merged.filter(regex='Gene|Transcript|_r$', axis=1)
         genescores_merged_r.columns = genescores_merged_r.columns.str.rstrip('_r')
         genescores_merged_r = genescores_merged_r.fillna(scoring_functions.gene.NA_SCORE)
-        genescores_merged_r.to_csv(merged_out_path, index=False, float_format='%.4g')
+        genescores_merged_r[['Gene', 'Transcript'] + cvscheme_df.index.tolist()].to_csv(merged_out_path, index=False, float_format='%.4g')
     elif normalize == 'yes':
         merged_out_path = out / 'GeneScoreTable_normalized.csv'
         genescores_merged_n = genescores_merged.filter(regex='Gene|Transcript|_n$', axis=1)
         genescores_merged_n.columns = genescores_merged_n.columns.str.rstrip('_n')
         genescores_merged_n = pd.merge(genescores_merged_n, protL[['transcript', 'prot_length']], left_on='Transcript', right_on='transcript', how='left').drop('transcript', axis=1)
         genescores_merged_n = genescores_merged_n.apply(lambda x: x.fillna(scoring_functions.gene.NA_SCORE / x['prot_length']), axis=1).drop('prot_length', axis=1)
-        genescores_merged_n.to_csv(merged_out_path, index=False, float_format='%.4g')
+        genescores_merged_n[['Gene', 'Transcript'] + cvscheme_df.index.tolist()].to_csv(merged_out_path, index=False, float_format='%.4g')
 
 
 def main(args):
     if args.merge:
-        merge(args.results, args.metadata, args.variantfn, args.genefn, args.normalize, args.out)
+        merge(args.results, args.metadata, args.cvscheme, args.variantfn, args.genefn, args.normalize, args.out)
     else:
         run(args.annotations, args.indels, args.scoretable, args.metadata, [_.strip() for _ in args.tools.split(',')], args.variantfn, args.genefn, args.normalize, args.out)
 
@@ -175,6 +179,10 @@ if __name__ == "__main__":
     parser.add_argument(
         '-m', '--metadata', type=Path,
         help='metadata: protein length information (RefSeq ids)'
+    )
+    parser.add_argument(
+        '-c', '--cvscheme', type=Path,
+        help='path to cross-validation scheme file'
     )
     parser.add_argument(
         '-t', '--tools', type=str, default='SNAPfun',

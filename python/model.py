@@ -104,11 +104,12 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     kfold_is_set = False if kfold is None else True
     kfold = kfold if kfold_is_set else len(cvscheme.fold.unique())
     kfold_steps = range(1, (cvscheme.shape[0] // kfold)) if kfold_is_set else sorted(cvscheme.fold.unique())
+    # NOTE folds auto generation here is deprecated and was moved to the pipeline preprocessing step
     if kfold_is_set:
         folds_new = flatten([[_] * (cvscheme.shape[0] // kfold) for _ in range(1, (cvscheme.shape[0] // kfold))])
         remaining = cvscheme.shape[0] % kfold
         if remaining:
-            # TODO improve distribution of remaining among all folds instead of adding them to the last one
+            # NOTE distribution of remaining instances among all folds is not optimally solved here (added to the last fold)
             folds_new += [folds_new[-1]] * remaining
         cvscheme.fold = folds_new
 

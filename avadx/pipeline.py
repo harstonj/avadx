@@ -831,6 +831,17 @@ class Pipeline:
                 self.log.debug(f'Using optional argument defaults: {flag_checked}{option_value} -> {skip}')
         return formatted
 
+    def check_cv_scheme(self, csv_file):
+        self.preprocess(rerun=True)
+        with csv_file.open() as fin:
+            reader = csv.reader(filter(lambda row: row[0] != '#', fin))
+            class_labels = set()
+            for row in reader:
+                class_labels.add(row[2])
+        if len(class_labels) != 2 or '?' in class_labels:
+            self.log.error(f'|5.10| No binary class labels (0/1) for Cross-Validation and Model Training. Labels found: {class_labels}')
+            sys.exit()
+
     def run_container(self, container, args=[], daemon_args={}, uid=uuid.uuid1(), mounts=[], out_folder: Path = Path.cwd(), stdout=None, stderr=None, mkdirs=True, progress=False):
         wd_folder = (out_folder if out_folder else Path.cwd()) / str(uid) / 'wd'
         if mkdirs:
@@ -1722,9 +1733,10 @@ def run_all_p(pipeline, extra, dry_run=False):
         'merge_genescore', 4.40,
         'merge single gene score result files',
         f'/app/python/avadx/genescore.py -M -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
-        f'-g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
+        f'-c $WD/tmp/cv-scheme.csv -g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
         f'-v {variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn]"} '
         f'-n config[avadx.genescore.normalize] -r $WD/{step4_3_outfolder} -o $OUT/{step4_4_outfolder} ',
+        fns={'pre': (pipeline.check_cv_scheme, [WD / 'tmp' / 'cv-scheme.csv'])},
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
         mounts=mounts_step4_3,
         outdir=(OUT / step4_4_outfolder)
@@ -1740,18 +1752,6 @@ def run_all_p(pipeline, extra, dry_run=False):
 
     # 5.1   Cross-validation:
     step5_1_outfolder = 'results'
-
-    def check_cv_scheme(csv_file):
-        pipeline.preprocess(rerun=True)
-        with csv_file.open() as fin:
-            reader = csv.reader(filter(lambda row: row[0] != '#', fin))
-            class_labels = set()
-            for row in reader:
-                class_labels.add(row[2])
-        if len(class_labels) != 2 or '?' in class_labels:
-            pipeline.log.error(f'|5.10| No binary class labels (0/1) for Cross-Validation and Model Training. Labels found: {class_labels}')
-            sys.exit()
-
     fselection_file = Path(pipeline.check_config('fselection.class', quiet=dry_run)).suffix == '.py'
     fselectionclass_mnt = get_mounts(pipeline, ('avadx', 'fselection.class'), exit_on_error=False if is_init else fselectionclass_available, mount_as='/app/python/avadx/feature_selections/fselection_avadx.py') if fselection_file else []
     model_file = Path(pipeline.check_config('model.class', quiet=dry_run)).suffix == '.py'
@@ -1767,7 +1767,7 @@ def run_all_p(pipeline, extra, dry_run=False):
         '-p config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -v config[avadx.cv.varcutoff] -V config[avadx.cv.sklearnvariance] '
         '-P config[avadx.cv.ks.pvalcutoff] -G config[avadx.cv.topgenes] -S config[avadx.cv.steps] '
         f'-o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder} -C {VM_CPU}{use_featurelist}',
-        fns={'pre': (check_cv_scheme, [WD / 'tmp' / 'cv-scheme.csv'])},
+        fns={'pre': (pipeline.check_cv_scheme, [WD / 'tmp' / 'cv-scheme.csv'])},
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
         mounts=mounts_step5_1,
         progress=True,

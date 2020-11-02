@@ -1,7 +1,7 @@
 name = "avadx"
 __author__ = 'mmiller'
-__version__ = '1.4'
-__releasedate__ = '11/01/20'
+__version__ = '1.5'
+__releasedate__ = '11/02/20'
 __all__ = [
     'pipeline',
     'helper',

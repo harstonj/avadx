@@ -125,7 +125,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         genescores.reset_index(drop=True, inplace=True)
     logs += [f'Number of features after removal of duplicate transcripts: {genescores.shape[0]}']
 
-    # set all NaN to 0 and transpose to create the final dataset
+    # select relevant samples and transpose dataframe to create the final dataset
     genescores = genescores[['Gene', 'Transcript'] + cvscheme.index.tolist()]
     dataset = genescores.drop('Transcript', axis=1).set_index('Gene').T.rename_axis('sampleid', axis='rows')
 
@@ -194,7 +194,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
             print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{model_eval.name}/{model_eval.fselection.name} {max_genes} genes')
             model_pooled = [model_pool.apply_async(model_eval.train, args=(dataset, max_genes, k)) for k in kfold_steps]
             model_res = [p.get() for p in model_pooled]
-            model_predictions = pd.DataFrame.from_dict({k: v for d in model_res for k, v in d.items()}, orient='index', columns=['0', '1']).sort_index()
+            model_predictions = pd.DataFrame.from_dict({k: v for d in model_res for k, v in d.items()}, orient='index', columns=['0', '1']).loc[dataset.index]
             y_true, y_scores = dataset['class'], model_predictions['1']
             roc_data = metrics.roc_curve(y_true, y_scores)
             roc_auc = metrics.roc_auc_score(y_true, y_scores)
@@ -244,15 +244,24 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
             rank1_df.to_csv(out_path / 'crossval_bestAUC_genes.csv', header=False)
 
     # build and save final model
-    maxgenes_final = rank1_df.shape[0]
-    fselection_final = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes_final)
-    fselection_final.final = True
-    fselection_final_res = fselection_final.fn(dataset, 'all')
-    fselection_final.selected = {fselection_final_res[1].name: fselection_final_res[1]}
+    if featurelist and featurelist.exists():
+        maxgenes_final = fselection_df.shape[0]
+        fselection_final = fselection
+        fselection_final.final = True
+        fselection_final.selected = {'all': fselection_df}
+    else:
+        maxgenes_final = rank1_df.shape[0]
+        fselection_final = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes_final)
+        fselection_final.final = True
+        # NOTE: <= 1.40: run feature selection where maxgenes = count of genes in union of all top selected genes for the best ranked AUC
+        # fselection_final_res = fselection_final.fn(dataset, 'all')
+        # fselection_final.selected = {fselection_final_res[1].name: fselection_final_res[1]}
+        # NOTE: >= 1.41: use list of genes in union of all top selected genes for the best ranked AUC
+        fselection_final.selected = {'all': rank1_df}
     model_final = get_model(model, kwargs_dict, fselection_final)
     model_final.final = True
     model_final_res = model_final.train(dataset, maxgenes_final, 'all')
-    model_final_predictions = pd.DataFrame.from_dict({k: v for k, v in model_final_res.items()}, orient='index', columns=['0', '1']).sort_index()
+    model_final_predictions = pd.DataFrame.from_dict({k: v for k, v in model_final_res.items()}, orient='index', columns=['0', '1']).loc[dataset.index]
     pd.DataFrame(model_final_predictions).rename_axis('sampleid', axis='rows').to_csv(wd_path / 'complete_model_reprediction_predictions.csv')
     y_final_true, y_final_scores = dataset['class'], model_final_predictions['1']
     roc_final_data = metrics.roc_curve(y_final_true, y_final_scores)

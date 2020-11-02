@@ -690,7 +690,7 @@ class Pipeline:
         else:
             wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
             out_folder = self.kwargs.get('wd') / str(self.uid) / 'out'
-        genescore_normalize = True if self.config.get('avadx', 'genescore.normalize', fallback='no') == 'yes' else False
+        genescore_normalize = True if self.config.get('avadx', 'genescore.standardize', fallback='no') == 'yes' else False
         fig = Figure(vis, dataset, genescore_normalize, wd_folder, out_folder)
         fig.create()
 
@@ -742,7 +742,7 @@ class Pipeline:
             exitpoint_main = features_kwargs['exitpoint']
             features_kwargs['skip'] = [5, 7]
             features_kwargs['exitpoint'] = None
-            genescore_normalize = True if configp.get('avadx', 'genescore.normalize', fallback='no') == 'yes' else False
+            genescore_normalize = True if configp.get('avadx', 'genescore.standardize', fallback='no') == 'yes' else False
             genescores_suffix = 'normalized' if genescore_normalize else 'raw'
             features_generated = features_wd / features_uid / 'out' / 'genescores' / f'GeneScoreTable_{genescores_suffix}.csv'
             extra += [f'pred_id={input_samples.stem}', f'features={features_path if features_path.exists() else "None"}', f'model={model_path}', f'genescores={features_generated}']
@@ -1181,7 +1181,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     outliers_break = True if pipeline.config.get('avadx', 'outliers.break', fallback='no') == 'yes' else False
     genescorefn_available = True if pipeline.check_config('genescore.fn', is_file=True, quiet=True) else False
     variantscorefn_available = True if pipeline.check_config('variantscore.fn', is_file=True, quiet=True) else False
-    genescore_normalize = True if pipeline.config.get('avadx', 'genescore.normalize', fallback='no') == 'yes' else False
+    genescore_normalize = True if pipeline.config.get('avadx', 'genescore.standardize', fallback='no') == 'yes' else False
     fselectionclass_available = True if pipeline.check_config('fselection.class', is_file=True, quiet=True) else False
     modelclass_available = True if pipeline.check_config('model.class', is_file=True, quiet=True) else False
     featurelist_available = True if pipeline.check_config('featurelist', is_file=True, quiet=True) else False
@@ -1736,7 +1736,7 @@ def run_all_p(pipeline, extra, dry_run=False):
         f'-s $WD/{step3_5_out} -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
         f'-g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
         f'-v {variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn]"} '
-        f'-t config[avadx.varidb.predictors] -n config[avadx.genescore.normalize] {"--indels " if analyze_indels else ""}'
+        f'-t config[avadx.varidb.predictors] -n config[avadx.genescore.standardize] {"--indels " if analyze_indels else ""}'
         f'-o $WD/{step4_3_outfolder}',
         tasks=(None, WD / step4_1_out, f'$WD/{step4_1_outfolder}/'),
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
@@ -1755,7 +1755,7 @@ def run_all_p(pipeline, extra, dry_run=False):
         f'/app/python/avadx/genescore.py -M -m config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv '
         f'-c $WD/tmp/cv-scheme.csv -g {genescorefn_mnt[0][1] if genescore_file else "config[avadx.genescore.fn]"} '
         f'-v {variantscorefn_mnt[0][1] if variantscore_file else "config[avadx.variantscore.fn]"} '
-        f'-n config[avadx.genescore.normalize] -r $WD/{step4_3_outfolder} -o $OUT/{step4_4_outfolder} ',
+        f'-n config[avadx.genescore.standardize] -r $WD/{step4_3_outfolder} -o $OUT/{step4_4_outfolder} ',
         fns={'pre': (pipeline.check_cv_scheme, [WD / 'tmp' / 'cv-scheme.csv'])},
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
         mounts=mounts_step4_3,

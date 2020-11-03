@@ -135,13 +135,13 @@ def merge(results, metadata, cvscheme, variantfn, genefn, normalize, out):
     if normalize == 'no':
         merged_out_path = out / 'GeneScoreTable_raw.csv'
         genescores_merged_r = genescores_merged.filter(regex='Gene|Transcript|_r$', axis=1)
-        genescores_merged_r.columns = genescores_merged_r.columns.str.rstrip('_r')
+        genescores_merged_r.columns = genescores_merged_r.columns.str.replace(pat='_r$', repl='')
         genescores_merged_r = genescores_merged_r.fillna(scoring_functions.gene.NA_SCORE)
         genescores_merged_r[['Gene', 'Transcript'] + cvscheme_df.index.tolist()].to_csv(merged_out_path, index=False, float_format='%.4g')
     elif normalize == 'yes':
         merged_out_path = out / 'GeneScoreTable_normalized.csv'
         genescores_merged_n = genescores_merged.filter(regex='Gene|Transcript|_n$', axis=1)
-        genescores_merged_n.columns = genescores_merged_n.columns.str.rstrip('_n')
+        genescores_merged_n.columns = genescores_merged_n.columns.str.replace(pat='_n$', repl='')
         genescores_merged_n = pd.merge(genescores_merged_n, protL[['transcript', 'prot_length']], left_on='Transcript', right_on='transcript', how='left').drop('transcript', axis=1)
         genescores_merged_n = genescores_merged_n.apply(lambda x: x.fillna(scoring_functions.gene.NA_SCORE / x['prot_length']), axis=1).drop('prot_length', axis=1)
         genescores_merged_n[['Gene', 'Transcript'] + cvscheme_df.index.tolist()].to_csv(merged_out_path, index=False, float_format='%.4g')

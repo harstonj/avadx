@@ -166,10 +166,10 @@ class AVADx:
             codebase = self.pipeline.kwargs.get('Debug')
             codebase = (codebase if codebase is not None else Path(__file__).parent.parent).absolute()
             mounts += [
-                    (codebase / 'avadx', Path('/usr/local/lib/python3.8/site-packages/avadx')),
-                    (codebase / 'python', Path('/app/python/avadx/')),
-                    (codebase / 'R', Path('/app/R/avadx/')),
-                ]
+                (codebase / 'avadx', Path('/usr/local/lib/python3.8/site-packages/avadx')),
+                (codebase / 'python', Path('/app/python/avadx/')),
+                (codebase / 'R', Path('/app/R/avadx/')),
+            ]
         self.pipeline.run_container(
             container, args=args_, daemon_args=daemon_args, uid=uid,
             mounts=mounts,
@@ -465,8 +465,6 @@ class Pipeline:
         return ('AVA,Dx', __version__, __releasedate__, self.daemon, cpu, mem)
 
     def preprocess(self, rerun=False):
-        from pandas import DataFrame, Index
-
         def indices(labels, search):
             return [i for i, x in enumerate(labels) if x == search]
 
@@ -565,12 +563,11 @@ class Pipeline:
                 auto_folds = adjust_splits(auto_folds, cv_folds)
                 if len(auto_folds) != cv_folds:
                     self.log.warning(f'Auto-generated cross-validation folds ({len(auto_folds)}) differ from specified folds ({cv_folds})')
-                grouped_rows = []
+                grouped_rows = {}
                 for idx, fold in enumerate(auto_folds, 1):
                     for sidx in fold:
-                        grouped_rows += [(samples[sidx], idx, labels[sidx])]
-                cvscheme_df = DataFrame(grouped_rows, columns=['sampleid', 'fold', 'class']).set_index('sampleid').loc[Index(samples, name='sampleid')]
-                cvscheme_df.to_csv(fout_cv, header=False)
+                        grouped_rows[samples[sidx]] = (idx, labels[sidx])
+                fout_cv.writelines([f'{sampleid},{grouped_rows[sampleid][0]},{grouped_rows[sampleid][1]}\n' for sampleid in samples])
                 split_type = 'auto-generated group'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
             elif has_folds:
@@ -594,12 +591,11 @@ class Pipeline:
                 auto_folds = adjust_splits(auto_folds, cv_folds)
                 if len(auto_folds) != cv_folds:
                     self.log.warning(f'Auto-generated cross-validation folds ({len(auto_folds)}) differ from specified folds ({cv_folds})')
-                auto_folds_rows = []
+                auto_folds_rows = {}
                 for idx, fold in enumerate(auto_folds, 1):
                     for sidx in fold:
-                        auto_folds_rows += [(samples[sidx], idx, labels[sidx])]
-                cvscheme_df = DataFrame(auto_folds_rows, columns=['sampleid', 'fold', 'class']).set_index('sampleid').loc[Index(samples, name='sampleid')]
-                cvscheme_df.to_csv(fout_cv, header=False)
+                        auto_folds_rows[samples[sidx]] = (idx, labels[sidx])
+                fout_cv.writelines([f'{sampleid},{auto_folds_rows[sampleid][0]},{auto_folds_rows[sampleid][1]}\n' for sampleid in samples])
                 split_type = 'auto-generated sample'
                 split_description = f'{len(auto_folds)}-fold split' if cv_folds < cv_folds_max else 'leave-one-out splits'
             if not rerun and not self.is_prediction():

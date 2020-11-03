@@ -377,7 +377,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '-G', '--maxgenes', type=int, default=200,
-        help='number of top-ranked genes to use for model building'
+        help='number of top-ranked genes to use for model evaluation'
+    )
     )
     parser.add_argument(
         '-S', '--stepsize', type=int, default=5,

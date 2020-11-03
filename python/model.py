@@ -83,10 +83,10 @@ def main(args, kwargs):
         pred_id, model, genescores, features, variantfn, genefn = kwargs
         predict(pred_id, model, genescores, features, variantfn, genefn, args.out)
     else:
-        run(args.genescores, args.featureselection, args.featurelist, args.model, args.cvscheme, args.protlength, args.kfold, args.variance, args.variation, args.pvalue, args.maxgenes, args.stepsize, args.out, args.wd, args.cores, kwargs)
+        run(args.genescores, args.featureselection, args.featurelist, args.model, args.cvscheme, args.protlength, args.kfold, args.variance, args.variation, args.pvalue, args.maxgenes, args.topgenes, args.stepsize, args.out, args.wd, args.cores, kwargs)
 
 
-def run(genescores_path, featureselection, featurelist, model, cvscheme_path, protlength_path, kfold, variance_cutoff, variation_cutoff, pval_cutoff, maxgenes, stepsize, out_path, wd_path, cores, kwargs):
+def run(genescores_path, featureselection, featurelist, model, cvscheme_path, protlength_path, kfold, variance_cutoff, variation_cutoff, pval_cutoff, maxgenes, topgenes_ratio, stepsize, out_path, wd_path, cores, kwargs):
     kwargs_dict = {_.split('=')[0]: _.split('=')[1] for _ in kwargs}
     kwargs_dict['pval_cutoff'] = pval_cutoff
     bar_prefix = '[     INFO ] --- |5.10| '
@@ -207,7 +207,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
             performances_prc_avg[max_genes] = prc_auc
             print(f'progress:end:{model_eval.name}')
         max_auc_genes = max(performances_roc_auc, key=lambda key: performances_roc_auc[key])
-        print(f'|5.10| {model_eval.name}/{model_eval.fselection.name}: bestAUC for {max_auc_genes} genes = {performances_roc_auc[max_auc_genes]}')
+        print(f'|5.10| {model_eval.name}/{model_eval.fselection.name}: bestAUC model ({max_auc_genes} genes) cross-validation performance = {performances_roc_auc[max_auc_genes]:.2f} ROCauc')
         predictions_all_best = pd.DataFrame(predictions_all[max_auc_genes]).rename_axis('sampleid', axis='rows')
         predictions_all_best_samples = predictions_all_best.merge(cvscheme[['class']], how='left', left_index=True, right_index=True).rename(columns={'0': 'score_0', '1': 'score_1'})
         predictions_all_best_samples.to_csv(out_path / 'crossval_bestAUC_predictions.csv')
@@ -243,21 +243,54 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
             rank1_df.to_csv(wd_path / 'crossval_bestAUC_genes-list.csv', columns=[], header=False)
             rank1_df.to_csv(out_path / 'crossval_bestAUC_genes.csv', header=False)
 
-    # build and save final model
+    # evaluate final model
     if featurelist and featurelist.exists():
         maxgenes_final = fselection_df.shape[0]
-        fselection_final = fselection
+        fselection_final_eval = fselection
+        fselection_final_eval.selected = {k: fselection_df for k in kfold_steps}
+    else:
+        rank1_df_final = rank1_df[((rank1_df / len(kfold_steps)) > topgenes_ratio).frequency]
+        maxgenes_final = rank1_df_final.shape[0]
+        fselection_final_eval = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes_final)
+        fselection_final_eval.selected = {k: rank1_df_final for k in kfold_steps}
+    model_final_eval = get_model(model, kwargs_dict, fselection_final_eval)
+    with Pool(processes=cores) as model_pool:
+        print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{model_final_eval.name}/{model_final_eval.fselection.name} {maxgenes_final} genes')
+        model_final_eval_pooled = [model_pool.apply_async(model_final_eval.train, args=(dataset, maxgenes_final, k)) for k in kfold_steps]
+        model_final_eval_res = [p.get() for p in model_final_eval_pooled]
+        model_final_eval_predictions = pd.DataFrame.from_dict({k: v for d in model_final_eval_res for k, v in d.items()}, orient='index', columns=['0', '1']).loc[dataset.index]
+        y_final_eval_true, y_final_eval_scores = dataset['class'], model_final_eval_predictions['1']
+        roc_final_eval_data = metrics.roc_curve(y_final_eval_true, y_final_eval_scores)
+        roc_final_eval_auc = metrics.roc_auc_score(y_final_eval_true, y_final_eval_scores)
+        prc_final_eval_data = metrics.precision_recall_curve(y_final_eval_true, y_final_eval_scores)
+        prc_final_eval_auc = metrics.average_precision_score(y_final_eval_true, y_final_eval_scores)
+        print(f'progress:end:{model_final_eval.name}')
+        print(f'|5.10| {model_final_eval.name}/{model_final_eval.fselection.name}: final model ({maxgenes_final} genes) cross-validation performance = {roc_final_eval_auc:.2f} ROCauc')
+        predictions_final_eval = pd.DataFrame(model_final_eval_predictions).rename_axis('sampleid', axis='rows')
+        predictions_final_eval_samples = predictions_final_eval.merge(cvscheme[['class']], how='left', left_index=True, right_index=True).rename(columns={'0': 'score_0', '1': 'score_1'})
+        predictions_final_eval_samples.to_csv(out_path / 'crossval_finalModel_predictions.csv')
+        jitter_df = predictions_final_eval_samples.groupby('class').score_1.apply(np.hstack)
+        plot_jitter(jitter_df, out_path / 'crossval_finalModel_predictions.png', title='Crossval finalModel Predictions per class', x_lab='class', y_lab='prediction score')
+        roc_auc_df = pd.DataFrame.from_dict({maxgenes_final: roc_final_eval_auc}, orient='index', columns=['AUC']).rename_axis('selected_genes', axis='rows').sort_values(by='AUC', ascending=False)
+        roc_auc_df.to_csv(out_path / 'finalModel_ROC-AUC.csv')
+        prc_avg_df = pd.DataFrame.from_dict({maxgenes_final: prc_final_eval_auc}, orient='index', columns=['AVGpr']).rename_axis('selected_genes', axis='rows').sort_values(by='AVGpr', ascending=False)
+        prc_avg_df.to_csv(out_path / 'finalModel_PRC-AVGpr.csv')
+        roc_df = pd.DataFrame(roc_final_eval_data, index=['fpr', 'tpr', 'thresholds']).T
+        roc_df.to_csv(out_path / 'crossval_finalModel_ROC.csv', index=False)
+        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / 'crossval_finalModel_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {performances_roc_auc[max_auc_genes]:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
+        prc_df = pd.DataFrame(prc_final_eval_data, index=['precision', 'recall', 'thresholds']).T
+        prc_df.to_csv(out_path / 'crossval_finalModel_PRC.csv', index=False)
+        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / 'crossval_finalModel_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {performances_prc_avg[max_auc_genes]:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
+
+    # build and save final model
+    if featurelist and featurelist.exists():
+        fselection_final = fselection_final_eval
         fselection_final.final = True
         fselection_final.selected = {'all': fselection_df}
     else:
-        maxgenes_final = rank1_df.shape[0]
-        fselection_final = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes_final)
+        fselection_final = fselection_final_eval
         fselection_final.final = True
-        # NOTE: <= 1.40: run feature selection where maxgenes = count of genes in union of all top selected genes for the best ranked AUC
-        # fselection_final_res = fselection_final.fn(dataset, 'all')
-        # fselection_final.selected = {fselection_final_res[1].name: fselection_final_res[1]}
-        # NOTE: >= 1.41: use list of genes in union of all top selected genes for the best ranked AUC
-        fselection_final.selected = {'all': rank1_df}
+        fselection_final.selected = {'all': rank1_df_final}
     model_final = get_model(model, kwargs_dict, fselection_final)
     model_final.final = True
     model_final_res = model_final.train(dataset, maxgenes_final, 'all')
@@ -379,6 +412,9 @@ if __name__ == "__main__":
         '-G', '--maxgenes', type=int, default=200,
         help='number of top-ranked genes to use for model evaluation'
     )
+    parser.add_argument(
+        '-T', '--topgenes', type=float, default=0.5,
+        help='required ratio for top-ranked genes to include into final model training'
     )
     parser.add_argument(
         '-S', '--stepsize', type=int, default=5,

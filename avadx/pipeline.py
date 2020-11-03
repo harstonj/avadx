@@ -162,6 +162,14 @@ class AVADx:
                 log_stdout = f'{task}_{log_stdout}'
             if log_stderr:
                 log_stderr = f'{task}_{log_stderr}'
+        if '-D' in sys.argv or '--Debug' in sys.argv:
+            codebase = self.pipeline.kwargs.get('Debug')
+            codebase = (codebase if codebase is not None else Path(__file__).parent.parent).absolute()
+            mounts += [
+                    (codebase / 'avadx', Path('/usr/local/lib/python3.8/site-packages/avadx')),
+                    (codebase / 'python', Path('/app/python/avadx/')),
+                    (codebase / 'R', Path('/app/R/avadx/')),
+                ]
         self.pipeline.run_container(
             container, args=args_, daemon_args=daemon_args, uid=uid,
             mounts=mounts,
@@ -325,7 +333,7 @@ class Pipeline:
             'vm.cpu': None,
             'vm.mem': None
         }
-        self.seed = self.config.get('DEFAULT', 'random.seed', fallback=None)
+        self.seed = self.config.get('avadx', 'random.seed', fallback=None)
         self.set_seed()
         self.prediction = False
         self.prediction_out = None
@@ -666,6 +674,11 @@ class Pipeline:
                         os.remove(path)
                     else:
                         shutil.rmtree(path)
+            else:
+                path = wd_folder / base
+                for pattern in item[1]:
+                    # TODO implement
+                    pass
 
         if self.is_vm:
             wd_folder = self.kwargs.get('wd')
@@ -1053,6 +1066,8 @@ def parse_arguments():
                         help='steps to run, e.g. 1 (start from 1) or 1-2 (start from 1, stop at 2)')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='set verbosity level (v: ERROR, vv: WARNING, vvv: info, vvvv: debug); default: log level INFO')
+    parser.add_argument('-D', '--Debug', type=Path, nargs='?',
+                        help='path of local avadx codebase to mount to containers')
     parser.add_argument('-L', '--logfile', type=Path, const=Path('pipeline.log'),
                         nargs='?', help='redirect logs to file')
     parser.add_argument('-q', '--quiet', action='store_true',
@@ -1785,7 +1800,7 @@ def run_all_p(pipeline, extra, dry_run=False):
         f'/app/python/avadx/model.py -g $OUT/{step4_4_outfolder}/GeneScoreTable_{"normalized" if genescore_normalize else "raw"}.csv '
         '-f config[avadx.cv.featureselection] -m config[avadx.cv.model] -c $WD/tmp/cv-scheme.csv '
         '-p config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -v config[avadx.cv.varcutoff] -V config[avadx.cv.sklearnvariance] '
-        '-P config[avadx.cv.ks.pvalcutoff] -G config[avadx.cv.topgenes] -S config[avadx.cv.steps] '
+        '-P config[avadx.cv.ks.pvalcutoff] -G config[avadx.cv.topgenes] -S config[avadx.cv.steps] -T config[avadx.model.topgenes] '
         f'-o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder} -C {VM_CPU}{use_featurelist}',
         fns={'pre': (pipeline.check_cv_scheme, [WD / 'tmp' / 'cv-scheme.csv'])},
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},

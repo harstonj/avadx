@@ -397,7 +397,7 @@ if __name__ == "__main__":
         help='use specified k-fold cross-validation overwriting any provided scheme'
     )
     parser.add_argument(
-        '-v', '--variation', type=float, default=50,
+        '-v', '--variation', type=float, default=80,
         help='cutoff for variation pre-filter (%)'
     )
     parser.add_argument(

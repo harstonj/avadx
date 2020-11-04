@@ -277,10 +277,10 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         prc_avg_df.to_csv(out_path / 'finalModel_PRC-AVGpr.csv')
         roc_df = pd.DataFrame(roc_final_eval_data, index=['fpr', 'tpr', 'thresholds']).T
         roc_df.to_csv(out_path / 'crossval_finalModel_ROC.csv', index=False)
-        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / 'crossval_finalModel_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {performances_roc_auc[max_auc_genes]:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
+        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / 'crossval_finalModel_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {prc_final_eval_auc:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
         prc_df = pd.DataFrame(prc_final_eval_data, index=['precision', 'recall', 'thresholds']).T
         prc_df.to_csv(out_path / 'crossval_finalModel_PRC.csv', index=False)
-        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / 'crossval_finalModel_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {performances_prc_avg[max_auc_genes]:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
+        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / 'crossval_finalModel_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {roc_final_eval_auc:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
 
     # build and save final model
     if featurelist and featurelist.exists():

@@ -63,26 +63,33 @@ def plot_curve(x, y, save_as, color='darkorange', label='Label', x_lab='x', y_la
     plt.close()
 
 
-def plot_jitter(data, x='class', y='score_1', colors=['#356288', '#fe1100'], jitter=0.2, size=6, alpha=.75, label='Label', x_lab='x', y_lab='y', title='Plot', y_lim=[-0.1, 1.05], overlay_data=None, save_as=None):
+def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'], jitter=0.2, size=6, alpha=.75, label='Label', x_lab='x', y_lab='y', title='Plot', y_lim=[-0.1, 1.05], legend=False, data_overlay=None, save_as=None):
     fig, ax = plt.subplots()
     plt.ylim(y_lim)
     plt.title(title)
+    if data_overlay is None:
+        data = data_raw.copy()
+    else:
+        data = data_raw.copy()
+        data = data.append(pd.DataFrame(zip(data_overlay.score_1.to_list(), [0.5] * data_overlay.shape[0]), columns=['score_1', 'class']), ignore_index=True)
+        colors = [colors[0], '#000000', colors[-1]]
     ax = sns.boxplot(x=x, y=y, palette=colors, data=data)
     for patch in ax.artists:
         r, g, b, a = patch.get_facecolor()
         patch.set_facecolor((r, g, b, .3))
-    if overlay_data is None:
+    if data_overlay is None:
         ax = sns.stripplot(x=x, y=y, data=data, palette=colors, jitter=jitter, size=size, alpha=alpha)
     else:
-        ax = sns.stripplot(x=x, y=y, data=data, palette=colors, jitter=jitter, size=size, alpha=.3)
-        ax = sns.stripplot(x=x, y=y, data=overlay_data, color='black', marker='P', jitter=jitter, size=size, alpha=1)
-        training = mlines.Line2D([], [], color='lightgrey', marker='o', linestyle='None', markersize=size, label='training')
-        prediction = mlines.Line2D([], [], color=colors[1], marker='P', linestyle='None', markersize=size, label='prediction')
-        box = ax.get_position()
-        ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-        ax.legend(handles=[training, prediction], loc='center left', bbox_to_anchor=(1, 0.5))
-        plt.title('Model predictions')
-    median_0, median_1 = data.groupby('class').median()[['score_0', 'score_1']].score_1.to_list()
+        ax = sns.stripplot(x=x, y=y, data=data, palette=colors, jitter=jitter, size=size, alpha=alpha)
+        training_0 = mlines.Line2D([], [], color=colors[0], marker='o', linestyle='None', markersize=size, label='training (0)')
+        prediction = mlines.Line2D([], [], color=colors[1], marker='o', linestyle='None', markersize=size, label='prediction')
+        training_1 = mlines.Line2D([], [], color=colors[2], marker='o', linestyle='None', markersize=size, label='training (1)')
+        if legend:
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+            ax.legend(handles=[training_0, prediction, training_1], loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.xticks(ticks=[0, 1, 2], labels=['0', 'prediction', '1'])
+    median_0, median_1 = data_raw.groupby('class').median()[['score_0', 'score_1']].score_1.to_list()
     mean_of_medians = np.mean([median_0, median_1])
     ax.axhline(mean_of_medians, ls='--', color='grey')
     trans = transforms.blended_transform_factory(
@@ -320,6 +327,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     model_final = get_model(model, kwargs_dict, fselection_final)
     model_final.final = True
     model_final_res = model_final.train(dataset, maxgenes_final, 'all')
+    model_final.crosscal_pred = predictions_final_eval_samples
     model_final_predictions = pd.DataFrame.from_dict({k: v for k, v in model_final_res.items()}, orient='index', columns=['0', '1']).loc[dataset.index]
     pd.DataFrame(model_final_predictions).rename_axis('sampleid', axis='rows').to_csv(wd_path / 'complete_model_reprediction_predictions.csv')
     y_final_true, y_final_scores = dataset['class'], model_final_predictions['1']
@@ -390,7 +398,11 @@ def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfol
         exit(1)
     y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
     y_pred_ordered_dict = dict(zip(dataset.index.tolist(), list(y_pred_ordered)))
-    pd.DataFrame.from_dict(y_pred_ordered_dict, orient='index', columns=['0', '1']).rename_axis('sampleid', axis='rows').rename(columns={'0': 'score_0', '1': 'score_1'}).to_csv(outfolder / f'{pred_id}_predictions.csv')
+    predictions_df = pd.DataFrame.from_dict(y_pred_ordered_dict, orient='index', columns=['0', '1']).rename_axis('sampleid', axis='rows').rename(columns={'0': 'score_0', '1': 'score_1'})
+    predictions_df.to_csv(outfolder / f'{pred_id}_predictions.csv')
+
+    # plot predictions
+    plot_jitter(model.crosscal_pred, data_overlay=predictions_df, title='Predictions', x_lab='class', y_lab='prediction score', save_as=outfolder / f'{pred_id}_predictions.png')
 
 
 if __name__ == "__main__":

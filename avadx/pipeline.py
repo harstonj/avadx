@@ -761,9 +761,11 @@ class Pipeline:
             shutil.copy(features_generated, features_samples)
             genescores_prediction = features_wd / features_uid / 'out' / 'predictions' / f'{input_samples.stem}_genescores_prediction.csv'
             shutil.copy(genescores_prediction, prediction_folder)
-            predictions = features_wd / features_uid / 'out' / 'predictions' / f'{input_samples.stem}_predictions.csv'
-            shutil.copy(predictions, prediction_folder)
-            if exitpoint_main is None and predictions.exists():
+            predictions_csv = features_wd / features_uid / 'out' / 'predictions' / f'{input_samples.stem}_predictions.csv'
+            predictions_png = features_wd / features_uid / 'out' / 'predictions' / f'{input_samples.stem}_predictions.png'
+            shutil.copy(predictions_csv, prediction_folder)
+            shutil.copy(predictions_png, prediction_folder)
+            if exitpoint_main is None and predictions_csv.exists():
                 shutil.rmtree(self.get_wd())
         else:
             self.log.info(f'Using existing genescores from: {features_samples}')

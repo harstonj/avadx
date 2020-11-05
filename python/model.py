@@ -201,10 +201,12 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     else:
         fselection = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes, quiet)
         with Pool(processes=cores) as fselection_pool:
-            print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{fselection.name}')
+            if not quiet:
+                print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{fselection.name}')
             fselection_pooled = [fselection_pool.apply_async(fselection.fn, args=(dataset, k)) for k in kfold_steps]
             fselection_res = [p.get() for p in fselection_pooled]
-            print(f'progress:end:{fselection.name}')
+            if not quiet:
+                print(f'progress:end:{fselection.name}')
             fselection.selected = {genes.name: genes for res, genes in fselection_res}
             fselection_df = pd.DataFrame([res for res, genes in fselection_res]).rename_axis('folds', axis='rows')
             fselection_df.to_csv(wd_path / f'{kfold}F-CV-{fselection.name}-selectedGenes.csv')
@@ -224,7 +226,8 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     with Pool(processes=cores) as model_pool:
         predictions_all, performances_roc_data, performances_roc_auc, performances_prc_data, performances_prc_avg = {}, {}, {}, {}, {}
         for max_genes in genes_considered:
-            print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{model_eval.name}/{model_eval.fselection.name} {max_genes} genes')
+            if not quiet:
+                print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{model_eval.name}/{model_eval.fselection.name} {max_genes} genes')
             model_pooled = [model_pool.apply_async(model_eval.train, args=(dataset, max_genes, k)) for k in kfold_steps]
             model_res = [p.get() for p in model_pooled]
             model_predictions = pd.DataFrame.from_dict({k: v for d in model_res for k, v in d.items()}, orient='index', columns=['0', '1']).loc[dataset.index]
@@ -238,7 +241,8 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
             performances_roc_auc[max_genes] = roc_auc
             performances_prc_data[max_genes] = prc_data
             performances_prc_avg[max_genes] = prc_auc
-            print(f'progress:end:{model_eval.name}')
+            if not quiet:
+                print(f'progress:end:{model_eval.name}')
         max_auc_genes = max(performances_roc_auc, key=lambda key: performances_roc_auc[key])
         print(f'|5.10| {model_eval.name}/{model_eval.fselection.name}: best-geneset model ({max_auc_genes} genes) cross-validation performance = {performances_roc_auc[max_auc_genes]:.2f} ROCauc')
         predictions_all_best = pd.DataFrame(predictions_all[max_auc_genes]).rename_axis('sampleid', axis='rows')
@@ -290,7 +294,8 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         fselection_final_eval.selected = {k: rank1_df_final for k in kfold_steps}
     model_final_eval = get_model(model, kwargs_dict, fselection_final_eval)
     with Pool(processes=cores) as model_pool:
-        print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{model_final_eval.name}/{model_final_eval.fselection.name} {maxgenes_final} genes')
+        if not quiet:
+            print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{model_final_eval.name}/{model_final_eval.fselection.name} {maxgenes_final} genes')
         model_final_eval_pooled = [model_pool.apply_async(model_final_eval.train, args=(dataset, maxgenes_final, k)) for k in kfold_steps]
         model_final_eval_res = [p.get() for p in model_final_eval_pooled]
         model_final_eval_predictions = pd.DataFrame.from_dict({k: v for d in model_final_eval_res for k, v in d.items()}, orient='index', columns=['0', '1']).loc[dataset.index]
@@ -299,7 +304,8 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         roc_final_eval_auc = metrics.roc_auc_score(y_final_eval_true, y_final_eval_scores)
         prc_final_eval_data = metrics.precision_recall_curve(y_final_eval_true, y_final_eval_scores)
         prc_final_eval_auc = metrics.average_precision_score(y_final_eval_true, y_final_eval_scores)
-        print(f'progress:end:{model_final_eval.name}')
+        if not quiet:
+            print(f'progress:end:{model_final_eval.name}')
         print(f'|5.10| {model_final_eval.name}/{model_final_eval.fselection.name}: final model ({maxgenes_final} genes) cross-validation performance = {roc_final_eval_auc:.2f} ROCauc')
         predictions_final_eval = pd.DataFrame(model_final_eval_predictions).rename_axis('sampleid', axis='rows')
         predictions_final_eval_samples = predictions_final_eval.merge(cvscheme[['class']], how='left', left_index=True, right_index=True).rename(columns={'0': 'score_0', '1': 'score_1'})
@@ -437,7 +443,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '-v', '--variation', type=float, default=80,
-        help='cutoff for variation pre-filter (%)'
+        help='cutoff for variation pre-filter (%%)'
     )
     parser.add_argument(
         '-V', '--variance', type=float, default=0,

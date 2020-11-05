@@ -1805,7 +1805,7 @@ def run_all_p(pipeline, extra, dry_run=False):
         '-f config[avadx.cv.featureselection] -m config[avadx.cv.model] -c $WD/tmp/cv-scheme.csv '
         '-p config[DEFAULT.avadx.data]/Transcript-ProtLength_cleaned.csv -v config[avadx.cv.varcutoff] -V config[avadx.cv.sklearnvariance] '
         '-P config[avadx.cv.ks.pvalcutoff] -G config[avadx.cv.topgenes] -S config[avadx.cv.steps] -T config[avadx.model.topgenes] '
-        f'-o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder} -C {VM_CPU}{use_featurelist}',
+        f'-o $OUT/{step5_1_outfolder} -w $WD/{step5_1_outfolder} -C {VM_CPU}{use_featurelist} {"-q" if pipeline.daemon == "singularity" else ""}',
         fns={'pre': (pipeline.check_cv_scheme, [WD / 'tmp' / 'cv-scheme.csv'])},
         daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
         mounts=mounts_step5_1,

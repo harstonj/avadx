@@ -26,9 +26,9 @@ class Figure:
         if vis == 'heatmap_clust_dend':
             if dataset == 'genescores':
                 self.in_file = out_folder / Path(f'genescores/GeneScoreTable_{"normalized" if self.genescore_normalize else "raw"}_variation_filtered.csv')
-                selector_file = out_folder / Path('results/crossval_bestAUC_genes.csv')
+                selector_file = wd_folder / Path('results/crossval_genes.csv')
                 cv_scheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
-                self.out_file = out_folder / Path('genescores/heatmap.html')
+                self.out_file = out_folder / Path('results/genescores_heatmap.html')
                 if (self.in_file and self.in_file.exists()) and (selector_file and selector_file.exists()):
                     data_raw = pd.read_csv(self.in_file)
                     cv_scheme = pd.read_csv(cv_scheme_path, header=None, names=['sampleid', 'fold', 'status'])
@@ -167,7 +167,7 @@ class Figure:
                 'zeroline': False,
                 'showticklabels': True,
                 'ticks': "outside",
-                'ticktext': [f'{s}_{c}' for s, c in zip(samples[c], np.array(class_labels)[c])],
+                'ticktext': [f'{s} [{int(c)}]' for s, c in zip(samples[c], np.array(class_labels)[c])],
                 'tickvals': tickvals_samples,
                 'ticklen': 200,
                 'tickcolor': 'rgba(255,255,255,0)',

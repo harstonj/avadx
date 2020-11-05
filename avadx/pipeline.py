@@ -1810,8 +1810,8 @@ def run_all_p(pipeline, extra, dry_run=False):
     pipeline.add_action(
         'FS_CVgeneOverRep_kfold', 5.20,
         'check pathway over-representation',
-        f'/app/R/avadx/FS-CVgeneOverRep-kfold.R -f $OUT/{step5_1_outfolder}/featureselection_genes_per_fold_ordered.csv '
-        f'-t $WD/{step5_1_outfolder}/crossval_bestAUC_genes-list.csv -b $OUT/{step4_4_outfolder}/GeneScoreTable_{"normalized" if genescore_normalize else "raw"}_variation_filtered.csv '
+        f'/app/R/avadx/FS-CVgeneOverRep-kfold.R -f $WD/results/fselection_performance.csv '
+        f'-t $WD/{step5_1_outfolder}/crossval_genes.csv -b $OUT/{step4_4_outfolder}/GeneScoreTable_{"normalized" if genescore_normalize else "raw"}_variation_filtered.csv '
         '-n config[avadx.pathways.topgenes] -d config[DEFAULT.avadx.data]/CPDB_pathways_genesymbol.tab '
         f'-o $OUT/{step5_2_outfolder}',
         outdir=(OUT / step5_2_outfolder)

@@ -63,7 +63,7 @@ def plot_curve(x, y, save_as, color='darkorange', label='Label', x_lab='x', y_la
     plt.close()
 
 
-def plot_jitter(data, x='class', y='score_1', colors=['#356288', '#fe1100'], jitter=0.2, size=6, alpha=.75, label='Label', x_lab='x', y_lab='y', title='Plot', y_lim=[0.0, 1.05], overlay_data=None, save_as=None):
+def plot_jitter(data, x='class', y='score_1', colors=['#356288', '#fe1100'], jitter=0.2, size=6, alpha=.75, label='Label', x_lab='x', y_lab='y', title='Plot', y_lim=[-0.1, 1.05], overlay_data=None, save_as=None):
     fig, ax = plt.subplots()
     plt.ylim(y_lim)
     plt.title(title)
@@ -117,6 +117,10 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     wd_path.mkdir(exist_ok=True)
     model_path = out_path / 'model.joblib'
     features_path = out_path / 'model_features.txt'
+    crossval_bestauc_out = out_path / '1-crossval_genesets_models'
+    crossval_bestauc_out.mkdir(exist_ok=True)
+    crossval_final_out = out_path / '2-crossval_final_model'
+    crossval_final_out.mkdir(exist_ok=True)
 
     # load datasets
     cvscheme = pd.read_csv(cvscheme_path, header=None, names=['sampleid', 'fold', 'class'], dtype={'sampleid': str, 'fold': int, 'class': int})
@@ -197,14 +201,16 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
             fselection.selected = {genes.name: genes for res, genes in fselection_res}
             fselection_df = pd.DataFrame([res for res, genes in fselection_res]).rename_axis('folds', axis='rows')
             fselection_df.to_csv(wd_path / f'{kfold}F-CV-{fselection.name}-selectedGenes.csv')
-            fselection_df.to_csv(out_path / 'performance_folds_genes.csv')
+            fselection_df.to_csv(crossval_bestauc_out / 'fselection_all_genes_performance_per_fold.csv')
         genes_considered = list(range(stepsize, maxgenes + stepsize, stepsize))
         remaining = maxgenes - genes_considered[-1]
         if remaining:
             genes_considered += [maxgenes + remaining]
 
     # save order list (descending) of best scoring features (genes) as determimed by Feature Selection step
-    pd.DataFrame(dict([(k, v.index.to_series(index=range(1, v.shape[0] + 1))) for k, v in fselection.selected.items()])).rename_axis('pos', axis='rows').to_csv(out_path / 'featureselection_genes_per_fold_ordered.csv')
+    fselection_performance = pd.DataFrame(dict([(k, v.index.to_series(index=range(1, v.shape[0] + 1))) for k, v in fselection.selected.items()])).rename_axis('pos', axis='rows')
+    fselection_performance.to_csv(crossval_bestauc_out / 'fselection_best_genes_performance_per_fold.csv')
+    fselection_performance.to_csv(wd_path / 'fselection_performance.csv')
 
     # run model training and performance evaluation
     model_eval = get_model(model, kwargs_dict, fselection)
@@ -227,22 +233,25 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
             performances_prc_avg[max_genes] = prc_auc
             print(f'progress:end:{model_eval.name}')
         max_auc_genes = max(performances_roc_auc, key=lambda key: performances_roc_auc[key])
-        print(f'|5.10| {model_eval.name}/{model_eval.fselection.name}: bestAUC model ({max_auc_genes} genes) cross-validation performance = {performances_roc_auc[max_auc_genes]:.2f} ROCauc')
+        print(f'|5.10| {model_eval.name}/{model_eval.fselection.name}: best-geneset model ({max_auc_genes} genes) cross-validation performance = {performances_roc_auc[max_auc_genes]:.2f} ROCauc')
         predictions_all_best = pd.DataFrame(predictions_all[max_auc_genes]).rename_axis('sampleid', axis='rows')
         predictions_all_best_samples = predictions_all_best.merge(cvscheme[['class']], how='left', left_index=True, right_index=True).rename(columns={'0': 'score_0', '1': 'score_1'})
-        predictions_all_best_samples.to_csv(out_path / 'crossval_bestAUC_predictions.csv')
-        plot_jitter(predictions_all_best_samples, title='Crossval bestAUC Predictions per class', x_lab='class', y_lab='prediction score', save_as=out_path / 'crossval_bestAUC_predictions.png')
+        predictions_all_best_samples.to_csv(crossval_bestauc_out / 'best-geneset_model_predictions.csv')
+        predictions_all_best_stats = predictions_all_best_samples[['class', 'score_1']].groupby('class').describe()
+        predictions_all_best_stats.columns = predictions_all_best_stats.columns.droplevel(0)
+        predictions_all_best_stats.to_csv(crossval_bestauc_out / 'best-geneset_model_statistics.csv')
+        plot_jitter(predictions_all_best_samples, title='best geneset model predictions (crossval)', x_lab='class', y_lab='prediction score', save_as=out_path / '1-best-geneset_model_predictions.png')
         roc_auc_df = pd.DataFrame.from_dict(performances_roc_auc, orient='index', columns=['AUC']).rename_axis('selected_genes', axis='rows').sort_values(by='AUC', ascending=False)
         roc_auc_df.to_csv(wd_path / f'{kfold}F-CV-{model_eval.name}-performance.csv')
-        roc_auc_df.to_csv(out_path / 'performances_ROC-AUC.csv')
+        roc_auc_df.to_csv(crossval_bestauc_out / 'all_performances_ROC-AUC.csv')
         prc_avg_df = pd.DataFrame.from_dict(performances_prc_avg, orient='index', columns=['AVGpr']).rename_axis('selected_genes', axis='rows').sort_values(by='AVGpr', ascending=False)
-        prc_avg_df.to_csv(out_path / 'performances_PRC-AVGpr.csv')
+        prc_avg_df.to_csv(crossval_bestauc_out / 'all_performances_PRC-AVGpr.csv')
         roc_df = pd.DataFrame(performances_roc_data[max_auc_genes], index=['fpr', 'tpr', 'thresholds']).T
-        roc_df.to_csv(out_path / 'crossval_bestAUC_ROC.csv', index=False)
-        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / 'crossval_bestAUC_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {performances_roc_auc[max_auc_genes]:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
+        roc_df.to_csv(crossval_bestauc_out / 'best-geneset_model_ROC.csv', index=False)
+        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / '1-best-geneset_model_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {performances_roc_auc[max_auc_genes]:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
         prc_df = pd.DataFrame(performances_prc_data[max_auc_genes], index=['precision', 'recall', 'thresholds']).T
-        prc_df.to_csv(out_path / 'crossval_bestAUC_PRC.csv', index=False)
-        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / 'crossval_bestAUC_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {performances_prc_avg[max_auc_genes]:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
+        prc_df.to_csv(crossval_bestauc_out / 'best-geneset_model_PRC.csv', index=False)
+        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / '1-best-geneset_model_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {performances_prc_avg[max_auc_genes]:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
 
     # get list of selected genes for best AUC over all folds (merge)
     genes_best_merged = {}
@@ -259,8 +268,8 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         genes_best_df.to_csv(wd_path / f'AUC_rank.{rank}_top.{max_genes}_{kfold}F-CV-{fselection.name}-selectedGenes.csv')
         if rank == 1:
             rank1_df = genes_best_df
-            rank1_df.to_csv(wd_path / 'crossval_bestAUC_genes-list.csv', columns=[], header=False)
-            rank1_df.to_csv(out_path / 'crossval_bestAUC_genes.csv', header=False)
+            rank1_df.to_csv(wd_path / 'crossval_genes.csv', columns=[], header=False)
+            rank1_df.to_csv(crossval_bestauc_out / 'best-geneset_model_genes.csv', header=False)
 
     # evaluate final model
     if featurelist and featurelist.exists():
@@ -287,19 +296,17 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         print(f'|5.10| {model_final_eval.name}/{model_final_eval.fselection.name}: final model ({maxgenes_final} genes) cross-validation performance = {roc_final_eval_auc:.2f} ROCauc')
         predictions_final_eval = pd.DataFrame(model_final_eval_predictions).rename_axis('sampleid', axis='rows')
         predictions_final_eval_samples = predictions_final_eval.merge(cvscheme[['class']], how='left', left_index=True, right_index=True).rename(columns={'0': 'score_0', '1': 'score_1'})
-        predictions_final_eval_samples.to_csv(out_path / 'crossval_finalModel_predictions.csv')
-        jitter_df = predictions_final_eval_samples.groupby('class').score_1.apply(np.hstack)
-        plot_jitter(jitter_df, out_path / 'crossval_finalModel_predictions.png', title='Crossval finalModel Predictions per class', x_lab='class', y_lab='prediction score')
-        roc_auc_df = pd.DataFrame.from_dict({maxgenes_final: roc_final_eval_auc}, orient='index', columns=['AUC']).rename_axis('selected_genes', axis='rows').sort_values(by='AUC', ascending=False)
-        roc_auc_df.to_csv(out_path / 'finalModel_ROC-AUC.csv')
-        prc_avg_df = pd.DataFrame.from_dict({maxgenes_final: prc_final_eval_auc}, orient='index', columns=['AVGpr']).rename_axis('selected_genes', axis='rows').sort_values(by='AVGpr', ascending=False)
-        prc_avg_df.to_csv(out_path / 'finalModel_PRC-AVGpr.csv')
+        predictions_final_eval_samples.to_csv(crossval_final_out / 'final_model_predictions.csv')
+        predictions_final_eval_stats = predictions_final_eval_samples[['class', 'score_1']].groupby('class').describe()
+        predictions_final_eval_stats.columns = predictions_final_eval_stats.columns.droplevel(0)
+        predictions_final_eval_stats.to_csv(crossval_final_out / 'final_model_statistics.csv')
+        plot_jitter(predictions_final_eval_samples, title='final model predictions (crossval)', x_lab='class', y_lab='prediction score', save_as=out_path / '2-final_model_predictions.png')
         roc_df = pd.DataFrame(roc_final_eval_data, index=['fpr', 'tpr', 'thresholds']).T
-        roc_df.to_csv(out_path / 'crossval_finalModel_ROC.csv', index=False)
-        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / 'crossval_finalModel_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {roc_final_eval_auc:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
+        roc_df.to_csv(crossval_final_out / 'final_model_ROC.csv', index=False)
+        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / '2-final_model_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {roc_final_eval_auc:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
         prc_df = pd.DataFrame(prc_final_eval_data, index=['precision', 'recall', 'thresholds']).T
-        prc_df.to_csv(out_path / 'crossval_finalModel_PRC.csv', index=False)
-        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / 'crossval_finalModel_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_eval_auc:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
+        prc_df.to_csv(crossval_final_out / 'final_model_PRC.csv', index=False)
+        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / '2-final_model_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_eval_auc:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
 
     # build and save final model
     if featurelist and featurelist.exists():

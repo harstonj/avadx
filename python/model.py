@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
-import matplotlib.transforms as transforms
 import seaborn as sns
 from pathlib import Path
 from multiprocessing import Pool
@@ -64,7 +63,12 @@ def plot_curve(x, y, save_as, color='darkorange', label='Label', x_lab='x', y_la
 
 
 def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'], jitter=0.2, size=6, alpha=.75, label='Label', x_lab='x', y_lab='y', title='Plot', y_lim=[-0.1, 1.05], legend=False, data_overlay=None, save_as=None):
-    fig, ax = plt.subplots()
+    fig, ax1 = plt.subplots()
+    ax1.set_xlabel(x_lab)
+    ax1.set_ylabel(y_lab)
+    ax2 = ax1.twinx()
+    median_0, median_1 = data_raw.groupby('class').median()[['score_0', 'score_1']].score_1.to_list()
+    mean_of_medians = np.mean([median_0, median_1])
     plt.ylim(y_lim)
     plt.title(title)
     if data_overlay is None:
@@ -73,31 +77,31 @@ def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'],
         data = data_raw.copy()
         data = data.append(pd.DataFrame(zip(data_overlay.score_1.to_list(), [0.5] * data_overlay.shape[0]), columns=['score_1', 'class']), ignore_index=True)
         colors = [colors[0], '#000000', colors[-1]]
-    ax = sns.boxplot(x=x, y=y, palette=colors, data=data)
-    for patch in ax.artists:
+    ax1 = sns.boxplot(x=x, y=y, palette=colors, data=data)
+    for patch in ax1.artists:
         r, g, b, a = patch.get_facecolor()
         patch.set_facecolor((r, g, b, .3))
     if data_overlay is None:
-        ax = sns.stripplot(x=x, y=y, data=data, palette=colors, jitter=jitter, size=size, alpha=alpha)
+        ax1 = sns.stripplot(x=x, y=y, data=data, palette=colors, jitter=jitter, size=size, alpha=alpha)
     else:
-        ax = sns.stripplot(x=x, y=y, data=data, palette=colors, jitter=jitter, size=size, alpha=alpha)
+        ax1 = sns.stripplot(x=x, y=y, data=data, palette=colors, jitter=jitter, size=size, alpha=alpha)
         training_0 = mlines.Line2D([], [], color=colors[0], marker='o', linestyle='None', markersize=size, label='training (0)')
         prediction = mlines.Line2D([], [], color=colors[1], marker='o', linestyle='None', markersize=size, label='prediction')
         training_1 = mlines.Line2D([], [], color=colors[2], marker='o', linestyle='None', markersize=size, label='training (1)')
         if legend:
-            box = ax.get_position()
-            ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-            ax.legend(handles=[training_0, prediction, training_1], loc='center left', bbox_to_anchor=(1, 0.5))
+            box = ax1.get_position()
+            ax1.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+            ax1.legend(handles=[training_0, prediction, training_1], loc='center left', bbox_to_anchor=(1, 0.5))
         plt.xticks(ticks=[0, 1, 2], labels=['0', 'prediction', '1'])
-    median_0, median_1 = data_raw.groupby('class').median()[['score_0', 'score_1']].score_1.to_list()
-    mean_of_medians = np.mean([median_0, median_1])
-    ax.axhline(mean_of_medians, ls='--', color='grey')
-    trans = transforms.blended_transform_factory(
-        ax.get_yticklabels()[0].get_transform(), ax.transData
-    )
-    ax.text(0, mean_of_medians, '{:.2f}'.format(mean_of_medians), color='red', transform=trans, ha='right', va='center')
-    plt.xlabel(x_lab)
-    plt.ylabel(y_lab)
+    ax1.axhline(mean_of_medians, ls='--', color='grey')
+    ax2.set_yticks([0, round(median_0, 2), round(mean_of_medians, 2), round(median_1, 2), 1])
+    ax2.set_ylabel('')
+    mean_0_ytick, cutoff_ytick, mean_1_ytick = ax2.get_yticklabels()[1:4]
+    mean_0_ytick.set_color('grey')
+    mean_1_ytick.set_color('grey')
+    cutoff_ytick.set_fontsize(10)
+    cutoff_ytick.set_color('red')
+    cutoff_ytick.set_weight('bold')
     if save_as:
         plt.savefig(save_as)
         plt.close()

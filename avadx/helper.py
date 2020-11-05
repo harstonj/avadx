@@ -122,7 +122,7 @@ def check_config_ini(*additional_args):
             if args.init:
                 config_template = additional_args[0] / 'config' / 'avadx.ini'
                 shutil.copyfile(config_template, Path(values))
-            if args.info:
+            if args.info or args.sampleprediction:
                 pass
             elif not Path(values).exists():
                 raise argparse.ArgumentError(

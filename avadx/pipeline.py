@@ -739,6 +739,12 @@ class Pipeline:
             features_config = prediction_folder / f'{input_samples.stem}_config.ini'
             with features_config.open('w') as configfile:
                 configp = configparser.ConfigParser()
+                if not config.exists():
+                    config = self.kwargs.get('wd') / str(self.uid) / 'out' / 'pipeline_config.ini'
+                    self.log.warning(str(config))
+                    if not config.exists():
+                        self.log.error('No config file found. Aborting.')
+                        return
                 configp.read(str(config))
                 configp.set('avadx', 'vcf', str(input_samples.absolute()))
                 configp.set('avadx', 'samples', '')

@@ -17,9 +17,9 @@ def flatten(list):
     return [item for sublist in list for item in sublist]
 
 
-def get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes):
+def get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes, progress=False):
     from feature_selections.fselection_avadx import FSelection
-    return FSelection(featureselection, kwargs_dict, cvscheme, maxgenes)
+    return FSelection(featureselection, kwargs_dict, cvscheme, max_genes=maxgenes, progress=not progress)
 
 
 def get_model(model, kwargs_dict, fselection):
@@ -110,10 +110,10 @@ def main(args, kwargs):
         pred_id, model, genescores, features, variantfn, genefn = kwargs
         predict(pred_id, model, genescores, features, variantfn, genefn, args.out)
     else:
-        run(args.genescores, args.featureselection, args.featurelist, args.model, args.cvscheme, args.protlength, args.kfold, args.variance, args.variation, args.pvalue, args.maxgenes, args.topgenes, args.stepsize, args.out, args.wd, args.cores, kwargs)
+        run(args.genescores, args.featureselection, args.featurelist, args.model, args.cvscheme, args.protlength, args.kfold, args.variance, args.variation, args.pvalue, args.maxgenes, args.topgenes, args.stepsize, args.out, args.wd, args.cores, args.quiet, kwargs)
 
 
-def run(genescores_path, featureselection, featurelist, model, cvscheme_path, protlength_path, kfold, variance_cutoff, variation_cutoff, pval_cutoff, maxgenes, topgenes_ratio, stepsize, out_path, wd_path, cores, kwargs):
+def run(genescores_path, featureselection, featurelist, model, cvscheme_path, protlength_path, kfold, variance_cutoff, variation_cutoff, pval_cutoff, maxgenes, topgenes_ratio, stepsize, out_path, wd_path, cores, quiet, kwargs):
     kwargs_dict = {_.split('=')[0]: _.split('=')[1] for _ in kwargs}
     kwargs_dict['pval_cutoff'] = pval_cutoff
     bar_prefix = '[     INFO ] --- |5.10| '
@@ -195,11 +195,11 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         index_overlap = fselection_df.index.intersection(dataset.columns)
         fselection_df = fselection_df.loc[index_overlap]
         genes_manual = fselection_df.shape[0]
-        fselection = get_fselection('manual', kwargs_dict, cvscheme, genes_manual)
+        fselection = get_fselection('manual', kwargs_dict, cvscheme, genes_manual, quiet)
         fselection.selected = {k: fselection_df for k in kfold_steps}
         genes_considered = [genes_manual]
     else:
-        fselection = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes)
+        fselection = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes, quiet)
         with Pool(processes=cores) as fselection_pool:
             print(f'progress:start:{len(kfold_steps)}:{bar_prefix}{fselection.name}')
             fselection_pooled = [fselection_pool.apply_async(fselection.fn, args=(dataset, k)) for k in kfold_steps]
@@ -286,7 +286,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     else:
         rank1_df_final = rank1_df[((rank1_df / len(kfold_steps)) > topgenes_ratio).frequency]
         maxgenes_final = rank1_df_final.shape[0]
-        fselection_final_eval = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes_final)
+        fselection_final_eval = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes_final, quiet)
         fselection_final_eval.selected = {k: rank1_df_final for k in kfold_steps}
     model_final_eval = get_model(model, kwargs_dict, fselection_final_eval)
     with Pool(processes=cores) as model_pool:
@@ -474,5 +474,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '-C', '--cores', type=int, default=1,
         help='number of cores to use for computation'
+    )
+    parser.add_argument(
+        '-q', '--quiet', action='store_true',
+        help='do not show realtime progress'
     )
     main(*parser.parse_known_args())

@@ -7,12 +7,13 @@ from sklearn.feature_selection import VarianceThreshold
 
 
 class FSelection:
-    def __init__(self, name, kwargs, cvscheme, max_genes=200, fold_variance_filter=0, final=False, seed=42):
+    def __init__(self, name, kwargs, cvscheme, max_genes=200, fold_variance_filter=0, progress=False, final=False, seed=42):
         self.name = name.upper()
         self.kwargs = kwargs
         self.cvscheme = cvscheme
         self.max_genes = max_genes
         self.fold_variance_filter = fold_variance_filter
+        self.progress = progress
         self.final = final
         self.seed = seed
         self.fn = getattr(self, self.name, None)
@@ -23,6 +24,10 @@ class FSelection:
             self.fn(**kwargs)
         else:
             print(f'ERROR: {self.name}() not available.')
+
+    def update_progress(self, k):
+        if self.progress:
+            print(f'progress:update:{self.name} - fold {k}...')
 
     def get_arg(self, arg):
         return self.kwargs.get(arg, None)
@@ -62,7 +67,7 @@ class FSelection:
             .rename_axis(k, axis='rows')\
             .loc['pvalue'].rename(k)
         selected = res[res < self.get_arg('pval_cutoff')].sort_values() if self.get_arg('pval_cutoff') is not None else res.sort_values()
-        print(f'progress:update:{self.name} - fold {k}...')
+        self.update_progress(k)
         return (res, selected)
 
     def KBEST(self, dataset, k):
@@ -73,7 +78,7 @@ class FSelection:
         kbest.fit(X_train, y_train)
         res = pd.DataFrame(kbest.scores_, X_train.columns.tolist(), columns=[k])[k]
         selected = res[kbest.get_support(indices=True)].sort_values(ascending=False)
-        print(f'progress:update:{self.name} - fold {k}...')
+        self.update_progress(k)
         return (res, selected)
 
     def RFE(self, dataset, k):
@@ -85,7 +90,7 @@ class FSelection:
         rfe.fit(X_train.to_numpy(), y_train.to_numpy())
         res = pd.DataFrame(rfe.ranking_, X_train.columns, columns=[k])[k]
         selected = res[rfe.get_support(indices=True)].sort_values()
-        print(f'progress:update:{self.name} - fold {k}...')
+        self.update_progress(k)
         return (res, selected)
 
     def RELIEFF(self, dataset, k):
@@ -96,5 +101,5 @@ class FSelection:
         fs_relieff.fit(X_train.to_numpy(), y_train.to_numpy())
         res = pd.DataFrame(fs_relieff.feature_importances_, X_train.columns, columns=[k])[k]
         selected = res.sort_values()[0:self.max_genes]
-        print(f'progress:update:{self.name} - fold {k}...')
+        self.update_progress(k)
         return (res, selected)

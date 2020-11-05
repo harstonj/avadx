@@ -29,6 +29,7 @@ setup(
         'scikit-learn==0.23.2',
         'skrebate==0.61',
         'matplotlib==3.3.2',
+        'seaborn-0.11.0',
     ],
     entry_points={
         'console_scripts': ['avadx=avadx.__main__:main'],

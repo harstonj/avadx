@@ -2,6 +2,9 @@ import argparse
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
+import matplotlib.transforms as transforms
+import seaborn as sns
 from pathlib import Path
 from multiprocessing import Pool
 from joblib import dump, load
@@ -60,22 +63,39 @@ def plot_curve(x, y, save_as, color='darkorange', label='Label', x_lab='x', y_la
     plt.close()
 
 
-def plot_jitter(data, save_as, colors=['blue', 'red'], width=0.4, label='Label', x_lab='x', y_lab='y', title='Plot', y_lim=[0.0, 1.05]):
-    labels = data.index
+def plot_jitter(data, x='class', y='score_1', colors=['#356288', '#fe1100'], jitter=0.2, size=6, alpha=.75, label='Label', x_lab='x', y_lab='y', title='Plot', y_lim=[0.0, 1.05], overlay_data=None, save_as=None):
     fig, ax = plt.subplots()
-    for i, l in enumerate(labels):
-        x = np.ones(data.iloc[l].shape[0]) * i + (np.random.rand(data.iloc[l].shape[0]) * width - width / 2.)
-        ax.scatter(x, data.iloc[l], color=colors[i], s=25)
-        mean = data.iloc[l].mean()
-        ax.plot([i - width / 2., i + width / 2.], [mean, mean], color='k')
-    ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels)
     plt.ylim(y_lim)
+    plt.title(title)
+    ax = sns.boxplot(x=x, y=y, palette=colors, data=data)
+    for patch in ax.artists:
+        r, g, b, a = patch.get_facecolor()
+        patch.set_facecolor((r, g, b, .3))
+    if overlay_data is None:
+        ax = sns.stripplot(x=x, y=y, data=data, palette=colors, jitter=jitter, size=size, alpha=alpha)
+    else:
+        ax = sns.stripplot(x=x, y=y, data=data, palette=colors, jitter=jitter, size=size, alpha=.3)
+        ax = sns.stripplot(x=x, y=y, data=overlay_data, color='black', marker='P', jitter=jitter, size=size, alpha=1)
+        training = mlines.Line2D([], [], color='lightgrey', marker='o', linestyle='None', markersize=size, label='training')
+        prediction = mlines.Line2D([], [], color=colors[1], marker='P', linestyle='None', markersize=size, label='prediction')
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+        ax.legend(handles=[training, prediction], loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.title('Model predictions')
+    median_0, median_1 = data.groupby('class').median()[['score_0', 'score_1']].score_1.to_list()
+    mean_of_medians = np.mean([median_0, median_1])
+    ax.axhline(mean_of_medians, ls='--', color='grey')
+    trans = transforms.blended_transform_factory(
+        ax.get_yticklabels()[0].get_transform(), ax.transData
+    )
+    ax.text(0, mean_of_medians, '{:.2f}'.format(mean_of_medians), color='red', transform=trans, ha='right', va='center')
     plt.xlabel(x_lab)
     plt.ylabel(y_lab)
-    plt.title(title)
-    plt.savefig(save_as)
-    plt.close()
+    if save_as:
+        plt.savefig(save_as)
+        plt.close()
+    else:
+        plt.show()
 
 
 def main(args, kwargs):
@@ -211,8 +231,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         predictions_all_best = pd.DataFrame(predictions_all[max_auc_genes]).rename_axis('sampleid', axis='rows')
         predictions_all_best_samples = predictions_all_best.merge(cvscheme[['class']], how='left', left_index=True, right_index=True).rename(columns={'0': 'score_0', '1': 'score_1'})
         predictions_all_best_samples.to_csv(out_path / 'crossval_bestAUC_predictions.csv')
-        jitter_df = predictions_all_best_samples.groupby('class').score_1.apply(np.hstack)
-        plot_jitter(jitter_df, out_path / 'crossval_bestAUC_predictions.png', title='Crossval bestAUC Predictions per class', x_lab='class', y_lab='prediction score')
+        plot_jitter(predictions_all_best_samples, title='Crossval bestAUC Predictions per class', x_lab='class', y_lab='prediction score', save_as=out_path / 'crossval_bestAUC_predictions.png')
         roc_auc_df = pd.DataFrame.from_dict(performances_roc_auc, orient='index', columns=['AUC']).rename_axis('selected_genes', axis='rows').sort_values(by='AUC', ascending=False)
         roc_auc_df.to_csv(wd_path / f'{kfold}F-CV-{model_eval.name}-performance.csv')
         roc_auc_df.to_csv(out_path / 'performances_ROC-AUC.csv')
@@ -277,10 +296,10 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         prc_avg_df.to_csv(out_path / 'finalModel_PRC-AVGpr.csv')
         roc_df = pd.DataFrame(roc_final_eval_data, index=['fpr', 'tpr', 'thresholds']).T
         roc_df.to_csv(out_path / 'crossval_finalModel_ROC.csv', index=False)
-        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / 'crossval_finalModel_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {prc_final_eval_auc:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
+        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / 'crossval_finalModel_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {roc_final_eval_auc:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
         prc_df = pd.DataFrame(prc_final_eval_data, index=['precision', 'recall', 'thresholds']).T
         prc_df.to_csv(out_path / 'crossval_finalModel_PRC.csv', index=False)
-        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / 'crossval_finalModel_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {roc_final_eval_auc:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
+        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / 'crossval_finalModel_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_eval_auc:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
 
     # build and save final model
     if featurelist and featurelist.exists():
@@ -340,13 +359,14 @@ def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfol
         missing = features_s[~features_availability].values
         missing_non_overlap = list(set(missing) - set(missing_features_list))
         if missing_non_overlap:
+            missing_features_list = missing
             print(f'|8.00| {len(missing_non_overlap)} additional missing feature(s) compared with model features: {missing_non_overlap}. Using default NA score.')
 
     dataset = genescores_df.drop('Transcript', axis=1).set_index('Gene').T.rename_axis('sampleid', axis='rows')
 
     # add missing features (genes) using the default NA value from the gene_score class used to generate genescores
     nan = get_NA_score(variantfn, genefn)
-    dataset = dataset.assign(**{col: nan for col in missing})
+    dataset = dataset.assign(**{col: nan for col in missing_features_list})
 
     # select features subset in relevant order
     if features_list:

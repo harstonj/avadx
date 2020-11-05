@@ -49,7 +49,8 @@ class Model:
         rf_classifier = RandomForestClassifier(
             random_state=self.seed,
             class_weight=train_class_weights.to_dict(),
-            n_estimators=min(round(X_train.shape[0] * 1.5), 500)
+            n_estimators=min(round(X_train.shape[0] * 1.5), 500),
+            bootstrap=False
         )
         rf_classifier.fit(X_train, y_train)
         if self.final:

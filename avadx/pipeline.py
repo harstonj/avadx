@@ -427,7 +427,10 @@ class Pipeline:
                     config.read(str(self.config_file))
         if self.config_file is None or not self.config_file.exists():
             self.log.error('No config file found. Aborting.')
-            sys.exit(1)
+            if self.kwargs.get('info', False):
+                return
+            else:
+                sys.exit(1)
         data_base_path = config.get('DEFAULT', 'datadir', fallback=None)
         if data_base_path is not None:
             if not Path(data_base_path).is_absolute():

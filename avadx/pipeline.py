@@ -62,7 +62,7 @@ class AVADx:
                 import docker
             except ImportError:
                 _.log.error('Docker SDK for Python not installed. Please install with: "pip install docker"')
-                sys.exit()
+                sys.exit(1)
             _.log.info('Checking Docker images ...')
             client = docker.from_env()
             for image in AVADx.IMAGES.values():
@@ -417,9 +417,17 @@ class Pipeline:
         if self.config_file and self.config_file.exists():
             config.read(str(self.config_file))
         else:
-            config_file_mnt = VM_MOUNT / 'in' / self.config_file.name
-            if config_file_mnt and config_file_mnt.exists():
-                config.read(str(config_file_mnt))
+            self.config_file = self.kwargs.get('wd') / str(self.uid) / 'out' / 'pipeline_config.ini'
+            if self.config_file.exists():
+                self.log.info('Using default pipeline config file.')
+                config.read(str(self.config_file))
+            else:
+                self.config_file = VM_MOUNT / 'in' / self.config_file.name
+                if self.config_file and self.config_file.exists():
+                    config.read(str(self.config_file))
+        if self.config_file is None or not self.config_file.exists():
+            self.log.error('No config file found. Aborting.')
+            sys.exit(1)
         data_base_path = config.get('DEFAULT', 'datadir', fallback=None)
         if data_base_path is not None:
             if not Path(data_base_path).is_absolute():
@@ -433,8 +441,9 @@ class Pipeline:
         return config
 
     def save_run_config(self):
-        with (self.get_wd() / 'out' / 'pipeline_config.ini').open('w') as configfile:
-            self.config.write(configfile)
+        if not self.prediction:
+            with (self.get_wd() / 'out' / 'pipeline_config.ini').open('w') as configfile:
+                self.config.write(configfile)
 
     def save_run_info(self):
         cpu = self.resources['cpu' if self.is_vm else 'vm.cpu']
@@ -741,10 +750,11 @@ class Pipeline:
                 configp = configparser.ConfigParser()
                 if not config.exists():
                     config = self.kwargs.get('wd') / str(self.uid) / 'out' / 'pipeline_config.ini'
-                    self.log.warning(str(config))
-                    if not config.exists():
+                    if config.exists():
+                        self.log.info('Using default pipeline config file.')
+                    else:
                         self.log.error('No config file found. Aborting.')
-                        return
+                        sys.exit(1)
                 configp.read(str(config))
                 configp.set('avadx', 'vcf', str(input_samples.absolute()))
                 configp.set('avadx', 'samples', '')
@@ -873,7 +883,7 @@ class Pipeline:
                 class_labels.add(row[2])
         if not self.is_prediction() and (len(class_labels) != 2 or '?' in class_labels):
             self.log.error(f'|5.10| No binary class labels (0/1) for Cross-Validation and Model Training. Labels found: {class_labels}')
-            sys.exit()
+            sys.exit(1)
 
     def run_container(self, container, args=[], daemon_args={}, uid=uuid.uuid1(), mounts=[], out_folder: Path = Path.cwd(), stdout=None, stderr=None, mkdirs=True, progress=False):
         wd_folder = (out_folder if out_folder else Path.cwd()) / str(uid) / 'wd'
@@ -1119,7 +1129,7 @@ def main(pipeline, extra):
         app.log.info(f'Results: {pipeline.get_wd().absolute()}')
 
 
-def get_mounts(pipeline, *config, exit_on_error=False, mount_as=None):
+def get_mounts(pipeline, *config, exit_on_error=False, mount_as=None, show_warning=True):
     mounts = []
     for section, option in config:
         cfg = pipeline.config.get(section, option, fallback=None)
@@ -1134,7 +1144,8 @@ def get_mounts(pipeline, *config, exit_on_error=False, mount_as=None):
                     mount_path = mount_as if Path(mount_as).is_absolute() else mount_as
                 mounts += [(cfg_path.absolute(), VM_MOUNT / 'in' / mount_path)]
             else:
-                pipeline.log.warning(f'Could not mount {cfg_path}. Path not found.')
+                if show_warning:
+                    pipeline.log.warning(f'Could not mount {cfg_path}. Path not found.')
                 if exit_on_error:
                     sys.exit(1)
                 else:
@@ -1350,7 +1361,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     )
 
     # 1.0.2 Run pre-processing
-    mounts_step1_0_2 = get_mounts(pipeline, ('avadx', 'samples')) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
+    mounts_step1_0_2 = get_mounts(pipeline, ('avadx', 'samples'), show_warning=not pipeline.prediction) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
     pipeline.add_action(
         'run_preprocess', 1.02,
         'AVA,Dx pipeline preprocess',

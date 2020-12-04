@@ -367,7 +367,6 @@ def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfol
             'No features file found, omitting features validation and using all features supplied in dataset. '
             'Make sure all features used in training are provided and sorted accordingly.'
         )
-        features_list = []
     else:
         features_s = pd.read_csv(features, header=None)[0]
         features_list = features_s.to_list()
@@ -394,8 +393,7 @@ def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfol
     dataset = dataset.assign(**{col: nan for col in missing_features_list})
 
     # select features subset in relevant order
-    if features_list:
-        dataset = dataset[features_list]
+    dataset = dataset[features_s]
 
     # save genescores used for prediction
     dataset.to_csv(outfolder / f'{pred_id}_genescores_prediction.csv')

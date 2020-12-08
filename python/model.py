@@ -67,8 +67,17 @@ def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'],
     ax1.set_xlabel(x_lab)
     ax1.set_ylabel(y_lab)
     ax2 = ax1.twinx()
-    median_0, median_1 = data_raw.groupby('class').median()[['score_0', 'score_1']].score_1.to_list()
-    mean_of_medians = np.mean([median_0, median_1])
+    classes = data_raw['class'].unique()
+    medians = data_raw.groupby('class').median()[['score_0', 'score_1']].score_1.to_list()
+    if len(classes) == 2:
+        median_0, median_1 = medians
+        mean_of_medians = np.mean([median_0, median_1])
+    elif 0 not in classes:
+        median_0, median_1 = None, medians[0]
+        mean_of_medians = None
+    elif 1 not in classes:
+        median_0, median_1 = medians[0], None
+        mean_of_medians = None
     plt.ylim(y_lim)
     plt.title(title)
     if data_overlay is None:
@@ -93,8 +102,14 @@ def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'],
             ax1.set_position([box.x0, box.y0, box.width * 0.8, box.height])
             ax1.legend(handles=[training_0, prediction, training_1], loc='center left', bbox_to_anchor=(1, 0.5))
         plt.xticks(ticks=[0, 1, 2], labels=['0', 'prediction', '1'])
-    ax1.axhline(mean_of_medians, ls='--', color='grey')
-    ax2.set_yticks([0, round(median_0, 2), round(mean_of_medians, 2), round(median_1, 2), 1])
+    if mean_of_medians is not None:
+        ax1.axhline(mean_of_medians, ls='--', color='grey')
+    y_ticks = [0]
+    y_ticks += [round(median_0, 2)] if median_0 is not None else [round(median_1, 2)]
+    y_ticks += [round(mean_of_medians, 2)] if mean_of_medians is not None else [y_ticks[1]]
+    y_ticks += [round(median_1, 2)] if median_1 is not None else [round(median_0, 2)]
+    y_ticks += [1]
+    ax2.set_yticks(y_ticks)
     ax2.set_ylabel('')
     mean_0_ytick, cutoff_ytick, mean_1_ytick = ax2.get_yticklabels()[1:4]
     mean_0_ytick.set_color('grey')

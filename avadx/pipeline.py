@@ -1048,7 +1048,7 @@ def parse_arguments():
             "Identifying Crohn's disease signal from variome analysis.\n"
             "Genome medicine, 11(1), 59. [doi:10.1186/s13073-019-0670-6]\n"
             "(https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkx1209/4670955)\n \n"
-            f"{name} is developed by Maximilian Miller and Yana Bromberg.\n"
+            f"{name} is maintained by Maximilian Miller and Yana Bromberg.\n"
             "Feel free to contact us for support at services@bromberglab.org.\n \n"
             "This project is licensed under [NPOSL-3.0](http://opensource.org/licenses/NPOSL-3.0)\n \n"
             "Public web service: https://services.bromberglab.org/avadx\n \n"

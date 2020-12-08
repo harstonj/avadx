@@ -1,62 +1,70 @@
-# AVA,Dx
+# AVA,Dx Pipeline
 
-## Pipeline
-AVA,Dx (Analysis of Variation for Association with Disease) a computational method for defining the functional role of DNA variation in complex diseases. AVA,Dx uses exonic variants from whole exome or genome sequencing data to extract a *disease* signal and predict *disease* status.
+AVA,Dx (Analysis of Variation for Association with Disease) is a computational method for defining the functional role of DNA variation in complex diseases. AVA,Dx uses exonic variants from whole exome or genome sequencing data to extract a *disease* signal and predict *disease* status.
 
-This repository hosts the implementation of the improved AVA,Dx pipeline. An inital version version of the AVA,Dx pipeline and its in depth documentation can found [here](https://bitbucket.org/ywang202/avadx-meta)
+A precursor of the AVA,Dx approach can be found [here](https://bitbucket.org/ywang202/avadx-meta)
 
-## Models
+## Inputs
+* A single Variant Calling File [VCF] comprising all individuals (samples) in the sequencing panel/cohort. Default assembly is GRCh37/hg19
+* Sample Information file [comma separated, CSV file], which contains a list of sample ids and corresponding class (e.g. disease vs healthy) labels. *optional* group/family or fold labels for cross validation can also be provided
+
+## Outputs
+* table of *gene scores* per sample for subset of most relevant genes
+* AVA,Dx model for **D**iseases **x** and performance evaluation
+* pathway enrichment annalysis for subset of most relevant genes
+
+## Available Models
 Currently pre-computed models are available for:
 - [**Crohns Disease**](https://bitbucket.org/bromberglab/avad-cd) (ava-cd)
 
-# Requirements
+<br/>
+
+# Installation
+## Requirements
 The AVA,Dx pipeline is implemented and python and uses pre-built images runnable via docker or singularity. Thus, the only dependencies to run the pipeline are:
 
 * [Docker](https://www.docker.com/get-started) or [Singularity](https://sylabs.io/singularity)
 * Python ≥ 3.8
 
-## Inputs
-For the individuals (samples) in the sequencing panel/cohort
-* A single Variant Calling File [VCF] comprising all samples. Default assembly is GRCh37/hg19
-* Sample Information file [comma separated, CSV file], which contains a list of sample ids and corresponding class (e.g. disease vs healthy) labels. *optional* group/family or fold labels for cross validation can also be provided
+Confirm you have the required versions of Docker/Singularity and Python installed.
 
-## Outputs
-* list of *(normalized) gene scores* representing functional effects of variants. Normalization is done by protein length
-* list of label(e.g. disease)-relevance gene scores (per fold)
-* model performance evaluation, which informs the value of N top ranked selected genes
-* list of genes responsible for top performance across folds (ranked by number of folds affected)
+For macOS environments we recommend to use [Homebrew](https://brew.sh/) and [pyenv-virtualenv](https://medium.com/python-every-day/python-development-on-macos-with-pyenv-virtualenv-ec583b92934c) to install the required Python dependencies. Docker can be installed from [here](https://docs.docker.com/docker-for-mac/install/).
 
-# Usage
 
-## Overview
-Confirm you have the required versions of Docker/Singularity and Python installed. The following steps are detailed in the *Run AVA,Dx* section below:
-
-1. Install AVA,Dx python package
-2. Init pipeline - retrieves pre-built images & required databases. A configuration template file named *avadx.ini* is created in the working directory)
-3. Edit configuration file *avadx.ini* created in step (2)
-4. Edit sample info file
-5. Run the pipeline
-
-## Run AVA,Dx
-
-### 1. Install AVA,Dx python package
+## Install python package
 ```bash
 pip install https://bitbucket.org/bromberglab/avadx/get/master.zip
 ```
-
-### 2. Init pipeline
+## Init pipeline
+Init AVA,Dx pipeline and download required images and databases
 ```bash
 avadx --init
 ```
 
-### 3. Edit configuration file
-Open the file *avadx.ini* in the working directory and update the paths to the two required input files (**vcf file** and **samples info file**) and other parameters as required. **Note:** You can change the configuration file at runtime by supplying the path to the config file as argument (see `--help`).
+<br />
 
-### 4. Edit sample info file
-Create the samples info file specified in the *avadx.ini* configuration file as *samples = <PATH_TO_FILE>*. Minimum information required is **sample id** and **class label**, **group label** and manual **fold** assignment for cross-validation are oprional.
+# Usage
+The following steps are detailed below:
 
-**Format:** File has to be in CSV (comma separated) format and include a header with column names.
+1. Edit configuration file
+2. Create sample info file
+3. Run the pipeline
 
+<br />
+
+## 1 - Edit configuration file
+Open the file *avadx.ini* in the current directory (automatically created when the pipeline was initialized) and update the paths to the two required input files (**vcf file** and **samples info file**) and other parameters as required.
+
+**Note:** You can change the configuration file at runtime by supplying the path to the config file as argument (see `--help`).
+
+<br />
+
+## 2 - Edit sample info file
+Create the **samples info file** specified in the *avadx.ini* configuration file as `samples = <PATH_TO_FILE>`. For each *sampleid* of interest supply a *class* label and optionally a *group* label or manual *fold* assignment for cross-validation. If neiter *group* nor *fold* are specified, folds are assignet automatically based on the cross-validationn options defined in the *avadx.ini* configuration file.
+
+**Format:** CSV (comma separated values) format with header idetifying column names (see example below).
+
+**Example:** 
 | sampleid |class | *[group]* | *[fold]* |
 | -------- | ---- | --------- | -------- |
 | sample_1 |  0   |    *1*    |    *1*   |
@@ -66,31 +74,60 @@ Create the samples info file specified in the *avadx.ini* configuration file as 
 | sample_5 |  1   |    *3*    |    *2*   |
 | sample_6 |  1   |    *3*    |    *3*   |
 
-### 5. Run the pipeline
-If no path to an user configuration file is supplied, a default config file *avadx.ini* is expected in the current working directory
+<br />
+
+## 3 - Run the pipeline
+*Different ways to run the AVA,Dx pipeline*
+
+-- Run the pipeline using a config file named *avadx.ini* in the current working directory:
 
 ```bash
-avadx --wd <PATH_TO_OUTPUT_DIRECTORY> --uid <MY_PIPELINE_RUN_ID> <PATH_TO_CONFIG_FILE>
+avadx
 ```
 
-For an extensive list of parameters use `--help`.
+-- Run the pipeline using a specifig config file:
+```bash
+avadx <PATH_TO_CONFIG_FILE>
+```
 
-## Update AVA,Dx databases/datasources
+-- Write output to a specific directory:
+```bash
+avadx <PATH_TO_CONFIG_FILE> --wd <PATH_TO_OUTPUT_DIRECTORY>
+```
 
-### Update VM images
+-- Save run in a different subfolder (default is configfile name without extension):
+```bash
+avadx <PATH_TO_CONFIG_FILE> --wd <PATH_TO_OUTPUT_DIRECTORY> --uid <MY_PIPELINE_RUN_ID>
+```
+
+For an extensive list of arguments and parameters use `--help`.
+
+<br />
+
+# Update
+
+Update pyton package:
+```bash
+pip install https://bitbucket.org/bromberglab/avadx/get/master.zip
+```
+
+Update VM images:
 ```bash
 avadx --update vm
 ```
 
-### Update Databases
+Update Databases:
 ```bash
 avadx --update data
 ```
 
-### Change scoring function
+<br />
+
+# Modify
+## Change scoring functions
 
 AVA,Dx provides a plugin based, flexible way to alter variant scoring and gene scoring aggregation functions.
-In the configuration (.ini) file simply specify the python to a python file containing a single scoring function.
+In the configuration (.ini) file simply specify the path to a python file containing a single scoring function for variants (`variantscore.fn = <PATH>`) and/or genes (`genescore.fn = <PATH>`).
 Templates for both scoring functions can be found in this repository under [python/scoring_functions](https://bitbucket.org/bromberglab/avadx/src/master/python/scoring_functions/).
 By default, AVA,Dx only scores *SNP* variants. TO also include *INDELS* for scoring update the config file accordingly and specify an approproate scoring in the varian scoring function.
 Refer to the Annovar variant types table below for more details for scorable variant types.
@@ -110,12 +147,24 @@ Refer to the Annovar variant types table below for more details for scorable var
 | synonymous SNV                   | 10         | a single nucleotide change that does not cause an amino acid change                                                                                                                                                                                                                                 | synonymous_variant (SO:0001819)    |
 | unknown                          | 11         | unknown function (due to various errors in the gene structure definition in the database file)                                                                                                                                                                                                      | sequence_variant (SO:0001060)      |
 
+<br />
+
+## Change feature selection and model implementations
+Both feature selection and classifier/model implementations can be altered using the same plugin system as for the scoring functions.
+In the configuration (.ini) file simply specify the path to a python file containing alternative feature selection (`fselection.class = <PATH>`) or classifier/model (`model.class = <PATH>`) implementations.
+Templates for feature selection implementations can be found in this repository under [python/feature_selections](https://bitbucket.org/bromberglab/avadx/src/master/python/feature_selections/).
+Templates for model implementations can be found in this repository under [python/models](https://bitbucket.org/bromberglab/avadx/src/master/python/models/).
+
+<br />
+
 # Notes
 
 * The pipeline defaults to hg19. For hg18, we recommend lifting over to hg19 first. For hg38, we recommend changeing the reference databases to hg38.
 * This pipeline is currently for regular VCF file input (modifications are needed in order to use gVCF files).
 * Manual interpretation of quality outliers, ethnicity, is a manual step strongly ancouraged.
 * When the input VCF contains variants with no SNAP score records available, the *varidb* database needs to be updated.
+
+<br />
 
 # Dependencies
 Following frameworks, tools and libraries are used in the pre-built images:

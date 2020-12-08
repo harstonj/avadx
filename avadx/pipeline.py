@@ -18,7 +18,7 @@ from timeit import default_timer as timer
 from concurrent.futures import ThreadPoolExecutor
 from .logger import Logger
 from .helper import check_config_ini, run_command, flatten, runningInDocker, runningInSingularity
-from . import __version__, __releasedate__
+from . import __version__, __releasedate__, name
 
 
 QUIET = False
@@ -1031,25 +1031,27 @@ def adjust_splits(auto_folds, cv_folds):
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        prog=f"{__name__}",
+        prog=f"{name}",
         description=(
             "AVA,Dx pipeline\n \n"
-            "description\n"
-            "XXX\n"
-            "XXX\n \n"
-            "Public web service: https://services.bromberglab.org/avadx\n \n"
+            "AVA,Dx (Analysis of Variation for Association with Disease)\n"
+            "is a computational method for defining the functional role of\n"
+            "DNA variation in complex diseases. AVA,Dx uses exonic variants\n"
+            "from whole exome or genome sequencing data to extract a\n"
+            "*disease* signal and predict *disease* status."
+            "\n\n"
             "Version: %s [%s]\n" % (__version__, __releasedate__)
         ),
         epilog=(
-            "If you use *{__name__}* in published research, please cite:\n \n"
+            f"If you use *{name}* in published research, please cite:\n \n"
             "Wang Y., Miller M., ... Bromberg, Y. (2019).\n"
             "Identifying Crohn's disease signal from variome analysis.\n"
             "Genome medicine, 11(1), 59. [doi:10.1186/s13073-019-0670-6]\n"
             "(https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkx1209/4670955)\n \n"
-            f"{__name__} is developed by Yanran Wang and Maximilian Miller.\n"
+            f"{name} is developed by Maximilian Miller and Yana Bromberg.\n"
             "Feel free to contact us for support at services@bromberglab.org.\n \n"
             "This project is licensed under [NPOSL-3.0](http://opensource.org/licenses/NPOSL-3.0)\n \n"
-            "Test: XXX\n \n"
+            "Public web service: https://services.bromberglab.org/avadx\n \n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter
     )

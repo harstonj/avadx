@@ -743,7 +743,12 @@ class Pipeline:
         if not input_samples.exists():
             self.log.error(f'Could not find sample prediction file: {input_samples.absolute()}. Aborting.')
             return
-        features_samples = prediction_folder / f'{input_samples.stem}_genescores.csv'
+        elif input_samples.suffix == '.csv':
+            self.log.info(f'Loading genescores from file: {input_samples.absolute()}')
+            features_samples = prediction_folder / f'{input_samples.stem}_extern.csv'
+            shutil.copy(input_samples, features_samples)
+        else:
+            features_samples = prediction_folder / f'{input_samples.stem}_genescores.csv'
         extract_features = not features_samples.exists()
         if extract_features:
             features_uid = input_samples.stem
@@ -1812,7 +1817,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     model_file = Path(pipeline.check_config('model.class', quiet=dry_run)).suffix == '.py'
     modelclass_mnt = get_mounts(pipeline, ('avadx', 'model.class'), exit_on_error=False if is_init else modelclass_available, mount_as='/app/python/avadx/models/models_avadx.py') if model_file else []
     featurelist_mnt = get_mounts(pipeline, ('avadx', 'featurelist'), exit_on_error=False if is_init else featurelist_available) if featurelist_available else []
-    use_featurelist = f' -F {featurelist_mnt[0][1]}' if featurelist_mnt else 'None'
+    use_featurelist = f' -F {featurelist_mnt[0][1]}' if featurelist_mnt else ' None'
     mounts_step5_1 = fselectionclass_mnt + modelclass_mnt + featurelist_mnt
     pipeline.add_action(
         'ava_model', 5.10,

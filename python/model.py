@@ -18,12 +18,20 @@ def flatten(list):
 
 def get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes, progress=False):
     from feature_selections.fselection_avadx import FSelection
-    return FSelection(featureselection, kwargs_dict, cvscheme, max_genes=maxgenes, progress=not progress)
+    fs_obj = FSelection(featureselection, kwargs_dict, cvscheme, max_genes=maxgenes, progress=not progress)
+    if fs_obj.fn is None:
+        print(f'|8.00| ERROR: Specified features selection not available: {featureselection}')
+        exit(1)
+    return fs_obj
 
 
 def get_model(model, kwargs_dict, fselection):
     from models.model_avadx import Model
-    return Model(model, kwargs_dict, fselection)
+    model_obj = Model(model, kwargs_dict, fselection)
+    if model_obj.fn is None:
+        print(f'|8.00| ERROR: Specified model not available: {model}')
+        exit(1)
+    return model_obj
 
 
 def load_model(filename):

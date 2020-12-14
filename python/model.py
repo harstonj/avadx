@@ -50,6 +50,10 @@ def save_features(features, filename):
     features.to_csv(filename, columns=[], header=False)
 
 
+def save_genescores(genescores, filename):
+    genescores.to_csv(filename)
+
+
 def get_NA_score(variantfn, genefn):
     scoring_functions = ScoringFunction(variantfn, genefn)
     return scoring_functions.gene.NA_SCORE
@@ -152,6 +156,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     wd_path.mkdir(exist_ok=True)
     model_path = out_path / 'model.joblib'
     features_path = out_path / 'model_features.txt'
+    genescores_model_path = out_path / 'model_genescores.csv'
     crossval_bestauc_out = out_path / '1-crossval_genesets_models'
     crossval_bestauc_out.mkdir(exist_ok=True)
     crossval_final_out = out_path / '2-crossval_final_model'
@@ -370,7 +375,9 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     prc_final_data = metrics.precision_recall_curve(y_final_true, y_final_scores)
     prc_final_auc = metrics.average_precision_score(y_final_true, y_final_scores)
     save_model(model_final, model_path)
-    save_features(model_final.get_selected_genes(maxgenes_final, 'all'), features_path)
+    model_final_selected_genes = model_final.get_selected_genes(maxgenes_final, 'all')
+    save_features(model_final_selected_genes, features_path)
+    save_genescores(dataset.loc[:, model_final_selected_genes.index], genescores_model_path)
     roc_final_df = pd.DataFrame(roc_final_data, index=['fpr', 'tpr', 'thresholds']).T
     roc_final_df.to_csv(wd_path / 'complete_model_reprediction_ROC.csv', index=False)
     plot_curve(roc_final_df.dropna().fpr, roc_final_df.dropna().tpr, wd_path / 'complete_model_reprediction_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {roc_final_auc:.2f}', title=f'Receiver Operating Characteristic curve (ROC) for final model [{maxgenes_final} genes - {model_eval.name}/{model_eval.fselection.name}]')

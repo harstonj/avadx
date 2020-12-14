@@ -28,7 +28,7 @@ def get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes, progress=F
 def get_model(model, kwargs_dict, fselection):
     from models.model_avadx import Model
     model_obj = Model(model, kwargs_dict, fselection)
-    if model_obj.fn is None:
+    if model_obj.train is None:
         print(f'|8.00| ERROR: Specified model not available: {model}')
         exit(1)
     return model_obj

@@ -67,6 +67,8 @@ def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'],
     ax1.set_xlabel(x_lab)
     ax1.set_ylabel(y_lab)
     ax2 = ax1.twinx()
+    ax2.set_ylim(y_lim)
+    ax1.set_ylim(y_lim)
     classes = data_raw['class'].unique()
     medians = data_raw.groupby('class').median()[['score_0', 'score_1']].score_1.to_list()
     if len(classes) == 2:
@@ -78,7 +80,6 @@ def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'],
     elif 1 not in classes:
         median_0, median_1 = medians[0], None
         mean_of_medians = None
-    plt.ylim(y_lim)
     plt.title(title)
     if data_overlay is None:
         data = data_raw.copy()
@@ -401,7 +402,8 @@ def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfol
             missing_features_list = missing
             print(f'|8.00| {len(missing_non_overlap)} additional missing feature(s) compared with model features: {missing_non_overlap}. Using default NA score.')
 
-    dataset = genescores_df.drop('Transcript', axis=1).set_index('Gene').T.rename_axis('sampleid', axis='rows')
+    genescores_df = genescores_df.drop('Transcript', axis=1) if 'Transcript' in genescores_df.columns else genescores_df
+    dataset = genescores_df.set_index('Gene').T.rename_axis('sampleid', axis='rows')
 
     # add missing features (genes) using the default NA value from the gene_score class used to generate genescores
     nan = get_NA_score(variantfn, genefn)

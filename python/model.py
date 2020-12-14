@@ -279,10 +279,10 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         prc_avg_df.to_csv(crossval_bestauc_out / 'all_performances_PRC-AVGpr.csv')
         roc_df = pd.DataFrame(performances_roc_data[max_auc_genes], index=['fpr', 'tpr', 'thresholds']).T
         roc_df.to_csv(crossval_bestauc_out / 'best-geneset_model_ROC.csv', index=False)
-        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / '1-best-geneset_model_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {performances_roc_auc[max_auc_genes]:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
+        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / '1-best-geneset_model_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {performances_roc_auc[max_auc_genes]:.2f}', title=f'Receiver Operating Characteristic curve (ROC) for top {max_auc_genes} genes/fold [{model_eval.name}/{model_eval.fselection.name}]')
         prc_df = pd.DataFrame(performances_prc_data[max_auc_genes], index=['precision', 'recall', 'thresholds']).T
         prc_df.to_csv(crossval_bestauc_out / 'best-geneset_model_PRC.csv', index=False)
-        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / '1-best-geneset_model_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {performances_prc_avg[max_auc_genes]:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
+        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / '1-best-geneset_model_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {performances_prc_avg[max_auc_genes]:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes/fold [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
 
     # get list of selected genes for best AUC over all folds (merge)
     genes_best_merged = {}
@@ -336,10 +336,10 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         plot_jitter(predictions_final_eval_samples, title='final model predictions (crossval)', x_lab='class', y_lab='prediction score', save_as=out_path / '2-final_model_predictions.png')
         roc_df = pd.DataFrame(roc_final_eval_data, index=['fpr', 'tpr', 'thresholds']).T
         roc_df.to_csv(crossval_final_out / 'final_model_ROC.csv', index=False)
-        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / '2-final_model_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {roc_final_eval_auc:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]')
+        plot_curve(roc_df.dropna().fpr, roc_df.dropna().tpr, out_path / '2-final_model_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {roc_final_eval_auc:.2f}', title=f'Receiver Operating Characteristic curve (ROC) [{maxgenes_final} genes - {model_eval.name}/{model_eval.fselection.name}]')
         prc_df = pd.DataFrame(prc_final_eval_data, index=['precision', 'recall', 'thresholds']).T
         prc_df.to_csv(crossval_final_out / 'final_model_PRC.csv', index=False)
-        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / '2-final_model_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_eval_auc:.2f}', title=f'Precision-Recall curve (PRC) for top {max_auc_genes} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
+        plot_curve(prc_df.dropna().recall, prc_df.dropna().precision, out_path / '2-final_model_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_eval_auc:.2f}', title=f'Precision-Recall curve (PRC) [{maxgenes_final} genes - {model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
 
     # build and save final model
     if featurelist and featurelist.exists():
@@ -365,10 +365,10 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     save_features(model_final.get_selected_genes(maxgenes_final, 'all'), features_path)
     roc_final_df = pd.DataFrame(roc_final_data, index=['fpr', 'tpr', 'thresholds']).T
     roc_final_df.to_csv(wd_path / 'complete_model_reprediction_ROC.csv', index=False)
-    plot_curve(roc_final_df.dropna().fpr, roc_final_df.dropna().tpr, wd_path / 'complete_model_reprediction_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {roc_final_auc:.2f}', title=f'Receiver Operating Characteristic (ROC) curve for final model using {maxgenes_final} genes [{model_eval.name}/{model_eval.fselection.name}]')
+    plot_curve(roc_final_df.dropna().fpr, roc_final_df.dropna().tpr, wd_path / 'complete_model_reprediction_ROC.png', x_lab='fpr', y_lab='tpr', label=f'Area Under ROC curve (AUC) = {roc_final_auc:.2f}', title=f'Receiver Operating Characteristic curve (ROC) for final model [{maxgenes_final} genes - {model_eval.name}/{model_eval.fselection.name}]')
     prc_final_df = pd.DataFrame(prc_final_data, index=['precision', 'recall', 'thresholds']).T
     prc_final_df.to_csv(wd_path / 'complete_model_reprediction_PRC.csv', index=False)
-    plot_curve(prc_final_df.dropna().recall, prc_final_df.dropna().precision, wd_path / 'complete_model_reprediction_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_auc:.2f}', title=f'Precision-Recall curve (PRC) for final model using {maxgenes_final} genes [{model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
+    plot_curve(prc_final_df.dropna().recall, prc_final_df.dropna().precision, wd_path / 'complete_model_reprediction_PRC.png', x_lab='recall', y_lab='precision', label=f'Average precision (AP) = {prc_final_auc:.2f}', title=f'Precision-Recall curve (PRC) for final model [{maxgenes_final} genes - {model_eval.name}/{model_eval.fselection.name}]', diag_x=[0, 1], diag_y=[1, 0])
 
 
 def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfolder):

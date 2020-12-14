@@ -22,7 +22,7 @@ def get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes, progress=F
 
 
 def get_model(model, kwargs_dict, fselection):
-    from models.models_avadx import Model
+    from models.model_avadx import Model
     return Model(model, kwargs_dict, fselection)
 
 

@@ -1815,7 +1815,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     fselection_file = Path(pipeline.check_config('fselection.class', quiet=dry_run)).suffix == '.py'
     fselectionclass_mnt = get_mounts(pipeline, ('avadx', 'fselection.class'), exit_on_error=False if is_init else fselectionclass_available, mount_as='/app/python/avadx/feature_selections/fselection_avadx.py') if fselection_file else []
     model_file = Path(pipeline.check_config('model.class', quiet=dry_run)).suffix == '.py'
-    modelclass_mnt = get_mounts(pipeline, ('avadx', 'model.class'), exit_on_error=False if is_init else modelclass_available, mount_as='/app/python/avadx/models/models_avadx.py') if model_file else []
+    modelclass_mnt = get_mounts(pipeline, ('avadx', 'model.class'), exit_on_error=False if is_init else modelclass_available, mount_as='/app/python/avadx/models/model_avadx.py') if model_file else []
     featurelist_mnt = get_mounts(pipeline, ('avadx', 'featurelist'), exit_on_error=False if is_init else featurelist_available) if featurelist_available else []
     use_featurelist = f' -F {featurelist_mnt[0][1]}' if featurelist_mnt else ''
     mounts_step5_1 = fselectionclass_mnt + modelclass_mnt + featurelist_mnt

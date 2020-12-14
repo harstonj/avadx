@@ -26,7 +26,7 @@ class Figure:
         if vis == 'heatmap_clust_dend':
             if dataset == 'genescores':
                 self.in_file = out_folder / Path(f'genescores/GeneScoreTable_{"normalized" if self.genescore_normalize else "raw"}_variation_filtered.csv')
-                selector_file = wd_folder / Path('results/crossval_genes.csv')
+                selector_file = out_folder / Path('results/model_features.txt')
                 cv_scheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
                 self.out_file = out_folder / Path('results/genescores_heatmap.html')
                 if (self.in_file and self.in_file.exists()) and (selector_file and selector_file.exists()):

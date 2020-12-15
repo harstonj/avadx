@@ -20,7 +20,7 @@ def get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes, progress=F
     from feature_selections.fselection_avadx import FSelection
     fs_obj = FSelection(featureselection, kwargs_dict, cvscheme, max_genes=maxgenes, progress=not progress)
     if fs_obj.fn is None:
-        print(f'|8.00| ERROR: Specified features selection not available: {featureselection}')
+        print(f'ERROR: Specified features selection not available: {featureselection}')
         exit(1)
     return fs_obj
 
@@ -29,7 +29,7 @@ def get_model(model, kwargs_dict, fselection):
     from models.model_avadx import Model
     model_obj = Model(model, kwargs_dict, fselection)
     if model_obj.train is None:
-        print(f'|8.00| ERROR: Specified model not available: {model}')
+        print(f'ERROR: Specified model not available: {model}')
         exit(1)
     return model_obj
 
@@ -199,7 +199,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         var_selector.fit(dataset)
         dataset = dataset[dataset.columns[var_selector.get_support(indices=True)]]
     except ValueError as err:
-        print(f'Error at variance filter step: {err}')
+        print(f'ERROR: Error at variance filter step: {err}')
     logs += [f'Number of features after variance filtering: {dataset.shape[1]}']
 
     # variation filtering
@@ -208,7 +208,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     if len(gene_variation_subset):
         dataset = dataset[gene_variation_subset]
     else:
-        print(f'Error at variation filter step: no feature met the required threshold of <= {variation_cutoff}%')
+        print(f'ERROR: Error at variation filter step: no feature met the required threshold of <= {variation_cutoff}%')
     logs += [f'Number of features after variation filtering: {dataset.shape[1]}']
 
     # save filtered dataset and report
@@ -395,7 +395,7 @@ def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfol
     missing_features_list = []
     if not features.exists():
         print(
-            'No features file found, omitting features validation and using all features supplied in dataset. '
+            '[     INFO ] --- |8.00| No features file found, omitting features validation and using all features supplied in dataset. '
             'Make sure all features used in training are provided and sorted accordingly.'
         )
     else:
@@ -404,7 +404,7 @@ def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfol
         features_availability = features_s.isin(genescores_df.Gene)
         if sum(features_availability) != features_s.shape[0]:
             missing = features_s[~features_availability].values
-            print(f'|8.00| {len(missing)} missing feature(s) compared with features file: {missing}. Using default NA score.')
+            print(f'[     INFO ] --- |8.00| {len(missing)} missing feature(s) compared with features file: {missing}. Using default NA score.')
             missing_features_list = missing
         genescores_df = genescores_df[genescores_df.Gene.isin(features_list)]
 
@@ -415,7 +415,7 @@ def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfol
         missing_non_overlap = list(set(missing) - set(missing_features_list))
         if missing_non_overlap:
             missing_features_list = missing
-            print(f'|8.00| {len(missing_non_overlap)} additional missing feature(s) compared with model features: {missing_non_overlap}. Using default NA score.')
+            print(f'[     INFO ] --- |8.00| {len(missing_non_overlap)} additional missing feature(s) compared with model features: {missing_non_overlap}. Using default NA score.')
 
     genescores_df = genescores_df.drop('Transcript', axis=1) if 'Transcript' in genescores_df.columns else genescores_df
     dataset = genescores_df.set_index('Gene').T.rename_axis('sampleid', axis='rows')
@@ -434,7 +434,7 @@ def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfol
     try:
         y_pred = model.predict(dataset)
     except ValueError as err:
-        print(f'|8.00| ERROR: {err}')
+        print(f'[    ERROR ] --- |8.00| {err}')
         exit(1)
     y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
     y_pred_ordered_dict = dict(zip(dataset.index.tolist(), list(y_pred_ordered)))

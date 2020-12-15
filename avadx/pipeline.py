@@ -1883,6 +1883,7 @@ def run_all_p(pipeline, extra, dry_run=False):
             f'-o $OUT/{predictions_outfolder} -C {VM_CPU}',
             daemon_args={'docker': ['--entrypoint=python'], 'singularity': ['exec:python']},
             mounts=mounts_predictions + mounts_step4_3,
+            logs=('print', None),
             outdir=(OUT / predictions_outfolder)
         )
 

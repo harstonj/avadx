@@ -1541,32 +1541,22 @@ def run_all_p(pipeline, extra, dry_run=False):
         resources={'cpu': VM_CPU}
     )
 
-    # 2.2.4 Ethnicity prediction summary
-    step2_2_4_outfolder = 'tmp/EthSEQ_summary'
+    # 2.2.4 Collect ethnicity prediction reports
     pipeline.add_action(
-        'ethnicity_EthSEQ_summary', 2.24,
-        'generate EthSEQ summaries',
-        f'-c \'mkdir -p $WD/{step2_2_4_outfolder}/$(basename $TASK) && '
-        f'Rscript /app/R/avadx/ethnicity_EthSEQ_summary.R $WD/{step2_2_3_outfolder}/$(basename $TASK)/Report.txt $WD/{step2_2_4_outfolder}/$(basename $TASK)\'',
-        daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
-        tasks=(None, WD / step2_2_1_splits, f'$WD/{step2_2_1_outfolder}/'),
-        resources={'cpu': VM_CPU}
-    )
-
-    # 2.2.5 Merge ethnicity prediction summaries
-    pipeline.add_action(
-        'avadx', 2.25,
-        'merge EthSEQ summaries',
-        f'$WD/{step2_2_4_outfolder} -mindepth 2 -name "sampleID_*" -exec bash -c \'cat $1 >> $WD/{step2_2_4_outfolder}/$(basename $1)\' _ {{}} \;',  # noqa: W605
-        daemon_args={'docker': ['--entrypoint=find'], 'singularity': ['exec:find']}
-    )
-
-    # 2.2.6 Collect ethnicity prediction reports
-    pipeline.add_action(
-        'avadx', 2.26,
+        'avadx', 2.24,
         'collect EthSEQ reports',
-        f'$WD/{step2_2_3_outfolder} -mindepth 2 -regex \'.*\(txt\|pdf\)$\' -exec bash -c \'cp $1 $OUT/reports/2_2-6-EthSEQ_$(basename $(dirname $1))_$(basename $1)\' _ {{}} \;',  # noqa: W605
+        f'$WD/{step2_2_3_outfolder} -mindepth 2 -regex \'.*\(txt\|pdf\)$\' -exec bash -c \'cp $1 $OUT/reports/2_2-4-EthSEQ_$(basename $(dirname $1))_$(basename $1)\' _ {{}} \;',  # noqa: W605
         daemon_args={'docker': ['--entrypoint=find'], 'singularity': ['exec:find']}
+    )
+
+    # 2.2.5 Summarize and visualize ethnicity prediction reports
+    mounts_visualization = [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
+    pipeline.add_action(
+        'run_visualization', 2.25,
+        'summarize/visualize EthSEQ reports',
+        f'{CFG} --visualize piechart:ethseq --wd $WD {("-" if LOG_LEVEL > 0 else "") + "v"*((50-LOG_LEVEL)//10)}',
+        mounts=mounts_visualization,
+        logs=('print', None)
     )
 
     # 2.3   Relatedness check:

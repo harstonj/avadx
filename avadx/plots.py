@@ -1,6 +1,7 @@
 from pathlib import Path
 import pandas as pd
 import numpy as np
+import plotly.express as px
 import plotly.graph_objects as go
 import plotly.figure_factory as ff
 from plotly.offline import plot
@@ -39,6 +40,17 @@ class Figure:
                     self.data = data_subset.append(data_raw.loc['status']).T
                 else:
                     print(f'Data file not found: {self.in_file}')
+        elif vis == 'piechart':
+            if dataset == 'ethseq':
+                reports_path = out_folder / 'reports'
+                self.in_file = reports_path / '2_2-5-EthSEQ_summary_Report.txt'
+                self.out_file = reports_path / '2_2-5-EthSEQ_summary_Report.html'
+                report_splits = []
+                for report_split in reports_path.glob('2_2-4-EthSEQ_split_*_Report.txt'):
+                    report_splits += [pd.read_csv(report_split, sep='\t')]
+                df = pd.concat(report_splits)
+                df.to_csv(self.in_file, index=False)
+                self.data = df
 
     def get_logger(self):
         logger = Logger(self.__class__.__name__, level=LOG_LEVEL)
@@ -64,6 +76,9 @@ class Figure:
         with self.out_file.open('w') as fout:
             if self.out_file.suffix == '.html':
                 fout.write(plot(fig, output_type='div'))
+
+    def set_tight_margin(self, fig):
+        fig.update_layout(margin=dict(t=0, l=0, r=0, b=0))
 
     def heatmap_simple(self):
         fig = go.Figure(
@@ -188,4 +203,14 @@ class Figure:
         )
 
         # Save
+        self.save(fig)
+
+    def piechart(self):
+        self.data['share'] = self.data.groupby('type')['type'].transform('count')
+        fig = px.sunburst(
+            self.data, path=['pop', 'type'], color='pop',
+        )
+        fig.update_layout(
+            title_text='EthSEQ ethnicity report'
+        )
         self.save(fig)

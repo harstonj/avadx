@@ -449,10 +449,11 @@ class Pipeline:
                 self.config.write(configfile)
 
     def save_run_info(self):
-        cpu = self.resources['cpu' if self.is_vm else 'vm.cpu']
-        mem = self.resources['mem' if self.is_vm else 'vm.mem']
-        with (self.get_wd() / 'out' / 'pipeline_info.txt').open('w') as infofile:
-            infofile.write(f' --- AVA,Dx {__version__} {__releasedate__} ---\n\n [Environment]\n + VM.daemon  : {self.daemon:>13}\n + VM.cpu     : {cpu:>13}\n + VM.memory  : {mem:>13}\n + Random.seed: {self.seed:>13}\n\n [Started]\n + {datetime.now()}\n')
+        if not self.prediction:
+            cpu = self.resources['cpu' if self.is_vm else 'vm.cpu']
+            mem = self.resources['mem' if self.is_vm else 'vm.mem']
+            with (self.get_wd() / 'out' / 'pipeline_info.txt').open('w') as infofile:
+                infofile.write(f' --- AVA,Dx {__version__} {__releasedate__} ---\n\n [Environment]\n + VM.daemon  : {self.daemon:>13}\n + VM.cpu     : {cpu:>13}\n + VM.memory  : {mem:>13}\n + Random.seed: {self.seed:>13}\n\n [Started]\n + {datetime.now()}\n')
 
     def info(self, quiet=False, run_args=None):
         if self.is_vm:

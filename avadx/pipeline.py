@@ -419,7 +419,7 @@ class Pipeline:
         else:
             self.config_file = self.kwargs.get('wd') / str(self.uid) / 'out' / 'pipeline_config.ini'
             if self.config_file.exists():
-                self.log.info('Using default pipeline config file.')
+                self.log.info('Using default pipeline config file')
                 config.read(str(self.config_file))
             else:
                 self.config_file = VM_MOUNT / 'in' / self.config_file.name
@@ -1155,7 +1155,7 @@ def get_mounts(pipeline, *config, exit_on_error=False, mount_as=None, show_warni
                 mounts += [(cfg_path.absolute(), VM_MOUNT / 'in' / mount_path)]
             else:
                 if show_warning:
-                    pipeline.log.warning(f'Could not mount {cfg_path}. Path not found.')
+                    pipeline.log.warning(f'Could not mount {cfg_path}. [Path not found]')
                 if exit_on_error:
                     sys.exit(1)
                 else:
@@ -1363,7 +1363,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     # 1.0.0 POTENTIAL PREPROCESSING SLOT
 
     # 1.0.1 Extract list of samples
-    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
+    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True)
     step1_0_1_out = 'tmp/all_samples.txt'
     pipeline.add_stats_report(
         1.01, mounts_step1_0_1[0][1], query='query -l', mounts=mounts_step1_0_1, save_as=step1_0_1_out,
@@ -1382,14 +1382,14 @@ def run_all_p(pipeline, extra, dry_run=False):
     )
 
     # 1.0.3 Generate stats report
-    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
+    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True)
     pipeline.add_stats_report(1.03, mounts_step1_0_1[0][1], refers_to=1.00, mounts=mounts_step1_0_1, enabled=create_filter_reports)
 
     # 1.1-7 Variant QC -------------------------------------------------------------------------- #
 
     # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
     step1_1_out = 'vcf/1_1.vcf.gz'
-    mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init else True)
+    mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True)
     pipeline.add_action(
         'bcftools', 1.10,
         'filter for individuals of interest ',
@@ -1578,7 +1578,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     #       to a file outliers.txt (one ID per row).
     step2_4_out = 'vcf/2_4.vcf.gz'
     if outliers_available:
-        mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'), exit_on_error=False if is_init else True)
+        mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'), exit_on_error=False if is_init or pipeline.is_prediction() else True)
         pipeline.add_action(
             'bcftools', 2.40,
             'summarize outliers',
@@ -1755,9 +1755,9 @@ def run_all_p(pipeline, extra, dry_run=False):
     # 4.3   Compute gene scores
     step4_3_outfolder = 'genescores'
     genescore_file = Path(pipeline.check_config('genescore.fn', quiet=dry_run)).suffix == '.py'
-    genescorefn_mnt = get_mounts(pipeline, ('avadx', 'genescore.fn'), exit_on_error=False if is_init else genescorefn_available) if genescore_file else []
+    genescorefn_mnt = get_mounts(pipeline, ('avadx', 'genescore.fn'), exit_on_error=False if is_init or pipeline.is_prediction() else genescorefn_available) if genescore_file else []
     variantscore_file = Path(pipeline.check_config('variantscore.fn', quiet=dry_run)).suffix == '.py'
-    variantscorefn_mnt = get_mounts(pipeline, ('avadx', 'variantscore.fn'), exit_on_error=False if is_init else variantscorefn_available) if variantscore_file else []
+    variantscorefn_mnt = get_mounts(pipeline, ('avadx', 'variantscore.fn'), exit_on_error=False if is_init or pipeline.is_prediction() else variantscorefn_available) if variantscore_file else []
     mounts_step4_3 = genescorefn_mnt + variantscorefn_mnt
     pipeline.add_action(
         'cal_genescore_make_genescore', 4.30,
@@ -1803,10 +1803,10 @@ def run_all_p(pipeline, extra, dry_run=False):
     # 5.1   Cross-validation:
     step5_1_outfolder = 'results'
     fselection_file = Path(pipeline.check_config('fselection.class', quiet=dry_run)).suffix == '.py'
-    fselectionclass_mnt = get_mounts(pipeline, ('avadx', 'fselection.class'), exit_on_error=False if is_init else fselectionclass_available, mount_as='/app/python/avadx/feature_selections/fselection_avadx.py') if fselection_file else []
+    fselectionclass_mnt = get_mounts(pipeline, ('avadx', 'fselection.class'), exit_on_error=False if is_init or pipeline.is_prediction() else fselectionclass_available, mount_as='/app/python/avadx/feature_selections/fselection_avadx.py') if fselection_file else []
     model_file = Path(pipeline.check_config('model.class', quiet=dry_run)).suffix == '.py'
-    modelclass_mnt = get_mounts(pipeline, ('avadx', 'model.class'), exit_on_error=False if is_init else modelclass_available, mount_as='/app/python/avadx/models/model_avadx.py') if model_file else []
-    featurelist_mnt = get_mounts(pipeline, ('avadx', 'featurelist'), exit_on_error=False if is_init else featurelist_available) if featurelist_available else []
+    modelclass_mnt = get_mounts(pipeline, ('avadx', 'model.class'), exit_on_error=False if is_init or pipeline.is_prediction() else modelclass_available, mount_as='/app/python/avadx/models/model_avadx.py') if model_file else []
+    featurelist_mnt = get_mounts(pipeline, ('avadx', 'featurelist'), exit_on_error=False if is_init or pipeline.is_prediction() else featurelist_available) if featurelist_available else []
     use_featurelist = f' -F {featurelist_mnt[0][1]}' if featurelist_mnt else ''
     mounts_step5_1 = fselectionclass_mnt + modelclass_mnt + featurelist_mnt
     pipeline.add_action(

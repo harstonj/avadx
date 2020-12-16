@@ -491,10 +491,11 @@ class Pipeline:
             wd_folder = self.kwargs.get('wd')
             out_folder = wd_folder.parent / 'out'
             samples_path = VM_MOUNT / 'in' / Path(self.config.get('avadx', 'samples')).name
-            samplesids_path = wd_folder / 'tmp' / 'sampleids.txt'
-            cvscheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
-            chr2num_path = wd_folder / 'tmp' / 'chr_to_number.txt'
-            samples_list = wd_folder / 'tmp' / 'all_samples.txt'
+            tmp_folder = wd_folder / 'tmp'
+            samplesids_path = tmp_folder / 'sampleids.txt'
+            cvscheme_path = tmp_folder / 'cv-scheme.csv'
+            chr2num_path = tmp_folder / 'chr_to_number.txt'
+            samples_list = tmp_folder / 'all_samples.txt'
         else:
             wd_folder = self.kwargs.get('wd') / str(self.uid) / 'wd'
             out_folder = self.kwargs.get('wd') / str(self.uid) / 'out'
@@ -506,10 +507,11 @@ class Pipeline:
             samples_path = Path(self.config.get('avadx', 'samples'))
             if not samples_path.is_absolute():
                 samples_path = self.config_file.parent / samples_path
-            samplesids_path = wd_folder / 'tmp' / 'sampleids.txt'
-            cvscheme_path = wd_folder / 'tmp' / 'cv-scheme.csv'
-            chr2num_path = wd_folder / 'tmp' / 'chr_to_number.txt'
-            samples_list = wd_folder / 'tmp' / 'all_samples.txt'
+            tmp_folder = wd_folder / 'tmp'
+            samplesids_path = tmp_folder / 'sampleids.txt'
+            cvscheme_path = tmp_folder / 'cv-scheme.csv'
+            chr2num_path = tmp_folder / 'chr_to_number.txt'
+            samples_list = tmp_folder / 'all_samples.txt'
         if samples_path.is_dir() or not samples_path.exists():
             samples_path_new = out_folder / 'samples.csv'
             if not samples_path_new.exists():
@@ -527,6 +529,8 @@ class Pipeline:
                     for line in fin:
                         fout.write(f'{line.strip()},?\n')
             samples_path = samples_path_new
+        if not tmp_folder.exists():
+            tmp_folder.mkdir(parents=True, exist_ok=True)
         with samples_path.open() as fin, samplesids_path.open('w') as fout_ids, cvscheme_path.open('w') as fout_cv, chr2num_path.open('w') as fout_chr:
             samples, labels, col3 = [], [], []
             reader = csv.reader(filter(lambda row: row[0] != '#', fin))
@@ -1142,7 +1146,9 @@ def main(pipeline, extra):
         app.log.info(f'Results: {pipeline.get_wd().absolute()}')
 
 
-def get_mounts(pipeline, *config, exit_on_error=False, mount_as=None, show_warning=True):
+def get_mounts(pipeline, *config, exit_on_error=False, mount_as=None, show_warning=True, step=None):
+    if step is not None and pipeline.entrypoint > step:
+        exit_on_error, show_warning = False, False
     mounts = []
     for section, option in config:
         cfg = pipeline.config.get(section, option, fallback=None)
@@ -1366,7 +1372,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     # 1.0.0 POTENTIAL PREPROCESSING SLOT
 
     # 1.0.1 Extract list of samples
-    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True)
+    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True, step=1.01)
     step1_0_1_out = 'tmp/all_samples.txt'
     pipeline.add_stats_report(
         1.01, mounts_step1_0_1[0][1], query='query -l', mounts=mounts_step1_0_1, save_as=step1_0_1_out,
@@ -1385,14 +1391,14 @@ def run_all_p(pipeline, extra, dry_run=False):
     )
 
     # 1.0.3 Generate stats report
-    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True)
+    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True, step=1.01)
     pipeline.add_stats_report(1.03, mounts_step1_0_1[0][1], refers_to=1.00, mounts=mounts_step1_0_1, enabled=create_filter_reports)
 
     # 1.1-7 Variant QC -------------------------------------------------------------------------- #
 
-    # 1.1   Extract individuals of interest (diseased and healthy individuals of interest).
+    # 1.1   Extract individuals of interest (disease and healthy individuals of interest)
     step1_1_out = 'vcf/1_1.vcf.gz'
-    mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True)
+    mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True, step=1.01)
     pipeline.add_action(
         'bcftools', 1.10,
         'filter for individuals of interest ',

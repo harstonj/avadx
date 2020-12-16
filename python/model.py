@@ -62,11 +62,18 @@ def get_NA_score(variantfn, genefn):
 def create_random_genescores(genes=15000, samples=1000, min_score=0, max_score=3, decimals=4):
     gene = [f'g{_:06}' for _ in range(genes)]
     transcript = [f't{_:06}' for _ in range(genes)]
-    scores_columns = [f's{_:06}' for _ in range(samples)]
-    scores = pd.DataFrame(np.random.uniform(min_score, max_score, size=(genes, samples)), columns=scores_columns)
+    sample_ids = [f's{_:06}' for _ in range(samples)]
+    scores = pd.DataFrame(np.random.uniform(min_score, max_score, size=(genes, samples)), columns=sample_ids)
     df = pd.merge(pd.DataFrame({'Gene': gene, 'Transcript': transcript}), scores, left_index=True, right_index=True)
     if decimals is not None:
         df = df.round(decimals)
+    return df
+
+
+def create_random_samples(samples=1000):
+    sample_ids = [f's{_:06}' for _ in range(samples)]
+    class_labels = np.random.randint(0, 2, size=(samples, 1))[:, 0]
+    df = pd.DataFrame({'sampleid': sample_ids, 'class': class_labels})
     return df
 
 

@@ -1098,12 +1098,14 @@ def parse_arguments():
     parser.add_argument('-q', '--quiet', action='store_true',
                         help='if flag is set console output is logged to file')
 
+    parser.lvl = 1
     namespace, extra = parser.parse_known_args()
     parser_actions = []
     for action in namespace.action if namespace.action else []:
         if action not in parser_actions:
             parser.add_argument(f'--{action}', action='append', default=[])
             parser_actions += [action]
+    parser.lvl = 2
     namespace, extra = parser.parse_known_args()
     if namespace.verbose == 0:
         namespace.verbose = 20

@@ -59,6 +59,17 @@ def get_NA_score(variantfn, genefn):
     return scoring_functions.gene.NA_SCORE
 
 
+def create_random_genescores(genes=15000, samples=1000, min_score=0, max_score=3, decimals=4):
+    gene = [f'g{_:06}' for _ in range(genes)]
+    transcript = [f't{_:06}' for _ in range(genes)]
+    scores_columns = [f's{_:06}' for _ in range(samples)]
+    scores = pd.DataFrame(np.random.uniform(min_score, max_score, size=(genes, samples)), columns=scores_columns)
+    df = pd.merge(pd.DataFrame({'Gene': gene, 'Transcript': transcript}), scores, left_index=True, right_index=True)
+    if decimals is not None:
+        df = df.round(decimals)
+    return df
+
+
 def plot_curve(x, y, save_as, color='darkorange', label='Label', x_lab='x', y_lab='y', title='Plot', x_lim=[0.0, 1.0], y_lim=[0.0, 1.05], lw=2, legend_loc='lower right', show_diag_col='navy', show_diag_ln='--', diag_x=[0, 1], diag_y=[0, 1]):
     plt.figure()
     plt.plot(x, y, color=color, lw=lw, label=label)

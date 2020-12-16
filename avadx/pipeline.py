@@ -1087,6 +1087,8 @@ def parse_arguments():
                         help='create visualizations / result plots')
     parser.add_argument('-s', '--sampleprediction', type=Path,
                         help='path to samples file for which predictions should be generated')
+    parser.add_argument('-G', '--genescores', type=Path,
+                        help='path to genescores file to use for model training (runs pipeline from step 5)')
     parser.add_argument('-M', '--model', type=Path,
                         help='path to joblib model file other then the default when using -s/--sampleprediction')
     parser.add_argument('-r', '--retrieve', type=str,
@@ -1203,6 +1205,18 @@ def run_all_p(pipeline, extra, dry_run=False):
         if VM_MEM != VM_MEM_new:
             VM_MEM = VM_MEM_new
             pipeline.set_vm_mem(VM_MEM)
+    genescores_path = None
+    if pipeline.kwargs['genescores'] is not None:
+        wd = pipeline.get_wd()
+        genescores_path = pipeline.kwargs['genescores']
+        if not genescores_path.exists():
+            pipeline.log.error(f'Could not find genescores file: {genescores_path}')
+            exit(1)
+        if Path(wd).exists():
+            pipeline.log.error(f' [-G/--genescore] "{pipeline.uid}" already exists in {wd.parent} - specifiy different UID.')
+            exit(1)
+        (pipeline.get_wd() / 'out').mkdir(parents=True, exist_ok=True)
+        (pipeline.get_wd() / 'out' / 'genescores').mkdir(parents=True, exist_ok=True)
     if not dry_run:
         (pipeline.get_wd() / 'out').mkdir(parents=True, exist_ok=True)
         pipeline.save_run_config()
@@ -1253,6 +1267,9 @@ def run_all_p(pipeline, extra, dry_run=False):
         f'  * Memory  : {pipeline.get_vm_mem()}\n'
         f'{divider}\n'
     )
+
+    if genescores_path is not None:
+        shutil.copyfile(genescores_path, pipeline.get_wd() / 'out' / 'genescores' / f'GeneScoreTable_{"normalized" if genescore_normalize else "raw"}.csv')
 
     # 0     Init (downloads & data source preprocessing)  -------------------------------------------------------------------- #
     gnomad_base_path = Path(pipeline.config.get("DEFAULT", "annovar.humandb", fallback=WD))
@@ -1935,6 +1952,10 @@ def init():
         namespace.init = False
         pipeline = Pipeline(actions, kwargs=vars(namespace), uid=uid, config_file=config, daemon=daemon)
         pipeline.predict(uid, vars(namespace), extra, config, daemon)
+    elif namespace.genescores:
+        namespace.init = False
+        namespace.entrypoint = 5.0
+        run_all(uid, vars(namespace), extra, config, daemon)
     elif actions is None:
         run_all(uid, vars(namespace), extra, config, daemon)
     else:

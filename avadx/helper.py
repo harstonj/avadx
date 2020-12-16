@@ -125,7 +125,7 @@ def check_config_ini(*additional_args):
             if args.info or args.sampleprediction:
                 pass
             elif not Path(values).exists():
-                config_uid = args.wd / args.uid / 'out' / 'pipeline_config.ini'
+                config_uid = args.wd / (args.uid if args.uid is not None else 'avadx') / 'out' / 'pipeline_config.ini'
                 if config_uid.exists:
                     values = config_uid
                 else:

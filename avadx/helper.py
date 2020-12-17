@@ -8,6 +8,7 @@ import signal
 import argparse
 import shlex
 import shutil
+from datetime import datetime
 from pathlib import Path
 from functools import wraps
 
@@ -30,6 +31,10 @@ except ImportError:
 
 def flatten(list):
     return [item for sublist in list for item in sublist]
+
+
+def current_milli_time():
+    return int(round(datetime.now().timestamp() * 1000))
 
 
 # noinspection

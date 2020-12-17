@@ -52,8 +52,8 @@ class AVADx:
         self.pipeline = pipeline
         self.threadLock = threading.Lock()
 
-    @staticmethod
     def init_vm(daemon):
+        return
         _ = AVADx(None)
         if daemon not in ['docker', 'singularity']:
             _.log.warning(f'Unknown daemon: {daemon}')
@@ -63,15 +63,16 @@ class AVADx:
             except ImportError:
                 _.log.error('Docker SDK for Python not installed. Please install with: "pip install docker"')
                 sys.exit(1)
-            _.log.info('Checking Docker images ...')
+            _.log.info('Verifying Docker images ...')
             client = docker.from_env()
             for image in AVADx.IMAGES.values():
-                _.log.info(f'Processing {image} ...')
+                _.log.info(f'-> {image}')
                 client.images.pull(image)
             _.log.info('Done.')
         elif daemon == 'singularity':
+            _.log.info('Verifying Singularity images ...')
             for image in AVADx.IMAGES.values():
-                _.log.info(f'Processing {image} ...')
+                _.log.info(f'-> {image}')
                 run_command(f'singularity pull docker://{image}')
             _.log.info('Done.')
 
@@ -333,7 +334,7 @@ class Pipeline:
             'vm.cpu': None,
             'vm.mem': None
         }
-        self.seed = self.config.get('avadx', 'random.seed', fallback=None)
+        self.seed = self.config.get('avadx', 'random.seed', fallback=current_milli_time())
         self.set_seed()
         self.prediction = False
         self.prediction_out = None
@@ -367,6 +368,9 @@ class Pipeline:
             if Path(self.kwargs['wd'] / uid).exists():
                 uid = f'{uid}_{uuid.uuid1()}'
         return uid
+
+    def is_init(self):
+        return self.kwargs['init']
 
     def is_prediction(self):
         return True if self.prediction or self.config.get('DEFAULT', 'predict', fallback='no') == 'yes' else False
@@ -444,12 +448,12 @@ class Pipeline:
         return config
 
     def save_run_config(self):
-        if not self.prediction:
+        if not self.is_init() and not self.is_prediction():
             with (self.get_wd() / 'out' / 'pipeline_config.ini').open('w') as configfile:
                 self.config.write(configfile)
 
     def save_run_info(self):
-        if not self.prediction:
+        if not self.is_init() and not self.is_prediction():
             cpu = self.resources['cpu' if self.is_vm else 'vm.cpu']
             mem = self.resources['mem' if self.is_vm else 'vm.mem']
             with (self.get_wd() / 'out' / 'pipeline_info.txt').open('w') as infofile:
@@ -900,7 +904,7 @@ class Pipeline:
 
     def run_container(self, container, args=[], daemon_args={}, uid=uuid.uuid1(), mounts=[], out_folder: Path = Path.cwd(), stdout=None, stderr=None, mkdirs=True, progress=False):
         wd_folder = (out_folder if out_folder else Path.cwd()) / str(uid) / 'wd'
-        if mkdirs:
+        if mkdirs and not self.is_init():
             if out_folder:
                 (out_folder / str(uid) / 'out').mkdir(parents=True, exist_ok=True)
                 (out_folder / str(uid) / 'out' / 'reports').mkdir(parents=True, exist_ok=True)
@@ -1215,10 +1219,12 @@ def run_all_p(pipeline, extra, dry_run=False):
         if Path(wd).exists():
             pipeline.log.error(f' [-G/--genescore] "{pipeline.uid}" already exists in {wd.parent} - specifiy different UID.')
             exit(1)
-        (pipeline.get_wd() / 'out').mkdir(parents=True, exist_ok=True)
-        (pipeline.get_wd() / 'out' / 'genescores').mkdir(parents=True, exist_ok=True)
+        if not pipeline.is_init():
+            (pipeline.get_wd() / 'out').mkdir(parents=True, exist_ok=True)
+            (pipeline.get_wd() / 'out' / 'genescores').mkdir(parents=True, exist_ok=True)
     if not dry_run:
-        (pipeline.get_wd() / 'out').mkdir(parents=True, exist_ok=True)
+        if not pipeline.is_init():
+            (pipeline.get_wd() / 'out').mkdir(parents=True, exist_ok=True)
         pipeline.save_run_config()
         pipeline.save_run_info()
         CFG = VM_MOUNT / 'out' / str(pipeline.uid) / 'out' / 'pipeline_config.ini'
@@ -1249,7 +1255,6 @@ def run_all_p(pipeline, extra, dry_run=False):
     modelclass_available = True if pipeline.check_config('model.class', is_file=True, quiet=True) else False
     featurelist_available = True if pipeline.check_config('featurelist', is_file=True, quiet=True) else False
     create_filter_reports = True if pipeline.config.get('avadx', 'filter.reports', fallback='yes') == 'yes' else False
-    is_init = pipeline.kwargs['init']
     pipeline.entrypoint = 2.40 if outliers_available else pipeline.entrypoint
     if pipeline.kwargs['entrypoint'] is not None:
         pipeline.entrypoint = pipeline.kwargs['entrypoint']
@@ -1284,7 +1289,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     pipeline.add_action(
         'annovar', 0.11,
         f'verify/download database: {hgref}_gnomad_exome',
-        f'-c \'annotate_variation.pl -thread {VM_CPU} -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
+        f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
         'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(gnomad_base_path)
@@ -1294,7 +1299,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     pipeline.add_action(
         'annovar', 0.12,
         f'verify/download database: {hgref}_gnomad_genome',
-        f'-c \'annotate_variation.pl -thread {VM_CPU} -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
+        f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
         'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(gnomad_base_path)
@@ -1332,7 +1337,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     pipeline.add_action(
         'annovar', 0.13,
         f'verify/download database: {hgref}_refGene',
-        f'-c \'annotate_variation.pl -thread {VM_CPU} -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
+        f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar refGene config[DEFAULT.annovar.humandb]/; '
         'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_refGene.log\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(refseq_base_path)
@@ -1392,7 +1397,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     # 1.0.0 POTENTIAL PREPROCESSING SLOT
 
     # 1.0.1 Extract list of samples
-    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True, step=1.01)
+    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if pipeline.is_init() or pipeline.is_prediction() else True, show_warning=False if pipeline.is_init() or pipeline.is_prediction() else True, step=1.01)
     step1_0_1_out = 'tmp/all_samples.txt'
     pipeline.add_stats_report(
         1.01, mounts_step1_0_1[0][1], query='query -l', mounts=mounts_step1_0_1, save_as=step1_0_1_out,
@@ -1400,7 +1405,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     )
 
     # 1.0.2 Run pre-processing
-    mounts_step1_0_2 = get_mounts(pipeline, ('avadx', 'samples'), show_warning=not pipeline.prediction) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
+    mounts_step1_0_2 = get_mounts(pipeline, ('avadx', 'samples'), show_warning=False if pipeline.is_init() or pipeline.is_prediction() else True) + [(pipeline.config_file.absolute(), VM_MOUNT / 'in' / 'avadx.ini')]
     pipeline.add_action(
         'run_preprocess', 1.02,
         'AVA,Dx pipeline preprocess',
@@ -1411,14 +1416,14 @@ def run_all_p(pipeline, extra, dry_run=False):
     )
 
     # 1.0.3 Generate stats report
-    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True, step=1.01)
+    mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if pipeline.is_init() or pipeline.is_prediction() else True, show_warning=False if pipeline.is_init() or pipeline.is_prediction() else True, step=1.01)
     pipeline.add_stats_report(1.03, mounts_step1_0_1[0][1], refers_to=1.00, mounts=mounts_step1_0_1, enabled=create_filter_reports)
 
     # 1.1-7 Variant QC -------------------------------------------------------------------------- #
 
     # 1.1   Extract individuals of interest (disease and healthy individuals of interest)
     step1_1_out = 'vcf/1_1.vcf.gz'
-    mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if is_init or pipeline.is_prediction() else True, show_warning=False if pipeline.is_prediction() else True, step=1.01)
+    mounts_step1_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if pipeline.is_init() or pipeline.is_prediction() else True, show_warning=False if pipeline.is_init() or pipeline.is_prediction() else True, step=1.01)
     pipeline.add_action(
         'bcftools', 1.10,
         'filter for individuals of interest ',
@@ -1607,7 +1612,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     #       to a file outliers.txt (one ID per row).
     step2_4_out = 'vcf/2_4.vcf.gz'
     if outliers_available:
-        mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'), exit_on_error=False if is_init or pipeline.is_prediction() else True)
+        mounts_step2_4 = get_mounts(pipeline, ('avadx', 'outliers'), exit_on_error=False if pipeline.is_init() or pipeline.is_prediction() else True)
         pipeline.add_action(
             'bcftools', 2.40,
             'summarize outliers',
@@ -1784,9 +1789,9 @@ def run_all_p(pipeline, extra, dry_run=False):
     # 4.3   Compute gene scores
     step4_3_outfolder = 'genescores'
     genescore_file = Path(pipeline.check_config('genescore.fn', quiet=dry_run)).suffix == '.py'
-    genescorefn_mnt = get_mounts(pipeline, ('avadx', 'genescore.fn'), exit_on_error=False if is_init or pipeline.is_prediction() else genescorefn_available) if genescore_file else []
+    genescorefn_mnt = get_mounts(pipeline, ('avadx', 'genescore.fn'), exit_on_error=False if pipeline.is_init() or pipeline.is_prediction() else genescorefn_available) if genescore_file else []
     variantscore_file = Path(pipeline.check_config('variantscore.fn', quiet=dry_run)).suffix == '.py'
-    variantscorefn_mnt = get_mounts(pipeline, ('avadx', 'variantscore.fn'), exit_on_error=False if is_init or pipeline.is_prediction() else variantscorefn_available) if variantscore_file else []
+    variantscorefn_mnt = get_mounts(pipeline, ('avadx', 'variantscore.fn'), exit_on_error=False if pipeline.is_init() or pipeline.is_prediction() else variantscorefn_available) if variantscore_file else []
     mounts_step4_3 = genescorefn_mnt + variantscorefn_mnt
     pipeline.add_action(
         'cal_genescore_make_genescore', 4.30,
@@ -1832,10 +1837,10 @@ def run_all_p(pipeline, extra, dry_run=False):
     # 5.1   Cross-validation:
     step5_1_outfolder = 'results'
     fselection_file = Path(pipeline.check_config('fselection.class', quiet=dry_run)).suffix == '.py'
-    fselectionclass_mnt = get_mounts(pipeline, ('avadx', 'fselection.class'), exit_on_error=False if is_init or pipeline.is_prediction() else fselectionclass_available, mount_as='/app/python/avadx/feature_selections/fselection_avadx.py') if fselection_file else []
+    fselectionclass_mnt = get_mounts(pipeline, ('avadx', 'fselection.class'), exit_on_error=False if pipeline.is_init() or pipeline.is_prediction() else fselectionclass_available, mount_as='/app/python/avadx/feature_selections/fselection_avadx.py') if fselection_file else []
     model_file = Path(pipeline.check_config('model.class', quiet=dry_run)).suffix == '.py'
-    modelclass_mnt = get_mounts(pipeline, ('avadx', 'model.class'), exit_on_error=False if is_init or pipeline.is_prediction() else modelclass_available, mount_as='/app/python/avadx/models/model_avadx.py') if model_file else []
-    featurelist_mnt = get_mounts(pipeline, ('avadx', 'featurelist'), exit_on_error=False if is_init or pipeline.is_prediction() else featurelist_available) if featurelist_available else []
+    modelclass_mnt = get_mounts(pipeline, ('avadx', 'model.class'), exit_on_error=False if pipeline.is_init() or pipeline.is_prediction() else modelclass_available, mount_as='/app/python/avadx/models/model_avadx.py') if model_file else []
+    featurelist_mnt = get_mounts(pipeline, ('avadx', 'featurelist'), exit_on_error=False if pipeline.is_init() or pipeline.is_prediction() else featurelist_available) if featurelist_available else []
     use_featurelist = f' -F {featurelist_mnt[0][1]}' if featurelist_mnt else ''
     mounts_step5_1 = fselectionclass_mnt + modelclass_mnt + featurelist_mnt
     pipeline.add_action(

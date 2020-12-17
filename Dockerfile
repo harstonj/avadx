@@ -7,15 +7,14 @@ FROM base as builder
 
 # setup system
 WORKDIR /install
+RUN apk --no-cache add build-base gcc make gfortran linux-headers openblas-dev lapack-dev jpeg-dev zlib-dev wget git
 
 # setup app
-RUN apk --no-cache add build-base gcc make gfortran linux-headers openblas-dev lapack-dev jpeg-dev zlib-dev wget git
 RUN git clone --depth 1 https://bitbucket.org/bromberglab/avadx.git && \
- mkdir -p /app/python && mv avadx/python /app/python/avadx && \
- rm -rf avadx
-
-RUN pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install https://bitbucket.org/bromberglab/avadx/get/master.zip scipy
-RUN python -c 'import compileall; compileall.compile_dir("/app/python/avadx", force=1)'
+ mkdir -p /app/python && mv avadx/python /app/python/avadx && rm -rf avadx && \
+ pip install --upgrade pip && pip install --no-warn-script-location --prefix=/install https://bitbucket.org/bromberglab/avadx/get/master.zip scipy  && \
+ git ls-remote https://bitbucket.org/bromberglab/avadx HEAD > $(python -c "import avadx as _; print(_.__path__[0])")/.build && \
+ python -c 'import compileall; compileall.compile_dir("/app/python/avadx", force=1)'
 
 FROM base
 

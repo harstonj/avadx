@@ -18,7 +18,7 @@ from timeit import default_timer as timer
 from concurrent.futures import ThreadPoolExecutor
 from .logger import Logger
 from .helper import check_config_ini, run_command, flatten, runningInDocker, runningInSingularity
-from . import __version__, __releasedate__, name
+from . import __version__, __releasedate__, __build__, name
 
 
 QUIET = False
@@ -1258,13 +1258,16 @@ def run_all_p(pipeline, extra, dry_run=False):
     if pipeline.kwargs['exitpoint'] is not None:
         pipeline.exitpoint = pipeline.kwargs['exitpoint']
 
-    header = f'    AVA,Dx - {__version__} {__releasedate__}    '
+    build = f' [{__build__[:7]}]' if __build__ is not None else ''
+    seed = f'  * Seed    : {pipeline.seed}\n' if pipeline.seed is not None else ''
+    header = f'    AVA,Dx - {__version__}{build} {__releasedate__}    '
     divider = f' {"".join(["_" for _ in range(0,len(header))])}'
     print(
         f'\n {header} \n{divider}\n\n'
         f'  * VM      : {pipeline.daemon}\n'
         f'  * Cores   : {pipeline.get_vm_cpu()}\n'
         f'  * Memory  : {pipeline.get_vm_mem()}\n'
+        f'{seed}'
         f'{divider}\n'
     )
 

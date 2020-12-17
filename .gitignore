@@ -17,7 +17,7 @@ data/refseq/*
 !data/**/.gitkeep
 
 # Testing
-test_*/
+dev*/
 docker/Rscript/R
 docker/tabix/python
 

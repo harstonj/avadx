@@ -17,7 +17,7 @@ from datetime import datetime
 from timeit import default_timer as timer
 from concurrent.futures import ThreadPoolExecutor
 from .logger import Logger
-from .helper import check_config_ini, run_command, flatten, runningInDocker, runningInSingularity
+from .helper import check_config_ini, run_command, flatten, runningInDocker, runningInSingularity, current_milli_time
 from . import __version__, __releasedate__, __build__, name
 
 

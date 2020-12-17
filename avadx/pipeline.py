@@ -170,6 +170,7 @@ class AVADx:
                 (codebase / 'avadx', Path('/usr/local/lib/python3.8/site-packages/avadx')),
                 (codebase / 'python', Path('/app/python/avadx/')),
                 (codebase / 'R', Path('/app/R/avadx/')),
+                (codebase / 'bash', Path('/app/bash/avadx/')),
             ]
         self.pipeline.run_container(
             container, args=args_, daemon_args=daemon_args, uid=uid,
@@ -1289,7 +1290,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     pipeline.add_action(
         'annovar', 0.11,
         f'verify/download database: {hgref}_gnomad_exome',
-        f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
+        f'-c \'rm -f /bin/gunzip; annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_exome config[DEFAULT.annovar.humandb]/; '
         'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_exome.log\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(gnomad_base_path)
@@ -1299,7 +1300,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     pipeline.add_action(
         'annovar', 0.12,
         f'verify/download database: {hgref}_gnomad_genome',
-        f'-c \'annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
+        f'-c \'rm -f /bin/gunzip; annotate_variation.pl -buildver {hgref} -downdb -webfrom annovar gnomad_genome config[DEFAULT.annovar.humandb]/; '
         'mv config[DEFAULT.annovar.humandb]/annovar_downdb.log config[DEFAULT.annovar.humandb]/annovar_downdb_gnomad_genome.log\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(gnomad_base_path)
@@ -1664,7 +1665,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     step2_indels_out = step2_6_2_out if analyze_indels else None
 
     # 2.7   OPTIONAL - gnomAD filter: filtering out variants that were not recorded in the gnomAD database.
-    #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt and hgxx_gnomad_genome.txt.
+    #       The gnomAD reference used here is the ANNOVAR gnomAD filexx_gnomad_exome.txt.gz and hgxx_gnomad_genome.txt.gz
     #       Note that tabix is required for indexing to run this script.
     step2_7_out = 'vcf/2_7.vcf.gz'
     if gnomAD_filter:

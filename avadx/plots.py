@@ -43,10 +43,10 @@ class Figure:
         elif vis == 'piechart':
             if dataset == 'ethseq':
                 reports_path = out_folder / 'reports'
-                self.in_file = reports_path / '2_2-5-EthSEQ_summary_Report.txt'
-                self.out_file = reports_path / '2_2-5-EthSEQ_summary_Report.html'
+                self.in_file = reports_path / '2_2-EthSEQ_summary_Report.txt'
+                self.out_file = reports_path / '2_2-EthSEQ_summary_Report.html'
                 report_splits = []
-                for report_split in reports_path.glob('2_2-4-EthSEQ_split_*_Report.txt'):
+                for report_split in reports_path.glob('2_2-EthSEQ_split_*_Report.txt'):
                     report_splits += [pd.read_csv(report_split, sep='\t')]
                 df = pd.concat(report_splits)
                 df.to_csv(self.in_file, index=False)

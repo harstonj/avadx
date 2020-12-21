@@ -53,6 +53,7 @@ class AVADx:
         self.threadLock = threading.Lock()
 
     def init_vm(daemon):
+        AVADx.check_daemon(daemon)
         _ = AVADx(None)
         if daemon not in ['docker', 'singularity']:
             _.log.warning(f'Unknown daemon: {daemon}')
@@ -76,11 +77,10 @@ class AVADx:
             _.log.info('Done.')
 
     def check_daemon(daemon):
-        _ = AVADx(None)
         if daemon == 'docker':
             docker = which('docker')
             if docker is None:
-                _.log.error('Docker executable not found. Aborting.')
+                print('Docker executable not found. Aborting.')
                 sys.exit(1)
             import requests
             try:
@@ -89,16 +89,15 @@ class AVADx:
                 try:
                     client.version()
                 except requests.exceptions.ConnectionError as err:
-                    _.log.debug(err)
-                    _.log.error('Error connecting to docker socket. Is the docker deamon running?')
+                    print(f'Error connecting to docker socket: {err}. Is the docker deamon running? Aborting. ')
                     sys.exit(1)
             except ImportError:
-                _.log.error('Docker SDK for Python not installed. Please install with: "pip install docker"')
+                print('Docker SDK for Python not installed. Please install with: "pip install docker"')
                 sys.exit(1)
         elif daemon == 'singularity':
             singularity = which('singularity')
             if singularity is None:
-                _.log.error('Singularity executable not found. Aborting.')
+                print('Singularity executable not found. Aborting.')
                 sys.exit(1)
 
     def get_logger(self):
@@ -364,6 +363,11 @@ class Pipeline:
         self.set_seed()
         self.prediction = False
         self.prediction_out = None
+        self.verify_dependencies()
+
+    def verify_dependencies(self):
+        if not self.is_vm:
+            AVADx.check_daemon(self.daemon)
 
     def reset(self, actions=[], kwargs=None, uid=None, config_file=None, prediction=False):
         self.actions = actions
@@ -1955,7 +1959,6 @@ def init():
     del namespace.config
     del namespace.daemon
     del namespace.uid
-    AVADx.check_daemon(daemon)
     if namespace.info:
         Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon) \
             .info(quiet=False, run_args=[uid, vars(namespace), extra, config, daemon, True])

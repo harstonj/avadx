@@ -53,7 +53,6 @@ class AVADx:
         self.threadLock = threading.Lock()
 
     def init_vm(daemon):
-        return
         _ = AVADx(None)
         if daemon not in ['docker', 'singularity']:
             _.log.warning(f'Unknown daemon: {daemon}')

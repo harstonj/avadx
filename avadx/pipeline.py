@@ -17,7 +17,7 @@ from datetime import datetime
 from timeit import default_timer as timer
 from concurrent.futures import ThreadPoolExecutor
 from .logger import Logger
-from .helper import check_config_ini, run_command, flatten, runningInDocker, runningInSingularity, current_milli_time
+from .helper import check_config_ini, run_command, flatten, runningInDocker, runningInSingularity, current_milli_time, which
 from . import __version__, __releasedate__, __build__, name
 
 
@@ -74,6 +74,32 @@ class AVADx:
                 _.log.info(f'-> {image}')
                 run_command(f'singularity pull docker://{image}')
             _.log.info('Done.')
+
+    def check_daemon(daemon):
+        _ = AVADx(None)
+        if daemon == 'docker':
+            docker = which('docker')
+            if docker is None:
+                _.log.error('Docker executable not found. Aborting.')
+                sys.exit(1)
+            import requests
+            try:
+                import docker
+                client = docker.from_env()
+                try:
+                    client.version()
+                except requests.exceptions.ConnectionError as err:
+                    _.log.debug(err)
+                    _.log.error('Error connecting to docker socket. Is the docker deamon running?')
+                    sys.exit(1)
+            except ImportError:
+                _.log.error('Docker SDK for Python not installed. Please install with: "pip install docker"')
+                sys.exit(1)
+        elif daemon == 'singularity':
+            singularity = which('singularity')
+            if singularity is None:
+                _.log.error('Singularity executable not found. Aborting.')
+                sys.exit(1)
 
     def get_logger(self):
         logger = Logger(self.__class__.__name__, level=LOG_LEVEL)
@@ -209,7 +235,7 @@ class AVADx:
 
         def validate(path):
             if not path.exists():
-                self.log.error(f'Missing result file: {path} - Aborting.')
+                self.log.error(f'Missing result file: {path}. Aborting.')
                 sys.exit(1)
 
         for f in wd_results:
@@ -1928,6 +1954,7 @@ def init():
     del namespace.config
     del namespace.daemon
     del namespace.uid
+    AVADx.check_daemon(daemon)
     if namespace.info:
         Pipeline(actions, kwargs=vars(namespace), config_file=config, daemon=daemon) \
             .info(quiet=False, run_args=[uid, vars(namespace), extra, config, daemon, True])

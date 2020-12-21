@@ -1426,7 +1426,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     mounts_step1_0_1 = get_mounts(pipeline, ('avadx', 'vcf'), exit_on_error=False if pipeline.is_init() or pipeline.is_prediction() else True, show_warning=False if pipeline.is_init() or pipeline.is_prediction() else True, step=1.01)
     step1_0_1_out = 'tmp/all_samples.txt'
     pipeline.add_stats_report(
-        1.01, mounts_step1_0_1[0][1], query='query -l', mounts=mounts_step1_0_1, save_as=step1_0_1_out,
+        1.01, mounts_step1_0_1[0][1], refers_to=1.00, query='query -l', mounts=mounts_step1_0_1, save_as=step1_0_1_out,
         report_name='all_samples.log', report_description='extract sample list', keep=True
     )
 
@@ -1539,9 +1539,10 @@ def run_all_p(pipeline, extra, dry_run=False):
 
     # 2     Individual QC ----------------------------------------------------------------------- #
 
-    # 2.2   Quality check - Check quality outliers by examining nRefHom, nNonRefHom, nHets, nTransitions, nTransversions, average depth, nSingletons, and nMissing:
-
     # 2.1.0 Generate stats report
+    #       Quality check - Check quality outliers by examining
+    #       nRefHom, nNonRefHom, nHets, nTransitions, nTransversions,
+    #       average depth, nSingletons, and nMissing
     step2_1_0_out = 'tmp/qc_filters.stats.txt'
     pipeline.add_stats_report(2.10, step1_out, refers_to=1.60, save_as=step2_1_0_out, keep=True)
 
@@ -1551,7 +1552,7 @@ def run_all_p(pipeline, extra, dry_run=False):
         'stats_quality_pca', 2.11,
         'draw individual quality figures',
         f'/app/R/avadx/stats_quality_pca.R -f $WD/{step2_1_0_out} -o $WD/{step2_1_1_out}',
-        reports=[(step2_1_1_out, '2_1-1-quality_control_samples_PCA.pdf')]
+        reports=[(step2_1_1_out, '2_1-quality_control_samples_PCA.pdf')]
     )
 
     # 2.2   Ethnicity check - Annotate ethnicity with EthSEQ R package:
@@ -1605,7 +1606,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     pipeline.add_action(
         'avadx', 2.24,
         'collect EthSEQ reports',
-        f'$WD/{step2_2_3_outfolder} -mindepth 2 -regex \'.*\(txt\|pdf\)$\' -exec bash -c \'cp $1 $OUT/reports/2_2-4-EthSEQ_$(basename $(dirname $1))_$(basename $1)\' _ {{}} \;',  # noqa: W605
+        f'$WD/{step2_2_3_outfolder} -mindepth 2 -regex \'.*\(txt\|pdf\)$\' -exec bash -c \'cp $1 $OUT/reports/2_2-EthSEQ_$(basename $(dirname $1))_$(basename $1)\' _ {{}} \;',  # noqa: W605
         daemon_args={'docker': ['--entrypoint=find'], 'singularity': ['exec:find']}
     )
 

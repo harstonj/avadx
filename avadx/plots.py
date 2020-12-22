@@ -43,7 +43,7 @@ class Figure:
         elif vis == 'piechart':
             if dataset == 'ethseq':
                 reports_path = out_folder / 'reports'
-                self.in_file = reports_path / '2_2-EthSEQ_summary_Report.txt'
+                self.in_file = reports_path / '2_2-EthSEQ_summary_Report.csv'
                 self.out_file = reports_path / '2_2-EthSEQ_summary_Report.html'
                 report_splits = []
                 for report_split in reports_path.glob('2_2-EthSEQ_split_*_Report.txt'):

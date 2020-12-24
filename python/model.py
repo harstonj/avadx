@@ -412,7 +412,8 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
     model_final = get_model(model, kwargs_dict, fselection_final)
     model_final.final = True
     model_final_res = model_final.train(dataset, maxgenes_final, 'all')
-    model_final.crosscal_pred = predictions_final_eval_samples
+    model_final.crossval_pred = predictions_final_eval_samples
+    model_final.dataset = dataset
     model_final_predictions = pd.DataFrame.from_dict({k: v for k, v in model_final_res.items()}, orient='index', columns=['0', '1']).loc[dataset.index]
     pd.DataFrame(model_final_predictions).rename_axis('sampleid', axis='rows').to_csv(wd_path / 'complete_model_reprediction_predictions.csv')
     y_final_true, y_final_scores = dataset['class'], model_final_predictions['1']
@@ -488,7 +489,7 @@ def predict(pred_id, model_file, genescores, features, variantfn, genefn, outfol
     predictions_df.to_csv(outfolder / f'{pred_id}_predictions.csv')
 
     # plot predictions
-    plot_jitter(model.crosscal_pred, data_overlay=predictions_df, title='Predictions', x_lab='class', y_lab='prediction score', save_as=outfolder / f'{pred_id}_predictions.png')
+    plot_jitter(model.crossval_pred, data_overlay=predictions_df, title='Predictions', x_lab='class', y_lab='prediction score', save_as=outfolder / f'{pred_id}_predictions.png')
 
 
 if __name__ == "__main__":

@@ -365,7 +365,7 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
         fselection_final_eval = fselection
         fselection_final_eval.selected = {k: fselection_df for k in kfold_steps}
     else:
-        rank1_df_final = rank1_df[((rank1_df / len(kfold_steps)) > topgenes_ratio).frequency]
+        rank1_df_final = rank1_df[((rank1_df / len(kfold_steps)) >= topgenes_ratio).frequency]
         maxgenes_final = rank1_df_final.shape[0]
         fselection_final_eval = get_fselection(featureselection, kwargs_dict, cvscheme, maxgenes_final, quiet)
         fselection_final_eval.selected = {k: rank1_df_final for k in kfold_steps}

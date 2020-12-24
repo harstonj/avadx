@@ -97,8 +97,6 @@ def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'],
     fig, ax1 = plt.subplots()
     ax1.set_xlabel(x_lab)
     ax1.set_ylabel(y_lab)
-    ax2 = ax1.twinx()
-    ax2.set_ylim(y_lim)
     ax1.set_ylim(y_lim)
     classes = data_raw['class'].unique()
     medians = data_raw.groupby('class').median()[['score_0', 'score_1']].score_1.to_list()

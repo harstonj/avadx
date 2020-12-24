@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
+import matplotlib.ticker as mticker
 import seaborn as sns
 from pathlib import Path
 from multiprocessing import Pool
@@ -92,7 +93,7 @@ def plot_curve(x, y, save_as, color='darkorange', label='Label', x_lab='x', y_la
     plt.close()
 
 
-def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'], jitter=0.2, size=6, alpha=.75, label='Label', x_lab='x', y_lab='y', title='Plot', y_lim=[-0.1, 1.05], legend=False, data_overlay=None, save_as=None):
+def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'], jitter=0.2, size=6, alpha=.75, label='Label', x_lab='x', y_lab='y', title='Plot', y_lim=[-0.1, 1.05], legend=False, data_overlay=None, threshold_overlay=None, save_as=None):
     fig, ax1 = plt.subplots()
     ax1.set_xlabel(x_lab)
     ax1.set_ylabel(y_lab)
@@ -109,6 +110,9 @@ def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'],
         mean_of_medians = None
     elif 1 not in classes:
         median_0, median_1 = medians[0], None
+        mean_of_medians = None
+    if mean_of_medians is not None and threshold_overlay is None:
+        threshold_overlay = mean_of_medians
         mean_of_medians = None
     plt.title(title)
     if data_overlay is None:
@@ -133,21 +137,45 @@ def plot_jitter(data_raw, x='class', y='score_1', colors=['#356288', '#fe1100'],
             ax1.set_position([box.x0, box.y0, box.width * 0.8, box.height])
             ax1.legend(handles=[training_0, prediction, training_1], loc='center left', bbox_to_anchor=(1, 0.5))
         plt.xticks(ticks=[0, 1, 2], labels=['0', 'prediction', '1'])
+
+    ax1_ylocs = [_ for _ in ax1.get_yticks() if _ >= y_lim[0] and _ <= y_lim[1]]
+    ax1_yticks, ax1_ylabels = [], []
+    ax1_yticks += [round(median_0, 2)] if median_0 is not None else [round(median_1, 2)]
+    ax1_yticks += [round(median_1, 2)] if median_1 is not None else [round(median_0, 2)]
+    ax1_ylabels += [round(median_0, 2)] if median_0 is not None else [round(median_1, 2)]
+    ax1_ylabels += [round(median_1, 2)] if median_1 is not None else [round(median_0, 2)]
+    ax1_yticks += ax1_ylocs
+    ax1_ylabels += [f'{_:.1f}' for _ in ax1_ylocs]
     if mean_of_medians is not None:
-        ax1.axhline(mean_of_medians, ls='--', color='grey')
-    y_ticks = [0]
-    y_ticks += [round(median_0, 2)] if median_0 is not None else [round(median_1, 2)]
-    y_ticks += [round(mean_of_medians, 2)] if mean_of_medians is not None else [y_ticks[1]]
-    y_ticks += [round(median_1, 2)] if median_1 is not None else [round(median_0, 2)]
-    y_ticks += [1]
+        ax1.axhline(mean_of_medians, ls='--', color='grey', lw=.6)
+        ax1_yticks += [mean_of_medians]
+        ax1_ylabels += [round(mean_of_medians, 2)]
+    ax1.yaxis.set_major_locator(mticker.FixedLocator(ax1_yticks))
+    ax1.set_yticklabels(ax1_ylabels)
+    ax1.set_yticks(ax1_yticks)
+
+    y_ticks = [0, 1]
+    if threshold_overlay is not None:
+        y_ticks += [round(threshold_overlay, 2)]
+        ax1.axhline(threshold_overlay, ls='--', color='black', lw=.9)
+    ax2 = ax1.twinx()
+    ax1.set_ylabel(y_lab)
     ax2.set_yticks(y_ticks)
     ax2.set_ylabel('')
-    mean_0_ytick, cutoff_ytick, mean_1_ytick = ax2.get_yticklabels()[1:4]
+    ax2.set_ylim(y_lim)
+    mean_0_ytick, mean_1_ytick = ax1.get_yticklabels()[0:2]
     mean_0_ytick.set_color('grey')
     mean_1_ytick.set_color('grey')
-    cutoff_ytick.set_fontsize(10)
-    cutoff_ytick.set_color('red')
-    cutoff_ytick.set_weight('bold')
+    if mean_of_medians is not None:
+        cutoff_mean = ax1.get_yticklabels()[-1]
+        cutoff_mean.set_fontsize(10)
+        cutoff_mean.set_color('grey')
+        cutoff_mean.set_weight('bold')
+    if threshold_overlay is not None:
+        cutoff_ytick = ax2.get_yticklabels()[-1]
+        cutoff_ytick.set_fontsize(10)
+        cutoff_ytick.set_color('black')
+        cutoff_ytick.set_weight('bold')
     if save_as:
         plt.savefig(save_as)
         plt.close()

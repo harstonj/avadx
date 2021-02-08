@@ -1131,6 +1131,7 @@ def parse_arguments():
                         help='steps to run, e.g. 1 (start from 1) or 1-2 (start from 1, stop at 2)')
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help='set verbosity level (v: ERROR, vv: WARNING, vvv: info, vvvv: debug); default: log level INFO')
+    parser.add_argument('--version', action='version', version=f'{name} {__version__} {__releasedate__} {__build__ if __build__ is not None else ""}')
     parser.add_argument('-D', '--Debug', type=Path, nargs='?',
                         help='path of local avadx codebase to mount to containers')
     parser.add_argument('-L', '--logfile', type=Path, const=Path('pipeline.log'),

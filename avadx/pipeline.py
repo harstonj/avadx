@@ -66,8 +66,20 @@ class AVADx:
             _.log.info('Verifying Docker images ...')
             client = docker.from_env()
             for image in AVADx.IMAGES.values():
-                _.log.info(f'-> {image}')
-                client.images.pull(image)
+                update_image = False
+                try:
+                    image_local = client.images.get(image)
+                    image_hub_registry = client.images.get_registry_data(image)
+                    image_local_latest = image_local.attrs['RepoTags'].index(f'{image}:latest')
+                    image_local_digest = image_local.attrs['RepoDigests'][image_local_latest].split('@')[1]
+                    update_image = not (image_local_digest == image_hub_registry.id)
+                except docker.errors.ImageNotFound:
+                    update_image = True
+                if update_image:
+                    _.log.info(f'{image:30} -> [downloading]')
+                    client.images.pull(image)
+                else:
+                    _.log.info(f'{image:30} -> [up to date]')
             _.log.info('Done.')
         elif daemon == 'singularity':
             _.log.info('Verifying Singularity images ...')
@@ -75,6 +87,7 @@ class AVADx:
                 _.log.info(f'-> {image}')
                 run_command(f'singularity pull docker://{image}')
             _.log.info('Done.')
+        _.log.handlers.pop()
 
     def check_daemon(daemon):
         if daemon == 'docker':

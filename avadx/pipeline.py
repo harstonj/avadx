@@ -71,8 +71,9 @@ class AVADx:
                     image_local = client.images.get(image)
                     image_hub_registry = client.images.get_registry_data(image)
                     image_local_latest = image_local.attrs['RepoTags'].index(f'{image}:latest')
-                    image_local_digest = image_local.attrs['RepoDigests'][image_local_latest].split('@')[1]
-                    update_image = not (image_local_digest == image_hub_registry.id)
+                    if image_local.attrs['RepoDigests']:
+                        image_local_digest = image_local.attrs['RepoDigests'][image_local_latest].split('@')[1]
+                        update_image = not (image_local_digest == image_hub_registry.id)
                 except docker.errors.ImageNotFound:
                     update_image = True
                 if update_image:
@@ -473,7 +474,7 @@ class Pipeline:
                 if self.config_file and self.config_file.exists():
                     config.read(str(self.config_file))
         if self.config_file is None or not self.config_file.exists():
-            if self.kwargs.get('info', False):
+            if self.kwargs.get('info', False) or self.kwargs.get('retrieve', None) is not None:
                 pass
             else:
                 self.log.error('No config file found. Aborting.')
@@ -671,35 +672,35 @@ class Pipeline:
         import requests
         if self.is_vm:
             config_datadir_orig = self.config.get('DEFAULT', 'datadir', fallback=None)
-            wd_folder = outfolder if outfolder else self.kwargs.get('wd')
+            wd_folder = outfolder if outfolder else Path('/mnt/data')
             self.config.set('DEFAULT', 'datadir', str(VM_MOUNT / 'data'))
         else:
             wd_folder = outfolder if outfolder else self.kwargs.get('wd') / str(self.uid) / 'wd'
             wd_folder.mkdir(parents=True, exist_ok=True)
 
         if target == 'cpdb':
-            save_as = Path(outfile) if outfile else Path(self.config.get('DEFAULT', 'avadx.data')) / 'CPDB_pathways_genesymbol.tab'
+            save_as = Path(outfile) if outfile else Path(self.config.get('DEFAULT', 'avadx.data', fallback='/mnt/data/avadx')) / 'CPDB_pathways_genesymbol.tab'
             url = 'http://cpdb.molgen.mpg.de/CPDB/getPathwayGenes?idtype=hgnc-symbol'
             r = requests.get(url, allow_redirects=True)
             open(str(save_as), 'wb').write(r.content)
         elif target == 'varidb':
-            avadx_data_path = Path(self.config.get('DEFAULT', 'avadx.data', fallback=self.kwargs.get('wd')))
-            save_as = Path(wd_folder) / 'master.zip'
-            url = 'https://bitbucket.org/bromberglab/avadx-lfs/get/master.zip'
-            r = requests.get(url, allow_redirects=True)
-            open(str(save_as), 'wb').write(r.content)
-            run_command(['unzip', '-o', '-j', str(save_as), '-d', str(avadx_data_path)])
-            run_command(['7z', 'e', str(avadx_data_path / 'varidb.db.7z'), '-aoa', f'-o{avadx_data_path}'])
+            avadx_data_path = Path(self.config.get('DEFAULT', 'avadx.data', fallback='/mnt/data/avadx'))
+            git_lfs = 'https://bitbucket.org/bromberglab/avadx-lfs.git'
+            run_command(['git', 'clone', '--depth', '1', '--no-checkout', git_lfs])
+            run_command(['git', '-C', 'avadx-lfs', 'archive', '--format=tar', '--output=avadx-lfs.tar', 'HEAD'])
+            run_command(['tar', 'x', '--exclude', 'logs*', '--exclude', '.git*', '-f', 'avadx-lfs/avadx-lfs.tar'])
+            run_command(['mv', 'varidb.db.7z', 'varidb.md5', 'varidb.log', str(avadx_data_path)])
+            run_command(['rm', '-rf', 'avadx-lfs'])
+            run_command(['7za', 'x', f'-o{str(avadx_data_path)}', str(avadx_data_path / 'varidb.db.7z')])
             md5sum_downloaded = run_command(['md5sum', str(avadx_data_path / 'varidb.db')])
             md5sum_varidb = md5sum_downloaded[0].split()[0] if md5sum_downloaded else ''
             with (avadx_data_path / 'varidb.md5').open() as fin:
                 md5_check = fin.readline().strip()
                 if md5sum_varidb != md5_check:
                     self.log.warning(f'|0.14| md5 hash not identical - is: {md5sum_varidb} reference: {md5_check}')
-            os.remove(str(save_as))
             os.remove(str(avadx_data_path / 'varidb.db.7z'))
         elif target == 'refseq':
-            hgref = self.config.get('avadx', 'hgref')
+            hgref = self.config.get('avadx', 'hgref', fallback='hg19')
             hgref_mapped = self.ASSEMBLY_MAPPING.get(hgref, None)
             if not hgref_mapped:
                 hgref_mapped = self.ASSEMBLY_MAPPING.get(self.ASSEMBLY_DEFAULT)
@@ -721,7 +722,7 @@ class Pipeline:
             self.log.warning(f'|0.14| Could not retrieve {target} - target unknown')
 
         if self.is_vm:
-            self.config.set('DEFAULT', 'datadir', config_datadir_orig)
+            self.config.set('DEFAULT', 'datadir', str(config_datadir_orig))
 
     def postprocess(self):
 
@@ -1190,7 +1191,9 @@ def main(pipeline, extra):
     for action in pipeline.actions:
         app.run(action, pipeline.uid, pipeline.kwargs, extra)
     app.log.info(f'Runtime: {(timer() - timer_start):.3f} seconds')
-    if pipeline.is_prediction():
+    if pipeline.is_init():
+        pass
+    elif pipeline.is_prediction():
         app.log.info(f'Predictions: {pipeline.get_prediction_out()}')
     else:
         app.log.info(f'Results: {pipeline.get_wd().absolute()}')
@@ -1228,7 +1231,7 @@ def run_init(uid, kwargs, extra, config, daemon):
     kwargs['entrypoint'] = 0
     kwargs['exitpoint'] = 1
     pipeline = run_all(uid, kwargs, extra, config, daemon)
-    shutil.rmtree(pipeline.get_wd())
+    shutil.rmtree(pipeline.get_wd(), ignore_errors=True)
 
 
 def run_all(uid, kwargs, extra, config, daemon, dry_run=False):
@@ -1271,7 +1274,10 @@ def run_all_p(pipeline, extra, dry_run=False):
             (pipeline.get_wd() / 'out').mkdir(parents=True, exist_ok=True)
         pipeline.save_run_config()
         pipeline.save_run_info()
-        CFG = VM_MOUNT / 'out' / str(pipeline.uid) / 'out' / 'pipeline_config.ini'
+        if not pipeline.is_init():
+            CFG = VM_MOUNT / 'out' / str(pipeline.uid) / 'out' / 'pipeline_config.ini'
+        else:
+            CFG = VM_MOUNT / 'in' / 'avadx.ini'
     else:
         CFG = VM_MOUNT / 'in' / 'avadx.ini'
     WD = pipeline.kwargs['wd'] / str(pipeline.uid) / 'wd'
@@ -1413,7 +1419,7 @@ def run_all_p(pipeline, extra, dry_run=False):
     pipeline.add_action(
         'avadx', 0.16,
         f'verify/download EthSEQ Model: {ethseq_model_name}',
-        f'-c \'[[ -f config[DEFAULT.ethseq.models]/{ethseq_model_name} ]] || wget -O config[DEFAULT.ethseq.models]/{ethseq_model_name} {ethseq_model_baseurl}{ethseq_model_name}\'',
+        f'-c \'wget -O config[DEFAULT.ethseq.models]/{ethseq_model_name} {ethseq_model_baseurl}{ethseq_model_name}\'',
         daemon_args={'docker': ['--entrypoint=bash'], 'singularity': ['exec:/bin/bash']},
         outdir=(models_base_path)
     )

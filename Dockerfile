@@ -7,7 +7,7 @@ FROM base as builder
 
 # setup system
 WORKDIR /install
-RUN apk --no-cache add build-base gcc make gfortran linux-headers openblas-dev lapack-dev jpeg-dev zlib-dev wget git
+RUN apk --no-cache add build-base gcc make gfortran linux-headers openblas-dev lapack-dev jpeg-dev zlib-dev wget git git-lfs
 
 # setup app
 RUN git clone --depth 1 https://bitbucket.org/bromberglab/avadx.git && \

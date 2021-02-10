@@ -3,8 +3,8 @@ from pathlib import Path
 
 name = "avadx"
 __author__ = 'mmiller'
-__version__ = '2.0.4'
-__releasedate__ = '12/17/20'
+__version__ = '2.0.5'
+__releasedate__ = '01/10/21'
 __build__ = {
     line.strip().split()[-1]:
     line.strip().split()[0] for line in ((Path(__file__).parent / '.build').open() if (Path(__file__).parent / '.build').exists() else [])

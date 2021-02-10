@@ -25,6 +25,7 @@ The AVA,Dx pipeline is implemented and python and uses pre-built images runnable
 
 * [Docker](https://www.docker.com/get-started) or [Singularity](https://sylabs.io/singularity)
 * Python ≥ 3.8
+* 10GB free storage
 
 Confirm you have the required versions of Docker/Singularity and Python installed.
 
@@ -36,10 +37,51 @@ For macOS environments we recommend to use [Homebrew](https://brew.sh/) and [pye
 pip install https://bitbucket.org/bromberglab/avadx/get/master.zip
 ```
 ## Init pipeline
-Init AVA,Dx pipeline and download required images and databases
+Init AVA,Dx pipeline, download required images and databases and preprocess datasets
 ```bash
 avadx --init
 ```
+A folder `data` and a config file (`avadx.ini`) will be created in the current working directory with the following content:
+
+```
+data
+├── annovar
+│   └── humandb
+│       ├── annovar_downdb_gnomad_exome.log
+│       ├── annovar_downdb_gnomad_genome.log
+│       ├── annovar_downdb_refGene.log
+│       ├── <assembly_version>_gnomad_exome.txt.gz
+│       ├── <assembly_version>_gnomad_exome.txt.idx
+│       ├── <assembly_version>_gnomad_genome.txt.gz
+│       ├── <assembly_version>_gnomad_genome.txt.idx
+│       ├── <assembly_version>_refGene.txt
+│       ├── <assembly_version>_refGeneMrna.fa
+│       └── <assembly_version>_refGeneVersion.txt
+├── avadx
+│   ├── CPDB_pathways_genesymbol.tab
+│   ├── Transcript-ProtLength.csv
+│   ├── Transcript-ProtLength_cleaned.csv
+│   ├── <assembly_version>_gnomad_exome_allAFabove0.txt.gz
+│   ├── <assembly_version>_gnomad_exome_allAFabove0.txt.gz.tbi
+│   ├── <assembly_version>_gnomad_genome_allAFabove0.txt.gz
+│   ├── <assembly_version>_gnomad_genome_allAFabove0.txt.gz.tbi
+│   ├── prot_seqs.fa
+│   ├── refseq_mapping.csv
+│   ├── varidb.db
+│   ├── varidb.log
+│   └── varidb.md5
+├── ethseq
+│   └── models
+│       └── Exonic.All.Model.gds
+└── refseq
+    ├── <assembly_version>_feature_table.txt
+    └── <assembly_version>_protein.faa
+```
+A detailed list of the data resources can also be found [here](https://bitbucket.org/bromberglab/avadx/src/master/data/README.md).
+
+**Note:**
+- Depending on your download speed and compute resources initialization will run for **>30 minutes**.
+- Initialization requires at least **10GB** free storage.
 
 <br />
 

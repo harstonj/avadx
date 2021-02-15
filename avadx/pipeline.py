@@ -1334,6 +1334,8 @@ def run_all_p(pipeline, extra, dry_run=False):
     avadx_base_path = Path(pipeline.config.get("DEFAULT", "avadx.data", fallback=WD))
     refseq_base_path = Path(pipeline.config.get("DEFAULT", "refseq.data", fallback=WD))
     models_base_path = Path(pipeline.config.get("DEFAULT", "ethseq.models", fallback=WD))
+    opt_base_path = Path(pipeline.config.get("DEFAULT", "opt.data", fallback=WD))
+    opt_base_path.mkdir(parents=True, exist_ok=True)
 
     # 0.11  Retrieve gnomad_exome database
     pipeline.add_action(

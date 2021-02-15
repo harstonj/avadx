@@ -41,3 +41,9 @@
     ├── prot_seqs.fa
     └── refseq_mapping.csv
 ```
+
+## Optional user data:
+```
+.
+└── opt
+```

@@ -73,11 +73,14 @@ data
 ├── ethseq
 │   └── models
 │       └── Exonic.All.Model.gds
-└── refseq
-    ├── <assembly_version>_feature_table.txt
-    └── <assembly_version>_protein.faa
+├── refseq
+│   ├── <assembly_version>_feature_table.txt
+│   └── <assembly_version>_protein.faa
+└── opt
 ```
 A detailed list of the data resources can also be found [here](https://bitbucket.org/bromberglab/avadx/src/master/data/README.md).
+
+Any user specific data can be added to the `opt` folder and is made available to customized scoring functions and/or models at `/mnt/data/opt`.
 
 **Note:**
 - Depending on your download speed and compute resources initialization will run for **>30 minutes**.
@@ -171,8 +174,9 @@ avadx --update data
 AVA,Dx provides a plugin based, flexible way to alter variant scoring and gene scoring aggregation functions.
 In the configuration (.ini) file simply specify the path to a python file containing a single scoring function for variants (`variantscore.fn = <PATH>`) and/or genes (`genescore.fn = <PATH>`).
 Templates for both scoring functions can be found in this repository under [python/scoring_functions](https://bitbucket.org/bromberglab/avadx/src/master/python/scoring_functions/).
-By default, AVA,Dx only scores *SNP* variants. TO also include *INDELS* for scoring update the config file accordingly and specify an approproate scoring in the varian scoring function.
+By default, AVA,Dx only scores *SNP* variants. To also include *INDELS* for scoring update the config file accordingly and specify an approproate scoring in the varian scoring function.
 Refer to the Annovar variant types table below for more details for scorable variant types.
+Additional data resources required can be stored in the `opt` folder and are made available at `/mnt/data/opt` (see *Init pipeline*).
 
 ### Annovar variation types available in the variant scoring function (key = "type")
 | Annotation                       | Precedence | Explanation                                                                                                                                                                                                                                                                                         | Sequence Ontology                  |
@@ -196,6 +200,7 @@ Both feature selection and classifier/model implementations can be altered using
 In the configuration (.ini) file simply specify the path to a python file containing alternative feature selection (`fselection.class = <PATH>`) or classifier/model (`model.class = <PATH>`) implementations.
 Templates for feature selection implementations can be found in this repository under [python/feature_selections](https://bitbucket.org/bromberglab/avadx/src/master/python/feature_selections/).
 Templates for model implementations can be found in this repository under [python/models](https://bitbucket.org/bromberglab/avadx/src/master/python/models/).
+Additional data resources required can be stored in the `opt` folder and are made available at `/mnt/data/opt` (see *Init pipeline*).
 
 <br />
 

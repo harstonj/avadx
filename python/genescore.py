@@ -13,12 +13,17 @@ class ScoringFunction:
     def score_variant(self, row):
         return self.variant.score_variant(row)
 
-    def score_gene(self, series):
+    # DEPRECATED
+    def score_gene_deprecated(self, series):
         gene = series.index.get_level_values('gene').unique()[0]
         transcript = series.index.get_level_values('transcript').unique()[0]
         series_missing_removed = series.dropna()
         aggregated_score = np.nan if series_missing_removed.empty else self.gene.score_gene(series_missing_removed, gene, transcript)
         return aggregated_score
+
+    def score_gene(self, df):
+        aggregated_score = self.gene.score_gene(df)
+        return pd.Series([aggregated_score, df.prot_length.iloc[0]], index=['variant_score', 'prot_length'])
 
     def import_modules(self, name, package: str = None, variant: Path = None, gene: Path = None):
         variant_file = variant if variant else Path(variant.replace('.', os.sep))
@@ -104,7 +109,7 @@ def run(annotations, indels, scoretable, metadata, tools, variantfn, genefn, nor
     df['variant_score'] = df.apply(scoring_functions.score_variant, axis=1)
 
     # aggregate single variant scores to per gene score (gene_score)
-    df_gs = df.set_index(['gene', 'transcript']).groupby(['gene', 'transcript']).agg({'variant_score': scoring_functions.score_gene, 'prot_length': 'first'}).rename(columns={'variant_score': 'gene_score'}).reset_index()
+    df_gs = df.groupby(['gene', 'transcript']).apply(scoring_functions.score_gene).rename(columns={'variant_score': 'gene_score'}).reset_index()
 
     # normalize variant score by protein lengths
     df_gs['gene_score_normalized'] = df_gs[['gene_score', 'prot_length']].apply(lambda x: x['gene_score'] * 100 / x['prot_length'], axis=1)

@@ -1,4 +1,5 @@
 from functools import reduce
+import numpy as np
 
 
 # gene score if no variants scores are available
@@ -6,19 +7,32 @@ NA_SCORE = 0
 MAX_SCORE = 3
 
 
-def score_gene(variant_scores, gene, transcript):
+def score_gene(variants_df):
     """ Default AVA,Dx variant score aggregation function (sum)
 
     Parameters
     ----------
-    variant_scores : pandas.core.series.Series
-                     Series contains all variant scores computed for the current gene
-    gene           : gene name
-    transcript     : transcript name
+    variants_df :   pandas.DataFrame
+                    DataFrame containing all variant scores and metadata for the current gene
+
+                    metadata keys are:
+                    [
+                        'type', 'zygosity', 'class', 'gene', 'transcript', 'exon', 'nu_change',
+                        'aa_change', 'prot_length', 'variant', 'snapfun.score', 'variant_score'
+                    ]
 
     Returns
     -------
     gene_score : float
     """
 
-    return min(reduce(lambda x, y: x + y, variant_scores), MAX_SCORE)
+    # get list of variant scores
+    variant_scores = variants_df.variant_score
+
+    # drop all missing scores
+    variant_scores_valid = variant_scores.dropna()
+
+    # return NA in case all scores are missing, otherwise (sum)
+    gene_score = np.nan if variant_scores_valid.empty else min(reduce(lambda x, y: x + y, variant_scores), MAX_SCORE)
+
+    return gene_score

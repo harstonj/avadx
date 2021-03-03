@@ -56,6 +56,9 @@ class FSelection:
                     print(f'Error at fold variance filter step: {err}')
             return train, test
 
+    def MANUAL(self, dataset, k):
+        return (None, None)
+
     def KS(self, dataset, k):
         class_0_idx = dataset[dataset['class'] == 0].index
         class_1_idx = dataset[dataset['class'] == 1].index

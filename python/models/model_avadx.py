@@ -82,7 +82,7 @@ class Model:
         y_pred = self.model.predict_proba(dataset)
         return y_pred
 
-   def RF_RESAMPLE_train(self, dataset, max_genes, k, predict=False):
+    def RF_RESAMPLE_train(self, dataset, max_genes, k, predict=False):
         train, test = self.split_train_test(dataset, k)
         train_class_weights = self.get_class_weights(train)
         genes_selected = self.get_selected_genes(max_genes, k)

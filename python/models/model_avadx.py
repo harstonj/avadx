@@ -1,3 +1,4 @@
+import pandas as pd
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 
@@ -44,6 +45,17 @@ class Model:
         genes_count = min(max_genes, genes_selected.shape[0])
         return genes_selected[0:genes_count]
 
+    def resample(self, df):
+        from sklearn.utils import resample
+        class_0 = df[df['class'] == 0]
+        class_1 = df[df['class'] == 1]
+        df_minority, df_majority = (class_0, class_1) if class_0.shape[0] < class_1.shape[0] else (class_1, class_0)
+        upsample_cnt = df_majority.shape[0] * 2
+        df_minority_upsampled = resample(df_minority, replace=True, n_samples=upsample_cnt, random_state=self.seed)
+        df_majority_upsampled = resample(df_majority, replace=True, n_samples=upsample_cnt, random_state=self.seed)
+        df_upsampled = pd.concat([df_minority_upsampled, df_majority_upsampled])
+        return df_upsampled
+
     def RF_train(self, dataset, max_genes, k, predict=False):
         train, test = self.split_train_test(dataset, k)
         train_class_weights = self.get_class_weights(train)
@@ -67,6 +79,33 @@ class Model:
         return dict(zip(y_test.index.tolist(), list(y_pred_ordered)))
 
     def RF_predict(self, dataset):
+        y_pred = self.model.predict_proba(dataset)
+        return y_pred
+
+   def RF_RESAMPLE_train(self, dataset, max_genes, k, predict=False):
+        train, test = self.split_train_test(dataset, k)
+        train_class_weights = self.get_class_weights(train)
+        genes_selected = self.get_selected_genes(max_genes, k)
+        train = self.resample(train)
+        y_train, y_test = train.pop('class'), test.pop('class')
+        X_train, X_test = train[genes_selected.index], test[genes_selected.index]
+        rf_classifier = RandomForestClassifier(
+            random_state=self.seed,
+            class_weight=train_class_weights.to_dict(),
+            n_estimators=min(round(X_train.shape[0] * 1.5), 500),
+            bootstrap=False
+        )
+        rf_classifier.fit(X_train, y_train)
+        if self.final:
+            self.model = rf_classifier
+            self.features = list(X_train.columns)
+        classes = list(rf_classifier.classes_)
+        y_pred = rf_classifier.predict_proba(X_test)
+        y_pred_ordered = [[y_pred_instance[classes.index(0)], y_pred_instance[classes.index(1)]] for y_pred_instance in y_pred]
+        self.update_progress(k)
+        return dict(zip(y_test.index.tolist(), list(y_pred_ordered)))
+
+    def RF_RESAMPLE_predict(self, dataset):
         y_pred = self.model.predict_proba(dataset)
         return y_pred
 

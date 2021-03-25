@@ -192,6 +192,8 @@ def main(args, kwargs):
 def run(genescores_path, featureselection, featurelist, model, cvscheme_path, protlength_path, kfold, variance_cutoff, variation_cutoff, pval_cutoff, maxgenes, topgenes_ratio, stepsize, out_path, wd_path, cores, quiet, kwargs):
     kwargs_dict = {_.split('=')[0]: _.split('=')[1] for _ in kwargs}
     kwargs_dict['pval_cutoff'] = pval_cutoff
+    kwargs_dict['out_path'] = out_path
+    kwargs_dict['wd_path'] = wd_path
     bar_prefix = '[     INFO ] --- |5.10| '
     logs = []
 
@@ -318,6 +320,8 @@ def run(genescores_path, featureselection, featurelist, model, cvscheme_path, pr
             performances_roc_auc[max_genes] = roc_auc
             performances_prc_data[max_genes] = prc_data
             performances_prc_avg[max_genes] = prc_auc
+            if model_eval.get_arg('eval') is not None:
+                model_eval.eval(dataset, max_genes)
             if not quiet:
                 print(f'progress:end:{model_eval.name}')
         max_auc_genes = max(performances_roc_auc, key=lambda key: performances_roc_auc[key])

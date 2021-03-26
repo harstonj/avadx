@@ -103,7 +103,7 @@ class Model:
                 fout.write(f'{max_test_idx + 1},{test_results[max_test_idx]}\n')
         return max_test_idx + 1
 
-    def RF_train(self, dataset, max_genes, k, predict=False):
+    def RF_train(self, dataset, max_genes, k, max_depth=None):
         train, test = self.split_train_test(dataset, k)
         train_class_weights = self.get_class_weights(train)
         genes_selected = self.get_selected_genes(max_genes, k)
@@ -113,7 +113,8 @@ class Model:
             random_state=self.seed,
             class_weight=train_class_weights.to_dict(),
             n_estimators=min(round(X_train.shape[0] * 1.5), 500),
-            bootstrap=False
+            bootstrap=False,
+            max_depth=int(np.ceil(dataset.shape[0] / max_genes)) if max_depth is None else max_depth
         )
         rf_classifier.fit(X_train, y_train)
         if self.final:
@@ -129,7 +130,7 @@ class Model:
         y_pred = self.model.predict_proba(dataset)
         return y_pred
 
-    def RF_RESAMPLE_train(self, dataset, max_genes, k, predict=False):
+    def RF_RESAMPLE_train(self, dataset, max_genes, k, max_depth=None):
         train, test = self.split_train_test(dataset, k)
         train_class_weights = self.get_class_weights(train)
         genes_selected = self.get_selected_genes(max_genes, k)
@@ -140,7 +141,8 @@ class Model:
             random_state=self.seed,
             class_weight=train_class_weights.to_dict(),
             n_estimators=min(round(X_train.shape[0] * 1.5), 500),
-            bootstrap=False
+            bootstrap=False,
+            max_depth=int(np.ceil(dataset.shape[0] / max_genes)) if max_depth is None else max_depth
         )
         rf_classifier.fit(X_train, y_train)
         if self.final:
@@ -156,7 +158,7 @@ class Model:
         y_pred = self.model.predict_proba(dataset)
         return y_pred
 
-    def RFE_train(self, dataset, max_genes, k, predict=False):
+    def RFE_train(self, dataset, max_genes, k):
         train, test = self.split_train_test(dataset, k)
         train_class_weights = self.get_class_weights(train)
         genes_selected = self.get_selected_genes(max_genes, k)

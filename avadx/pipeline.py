@@ -1528,7 +1528,7 @@ def run_all_p(pipeline, extra, dry_run=False):
         pipeline.add_action(
             'bcftools', 1.5,
             'filter by missing rate (MR)',
-            f'view --threads {VM_CPU} -i \'F_MISSING<=config[avadx.qc.call.MR]\' $WD/{step1_4_out} -Oz -o $WD/{step1_5_out}'
+            f'view --threads {VM_CPU} -i \'F_MISSING<=config[avadx.filter.MR.threshold]\' $WD/{step1_4_out} -Oz -o $WD/{step1_5_out}'
         )
     step1_5_out = step1_5_out if MR_filter else step1_4_out
 

@@ -121,8 +121,8 @@ Create the **samples info file** specified in the *avadx.ini* configuration file
 
 <br />
 
-## 3 - Run the pipeline
-*Different ways to run the AVA,Dx pipeline*
+## 3 - Run the pipeline [model building]
+*Different ways to run the AVA,Dx pipeline when building a disease-risk model*
 
 -- Run the pipeline using a config file named *avadx.ini* in the current working directory:
 
@@ -148,6 +148,12 @@ avadx <PATH_TO_CONFIG_FILE> --wd <PATH_TO_OUTPUT_DIRECTORY> --uid <MY_PIPELINE_R
 For an extensive list of arguments and parameters use `--help`.
 
 <br />
+
+## 4 - Run the pipeline [prediction]
+Once a model is created simply use the same configuration file but supply either a path to a VCF file or a CSV file with gene scores via the -s/--sampleprediction argument
+```bash
+avadx <PATH_TO_CONFIG_FILE> --wd <PATH_TO_OUTPUT_DIRECTORY> --uid <MY_PIPELINE_RUN_ID> --sampleprediction <PATH_TO_VCF_SAMPLES_OR_CSV_GENESCORES_FILE>
+```
 
 # Update
 
